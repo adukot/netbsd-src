@@ -1,13 +1,13 @@
-#	$NetBSD: DB120,v 1.15 2014/08/23 20:26:57 dholland Exp $
+#	$NetBSD$
 #
-# Qualcomm Atheros AR9344 DB120 evaluation board.
+# Qualcomm Atheros AR9331 LININO ONE evaluation board.
 #
 
 include 	"arch/evbmips/conf/std.atheros"
 
 #options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-#ident 		"DB120-$Revision: 1.15 $"
+#ident 		"LININO1-$Revision$"
 
 maxusers	32
 
