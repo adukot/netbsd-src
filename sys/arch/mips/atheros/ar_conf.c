@@ -116,6 +116,16 @@ static const struct atheros_chip chips[] = {
 		.ac_name =		"AR9344"
 	},
 #endif
+#ifdef WISOC_AR9331
+	{
+		.ac_platformsw =	&ar9344_platformsw,
+		.ac_chipid =		0x11,
+		.ac_chipmask =		0xff,
+		.ac_cid =		MIPS_PRID_CID_MTI,
+		.ac_pid =		MIPS_24K,
+		.ac_name =		"AR9331"
+	},
+#endif
 };
 
 __CTASSERT(__arraycount(chips) > 0);
@@ -165,6 +175,37 @@ atheros_get_mem_freq(void)
 	return chip_freqs.freq_mem;
 }
 
+
+static void arputc(int c);
+static void arhex(int i);
+
+#define AR9331_UART 0xB8020000
+#define AR9331_LSR  0xB8020004
+
+static void arputc(int c)
+{
+	volatile uint32_t * const uart = (volatile uint32_t *) AR9331_UART;
+	volatile uint32_t * const lsr  = (volatile uint32_t *) AR9331_LSR;
+
+	while ( *lsr & __BIT(14))
+		continue;
+
+	*uart = (0x200 | c);
+}
+
+
+static void arhex(int num)
+{
+	int i;
+	char str[9];
+	snprintf(str, 9, "%08x", num);
+
+	for (i = 0; i < strlen(str); i++) {
+		arputc((int)str[i]);
+	}
+}
+
+
 void
 atheros_set_platformsw(void)
 {
@@ -182,6 +223,10 @@ atheros_set_platformsw(void)
 		    MIPS_PHYS_TO_KSEG1(apsw->apsw_revision_id_addr);
 		const uint32_t chipid = AR9344_REVISION_CHIPID(revision_id);
 
+		arhex(revision_id);
+		arputc(',');
+		arhex(chipid);
+		arputc(',');
 		if ((chipid & ac->ac_chipmask) == ac->ac_chipid) {
 			platformsw = apsw;
 			my_chip = ac;
