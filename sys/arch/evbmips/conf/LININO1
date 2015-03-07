@@ -20,7 +20,7 @@ makeoptions	NEED_BINARY="yes"
 makeoptions	NEED_UBOOTIMAGE="gz"
 options 	NOFPU				# No FPU
 options 	FPEMUL				# emulate FPU insn
-options		WISOC_AR9344			# WiSoC select
+options		WISOC_AR9331			# WiSoC select
 options 	COM_16650,COM_TOLERANCE=50	# +/- 5%
 options		MEMSIZE="(64*1024*1024)"
 
