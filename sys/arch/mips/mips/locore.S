@@ -71,12 +71,21 @@
 #define	NOP_L		/* nothing */
 #endif
 
+#if 1
+#define XPUTC(n)	li t1, n; jal xputc; nop
+#else
+#define XPUTC(n)
+#endif
+
 	.set	noreorder
 
 	.globl	start
 	.globl	_C_LABEL(kernel_text)		# libkvm refers this
 start:
 _C_LABEL(kernel_text):
+
+	XPUTC(0x40) # @
+
 #if (defined(MIPS3_PLUS) && !defined(MIPS1)) || defined(emips)
 	/* keep firmware exception handler until we hook. */
 	mfc0	v0, MIPS_COP_0_STATUS
@@ -84,6 +93,7 @@ _C_LABEL(kernel_text):
 	and	v0, MIPS_SR_TS | MIPS3_SR_RE
 #else
 	and	v0, MIPS_SR_BEV
+	li	v0, 0x10000004
 #endif
 	mtc0	v0, MIPS_COP_0_STATUS		# Disable interrupts
 	COP0_SYNC
@@ -91,6 +101,7 @@ _C_LABEL(kernel_text):
 	mtc0	zero, MIPS_COP_0_STATUS		# Disable interrupts
 	COP0_SYNC
 #endif
+
 /*
  * Initialize stack and call machine startup.
  */
@@ -116,9 +127,12 @@ _C_LABEL(kernel_text):
 #else
 	li	t0, 0				# Disable interrupts and
 #endif
+#if 0
 	mtc0	t0, MIPS_COP_0_STATUS		# the fp coprocessor
 	COP0_SYNC
 #endif
+#endif
+
 #ifdef HPCMIPS_L1CACHE_DISABLE
 	mfc0	t0, MIPS_COP_0_CONFIG
 	li	t1, 0xfffffff8
@@ -303,6 +317,19 @@ NESTED(cpu_switchto, CALLFRAME_SIZ, ra)
 	JR_HB_RA
 #endif /* PARANOIA */
 END(cpu_switchto)
+
+
+xputc:
+	lui     t0, 0x1802      # UART1 Addr
+        addi    t2, t0, 4       # t2 = UART_CS addr
+txbusy:
+        lb      t3, 2(t2)       # t3 = UART_CS (8bit - 15bit)
+        andi    t3, t3, 0x40    # bit14 = UART_TX_BUSY
+        bne     t3, zero, txbusy
+        nop
+        sb      t1, 3(t0)       # write register
+	j	ra
+	nop
 
 #ifdef __HAVE_FAST_SOFTINTS
 /*
