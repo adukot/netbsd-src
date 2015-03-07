@@ -53,6 +53,7 @@ __KERNEL_RCSID(0, "$NetBSD: ar9344.c,v 1.5 2014/05/29 14:41:26 skrll Exp $");
 #include "opt_ddb.h"
 #include "opt_kgdb.h"
 #include "opt_memsize.h"
+#include "opt_wisoc.h"
 
 #define __INTR_PRIVATE
 
