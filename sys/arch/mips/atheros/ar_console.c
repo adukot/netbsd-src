@@ -42,6 +42,8 @@ __KERNEL_RCSID(0, "$NetBSD: ar_console.c,v 1.2 2011/07/10 06:26:02 matt Exp $");
 
 #include <dev/cons.h>
 
+#include "opt_wisoc.h"
+
 #include <mips/cache.h>
 #include <mips/locore.h>
 #include <mips/cpuregs.h>
@@ -66,8 +68,10 @@ atheros_consinit(void)
 #if NCOM > 0
 	/* Setup polled serial for early console I/O */
 	/* XXX: pass in CONSPEED? */
+#ifndef WISOC_AR9331
 	com_arbus_cnattach(platformsw->apsw_uart0_base,
 	    atheros_get_uart_freq());
+#endif
 #else
 	panic("Not configured to use serial console!\n");
 	/* not going to see that message now, are we? */
@@ -80,6 +84,16 @@ atheros_consinit(void)
 static void
 earlycons_putc(dev_t dev, int c)
 {
+#ifdef WISOC_AR9331
+	volatile uint32_t * const uart =
+	    (volatile uint32_t *)MIPS_PHYS_TO_KSEG1(platformsw->apsw_uart0_base);
+	volatile uint32_t * const lsr  =
+	    (volatile uint32_t *)(MIPS_PHYS_TO_KSEG1(platformsw->apsw_uart0_base) + 4);
+
+	while(*lsr & __BIT(14))
+		continue;
+	*uart = 0x200 | c;
+#else
 	volatile uint32_t * const uart =
 	    (volatile uint32_t *)MIPS_PHYS_TO_KSEG1(platformsw->apsw_uart0_base);
 
@@ -87,6 +101,7 @@ earlycons_putc(dev_t dev, int c)
 		continue;
 
 	uart[com_data] = htobe32(c);
+#endif
 }
 
 static int
@@ -104,11 +119,19 @@ earlycons_getc(dev_t dev)
 static void
 earlycons_flush(dev_t dev)
 {
+#ifdef WISOC_AR9331
+	volatile uint32_t * const lsr  =
+	    (volatile uint32_t *)(MIPS_PHYS_TO_KSEG1(platformsw->apsw_uart0_base) + 4);
+
+	while (*lsr & __BIT(14))
+		continue;
+#else
 	volatile uint32_t * const uart =
 	    (volatile uint32_t *)MIPS_PHYS_TO_KSEG1(platformsw->apsw_uart0_base);
 
 	while (!(uart[com_lsr] & htobe32(LSR_TSRE)))
 		continue;
+#endif
 }
 
 
