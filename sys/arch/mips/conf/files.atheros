@@ -1,6 +1,6 @@
 #	$NetBSD: files.atheros,v 1.10 2011/07/10 23:13:22 matt Exp $
 
-defflag	opt_wisoc.h	WISOC_AR5312 WISOC_AR5315 WISOC_AR7100 WISOC_AR9344
+defflag	opt_wisoc.h	WISOC_AR5312 WISOC_AR5315 WISOC_AR7100 WISOC_AR9331 WISOC_AR9344
 
 file	arch/mips/atheros/ar_conf.c
 file	arch/mips/atheros/ar_console.c
@@ -13,7 +13,8 @@ file	arch/mips/atheros/ar5315.c		wisoc_ar5315
 file	arch/mips/atheros/ar5315_board.c	wisoc_ar5315
 
 file	arch/mips/atheros/ar7100.c		wisoc_ar7100
-file	arch/mips/atheros/ar9344.c		wisoc_ar9344
+file	arch/mips/atheros/ar9344.c		wisoc_ar9331
+# file	arch/mips/atheros/ar9344.c		wisoc_ar9344
 
 # Atheros system bus
 device	arbus { [addr=-1] }
