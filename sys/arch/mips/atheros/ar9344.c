@@ -125,7 +125,11 @@ ar9344_get_freqs(struct arfreqs *freqs)
 	uint32_t ref_clk;
 	//uint32_t nfrac;
 
+#ifdef WISOC_AR9331
+	if (GETRESETREG(AR9331_RESET_BOOTSTRAP) & AR9344_BOOTSTRAP_REF_CLK_40) {
+#else
 	if (GETRESETREG(AR9344_RESET_BOOTSTRAP) & AR9344_BOOTSTRAP_REF_CLK_40) {
+#endif
 		ref_clk = 40 * 1000000;
 	} else {
 		ref_clk = 25 * 1000000;
@@ -137,13 +141,20 @@ ar9344_get_freqs(struct arfreqs *freqs)
 	 * Let's figure out the CPU PLL frequency.
 	 */
 	pll = GETPLLREG(ARCHIP_PLL_CPU_PLL_CONFIG);
+#ifdef WISOC_AR9331
+	out_div = __SHIFTOUT(pll, AR9331_CPU_PLL_CONFIG_OUTDIV);
+	ref_div = __SHIFTOUT(pll, AR9331_CPU_PLL_CONFIG_REFDIV);
+	nint = __SHIFTOUT(pll, AR9331_CPU_PLL_CONFIG_NINT);
+#else
 	out_div = __SHIFTOUT(pll, AR9344_CPU_PLL_CONFIG_OUTDIV);
 	ref_div = __SHIFTOUT(pll, AR9344_CPU_PLL_CONFIG_REFDIV);
 	nint = __SHIFTOUT(pll, AR9344_CPU_PLL_CONFIG_NINT);
 	//nfrac = __SHIFTOUT(pll, AR9344_CPU_PLL_CONFIG_NFRAC);
+#endif
 
 	const uint32_t cpu_pll_freq = (nint * ref_clk / ref_div) >> out_div;
 
+#ifndef WISOC_AR9331 /* AR9331 NO DDR PLL */
 	/*
 	 * Now figure out the DDR PLL frequency.
 	 */
@@ -154,11 +165,17 @@ ar9344_get_freqs(struct arfreqs *freqs)
 	//nfrac = __SHIFTOUT(pll, AR9344_DDR_PLL_CONFIG_NFRAC);
 
 	const uint32_t ddr_pll_freq = (nint * ref_clk / ref_div) >> out_div;
+#endif
 
 	/*
 	 * Now we find out the various frequencies...
 	 */
 	uint32_t clk_ctl = GETPLLREG(ARCHIP_PLL_CPU_DDR_CLOCK_CONTROL);
+#ifdef WISOC_AR9331
+	post_div = __SHIFTOUT(clk_ctl,
+	    AR9331_CPU_CLOCK_CONTROL_AHB_POST_DIV);
+	freqs->freq_bus = cpu_pll_freq / (post_div + 1);
+#else
 	post_div = __SHIFTOUT(clk_ctl,
 	    AR9344_CPU_DDR_CLOCK_CONTROL_AHB_POST_DIV);
 	if (clk_ctl & AR9344_CPU_DDR_CLOCK_CONTROL_AHBCLK_FROM_DDRPLL) {
@@ -166,7 +183,14 @@ ar9344_get_freqs(struct arfreqs *freqs)
 	} else {
 		freqs->freq_bus = cpu_pll_freq / (post_div + 1);
 	}
+#endif
 
+#ifdef WISOC_AR9331
+	post_div = __SHIFTOUT(clk_ctl,
+	    AR9331_CPU_CLOCK_CONTROL_CPU_POST_DIV);
+	freqs->freq_cpu = cpu_pll_freq / (post_div + 1);
+	freqs->freq_pll = cpu_pll_freq;
+#else
 	post_div = __SHIFTOUT(clk_ctl,
 	    AR9344_CPU_DDR_CLOCK_CONTROL_CPU_POST_DIV);
 	if (clk_ctl & AR9344_CPU_DDR_CLOCK_CONTROL_CPUCLK_FROM_CPUPLL) {
@@ -176,7 +200,13 @@ ar9344_get_freqs(struct arfreqs *freqs)
 		freqs->freq_cpu = ddr_pll_freq / (post_div + 1);
 		freqs->freq_pll = ddr_pll_freq;
 	}
+#endif
 
+#ifdef WISOC_AR9331
+	post_div = __SHIFTOUT(clk_ctl,
+	    AR9331_CPU_CLOCK_CONTROL_DDR_POST_DIV);
+	freqs->freq_mem = cpu_pll_freq / (post_div + 1);
+#else
 	post_div = __SHIFTOUT(clk_ctl,
 	    AR9344_CPU_DDR_CLOCK_CONTROL_DDR_POST_DIV);
 	if (clk_ctl & AR9344_CPU_DDR_CLOCK_CONTROL_DDRCLK_FROM_DDRPLL) {
@@ -184,6 +214,7 @@ ar9344_get_freqs(struct arfreqs *freqs)
 	} else {
 		freqs->freq_mem = cpu_pll_freq / (post_div + 1);
 	}
+#endif
 
 	/*
 	 * Console is off the reference clock, not the bus clock.
