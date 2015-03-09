@@ -92,7 +92,7 @@ earlycons_putc(dev_t dev, int c)
 
 	while(*lsr & __BIT(14))
 		continue;
-	*uart = 0x200 | c;
+	*uart = 0x200 | c; /* 0x200 : UART_TX_CSR */
 #else
 	volatile uint32_t * const uart =
 	    (volatile uint32_t *)MIPS_PHYS_TO_KSEG1(platformsw->apsw_uart0_base);
@@ -109,11 +109,24 @@ earlycons_getc(dev_t dev)
 {
 	volatile uint32_t * const uart =
 	    (volatile uint32_t *)MIPS_PHYS_TO_KSEG1(platformsw->apsw_uart0_base);
+#ifdef WISOC_AR9331
+	volatile uint32_t * const lsr  =
+	    (volatile uint32_t *)(MIPS_PHYS_TO_KSEG1(platformsw->apsw_uart0_base) + 4);
+	uint8_t ch = 0;
 
+	while (!(*lsr & __BIT(15))) /* BIT(15) : UART0_RX_BUSY */
+		continue;
+	if (*uart & 0x100) {
+		ch = (uint8_t) (0xFF & *uart);
+		*uart = 0x100;
+	}
+	return (uint8_t) ch;
+#else
 	while (!(uart[com_lsr] & htobe32(LSR_RXRDY)))
 		continue;
 
 	return (uint8_t) be32toh(uart[com_data]);
+#endif
 }
 
 static void
