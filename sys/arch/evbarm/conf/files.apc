@@ -1,0 +1,19 @@
+#	$NetBSD$
+#
+# Android PC
+#
+file	arch/arm/arm32/arm32_boot.c
+file	arch/arm/arm32/arm32_kvminit.c
+file	arch/arm/arm32/arm32_reboot.c
+
+file	arch/evbarm/apc/apc_machdep.c
+
+# Kernel boot arguments
+defparam opt_machdep.h				BOOT_ARGS
+
+
+# CPU support and integrated peripherals
+include "arch/arm/wmt/files.wmt"
+
+attach	wmtcom at obio with wmtcom_apc
+file	arch/evbarm/apc/wmtcom_apc.c	wmtcom_apc

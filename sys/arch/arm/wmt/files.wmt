@@ -1,0 +1,33 @@
+#	$NetBSD$  
+#
+# Configuration info for WonderMedia WM8750 ARM Peripherals
+#
+
+include "arch/arm/pic/files.pic"
+
+file	arch/arm/arm32/irq_dispatch.S
+
+# APC on-board devices
+device  obio {[addr = -1], [size = -1], [width = -1], [intr = -1]}: bus_space_generic
+attach  obio at mainbus
+file    arch/arm/wmt/obio.c                          obio
+file    arch/arm/wmt/obio_space.c                    obio
+file    arch/arm/wmt/obio_dma.c
+
+# Interrupt Controller (WMT_ARMICU_BASE)
+device	wmicu: pic, pic_splfuncs
+attach	wmicu at obio with wmicu
+file	arch/arm/wmt/wmt_intr.c	wmicu
+
+# System Timer (WMT_TIMER_BASE)
+device	wmtmr
+attach	wmtmr at obio
+file	arch/arm/wmt/wmt_tmr.c	wmtmr
+
+# UART
+device	wmtcom: tty
+file    arch/arm/wmt/wmt_com.c	wmtcom needs-flag
+
+# USB
+attach	ehci at obio with ehci_obio
+file	arch/arm/wmt/obio_ehci.c	ehci_obio
