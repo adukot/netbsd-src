@@ -1,4 +1,4 @@
-/*	$NetBSD: in6_gif.c,v 1.73 2016/02/29 01:29:15 knakahara Exp $	*/
+/*	$NetBSD: in6_gif.c,v 1.85 2017/01/16 15:44:47 christos Exp $	*/
 /*	$KAME: in6_gif.c,v 1.62 2001/07/29 04:27:25 itojun Exp $	*/
 
 /*
@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: in6_gif.c,v 1.73 2016/02/29 01:29:15 knakahara Exp $");
+__KERNEL_RCSID(0, "$NetBSD: in6_gif.c,v 1.85 2017/01/16 15:44:47 christos Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -86,16 +86,13 @@ int
 in6_gif_output(struct ifnet *ifp, int family, struct mbuf *m)
 {
 	struct rtentry *rt;
+	struct route *ro;
 	struct gif_softc *sc = ifp->if_softc;
 	struct sockaddr_in6 *sin6_src = satosin6(sc->gif_psrc);
 	struct sockaddr_in6 *sin6_dst = satosin6(sc->gif_pdst);
 	struct ip6_hdr *ip6;
 	int proto, error;
 	u_int8_t itos, otos;
-	union {
-		struct sockaddr		dst;
-		struct sockaddr_in6	dst6;
-	} u;
 
 	if (sin6_src == NULL || sin6_dst == NULL ||
 	    sin6_src->sin6_family != AF_INET6 ||
@@ -175,18 +172,23 @@ in6_gif_output(struct ifnet *ifp, int family, struct mbuf *m)
 	ip6->ip6_flow &= ~ntohl(0xff00000);
 	ip6->ip6_flow |= htonl((u_int32_t)otos << 20);
 
-	sockaddr_in6_init(&u.dst6, &sin6_dst->sin6_addr, 0, 0, 0);
-	if ((rt = rtcache_lookup(&sc->gif_ro, &u.dst)) == NULL) {
+	ro = percpu_getref(sc->gif_ro_percpu);
+	rt = rtcache_lookup(ro, sc->gif_pdst);
+	if (rt == NULL) {
+		percpu_putref(sc->gif_ro_percpu);
 		m_freem(m);
 		return ENETUNREACH;
 	}
 
 	/* If the route constitutes infinite encapsulation, punt. */
 	if (rt->rt_ifp == ifp) {
-		rtcache_free(&sc->gif_ro);
+		rtcache_unref(rt, ro);
+		rtcache_free(ro);
+		percpu_putref(sc->gif_ro_percpu);
 		m_freem(m);
 		return ENETUNREACH;	/* XXX */
 	}
+	rtcache_unref(rt, ro);
 
 #ifdef IPV6_MINMTU
 	/*
@@ -194,11 +196,11 @@ in6_gif_output(struct ifnet *ifp, int family, struct mbuf *m)
 	 * it is too painful to ask for resend of inner packet, to achieve
 	 * path MTU discovery for encapsulated packets.
 	 */
-	error = ip6_output(m, 0, &sc->gif_ro, IPV6_MINMTU, NULL, NULL, NULL);
+	error = ip6_output(m, 0, ro, IPV6_MINMTU, NULL, NULL, NULL);
 #else
-	error = ip6_output(m, 0, &sc->gif_ro, 0, NULL, NULL, NULL);
+	error = ip6_output(m, 0, ro, 0, NULL, NULL, NULL);
 #endif
-
+	percpu_putref(sc->gif_ro_percpu);
 	return (error);
 }
 
@@ -215,7 +217,8 @@ in6_gif_input(struct mbuf **mp, int *offp, int proto)
 
 	gifp = (struct ifnet *)encap_getarg(m);
 
-	if (gifp == NULL || (gifp->if_flags & IFF_UP) == 0) {
+	if (gifp == NULL || (gifp->if_flags & (IFF_UP|IFF_RUNNING))
+		!= (IFF_UP|IFF_RUNNING)) {
 		m_freem(m);
 		IP6_STATINC(IP6_STAT_NOGIF);
 		return IPPROTO_DONE;
@@ -229,11 +232,15 @@ in6_gif_input(struct mbuf **mp, int *offp, int proto)
 		return IPPROTO_DONE;
 	}
 
-	if (!gif_validate6(ip6, sc, m->m_pkthdr.rcvif)) {
+	struct psref psref;
+	struct ifnet *rcvif = m_get_rcvif_psref(m, &psref);
+	if (rcvif == NULL || !gif_validate6(ip6, sc, rcvif)) {
+		m_put_rcvif_psref(rcvif, &psref);
 		m_freem(m);
 		IP6_STATINC(IP6_STAT_NOGIF);
 		return IPPROTO_DONE;
 	}
+	m_put_rcvif_psref(rcvif, &psref);
 #endif
 
 	otos = ip6->ip6_flow;
@@ -320,15 +327,16 @@ gif_validate6(const struct ip6_hdr *ip6, struct gif_softc *sc,
 		rt = rtalloc1(&u.sa, 0);
 		if (rt == NULL || rt->rt_ifp != ifp) {
 #if 0
+			char ip6buf[INET6_ADDRSTRLEN];
 			log(LOG_WARNING, "%s: packet from %s dropped "
 			    "due to ingress filter\n", if_name(&sc->gif_if),
-			    ip6_sprintf(&u.sin6.sin6_addr));
+			    IN6_PRINT(ip6buf, &u.sin6.sin6_addr));
 #endif
 			if (rt != NULL)
-				rtfree(rt);
+				rt_unref(rt);
 			return 0;
 		}
-		rtfree(rt);
+		rt_unref(rt);
 	}
 
 	return 128 * 2;
@@ -344,15 +352,21 @@ gif_encapcheck6(struct mbuf *m, int off, int proto, void *arg)
 {
 	struct ip6_hdr ip6;
 	struct gif_softc *sc;
-	struct ifnet *ifp;
+	struct ifnet *ifp = NULL;
+	int r;
+	struct psref psref;
 
 	/* sanity check done in caller */
 	sc = arg;
 
 	m_copydata(m, 0, sizeof(ip6), (void *)&ip6);
-	ifp = ((m->m_flags & M_PKTHDR) != 0) ? m->m_pkthdr.rcvif : NULL;
+	if ((m->m_flags & M_PKTHDR) != 0)
+		ifp = m_get_rcvif_psref(m, &psref);
 
-	return gif_validate6(&ip6, sc, ifp);
+	r = gif_validate6(&ip6, sc, ifp);
+
+	m_put_rcvif_psref(ifp, &psref);
+	return r;
 }
 #endif
 
@@ -370,7 +384,7 @@ in6_gif_attach(struct gif_softc *sc)
 	if (!sc->gif_psrc || !sc->gif_pdst)
 		return EINVAL;
 	sc->encap_cookie6 = encap_attach(AF_INET6, -1, sc->gif_psrc,
-	    (struct sockaddr *)&mask6, sc->gif_pdst, (struct sockaddr *)&mask6,
+	    sin6tosa(&mask6), sc->gif_pdst, sin6tosa(&mask6),
 	    (const void *)&in6_gif_encapsw, sc);
 #else
 	sc->encap_cookie6 = encap_attach_func(AF_INET6, -1, gif_encapcheck,
@@ -386,11 +400,21 @@ in6_gif_detach(struct gif_softc *sc)
 {
 	int error;
 
+	error = in6_gif_pause(sc);
+
+	percpu_foreach(sc->gif_ro_percpu, gif_rtcache_free_pc, NULL);
+
+	return error;
+}
+
+int
+in6_gif_pause(struct gif_softc *sc)
+{
+	int error;
+
 	error = encap_detach(sc->encap_cookie6);
 	if (error == 0)
 		sc->encap_cookie6 = NULL;
-
-	rtcache_free(&sc->gif_ro);
 
 	return error;
 }
@@ -402,6 +426,7 @@ in6_gif_ctlinput(int cmd, const struct sockaddr *sa, void *d, void *eparg)
 	struct ip6ctlparam *ip6cp = NULL;
 	struct ip6_hdr *ip6;
 	const struct sockaddr_in6 *dst6;
+	struct route *ro;
 
 	if (sa->sa_family != AF_INET6 ||
 	    sa->sa_len != sizeof(struct sockaddr_in6))
@@ -430,13 +455,15 @@ in6_gif_ctlinput(int cmd, const struct sockaddr *sa, void *d, void *eparg)
 	if (sc->gif_psrc->sa_family != AF_INET6)
 		return NULL;
 
-	dst6 = satocsin6(rtcache_getdst(&sc->gif_ro));
+	ro = percpu_getref(sc->gif_ro_percpu);
+	dst6 = satocsin6(rtcache_getdst(ro));
 	/* XXX scope */
 	if (dst6 == NULL)
 		;
 	else if (IN6_ARE_ADDR_EQUAL(&ip6->ip6_dst, &dst6->sin6_addr))
-		rtcache_free(&sc->gif_ro);
+		rtcache_free(ro);
 
+	percpu_putref(sc->gif_ro_percpu);
 	return NULL;
 }
 

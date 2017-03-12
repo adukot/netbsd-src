@@ -1,4 +1,4 @@
-/*	$NetBSD: chared.c,v 1.54 2016/04/18 17:01:19 christos Exp $	*/
+/*	$NetBSD: chared.c,v 1.56 2016/05/22 19:44:26 christos Exp $	*/
 
 /*-
  * Copyright (c) 1992, 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)chared.c	8.1 (Berkeley) 6/4/93";
 #else
-__RCSID("$NetBSD: chared.c,v 1.54 2016/04/18 17:01:19 christos Exp $");
+__RCSID("$NetBSD: chared.c,v 1.56 2016/05/22 19:44:26 christos Exp $");
 #endif
 #endif /* not lint && not SCCSID */
 
@@ -52,15 +52,13 @@ __RCSID("$NetBSD: chared.c,v 1.54 2016/04/18 17:01:19 christos Exp $");
 #include "common.h"
 #include "fcns.h"
 
-static void ch__clearmacro (EditLine *);
-
 /* value to leave unused in line buffer */
 #define	EL_LEAVE	2
 
 /* cv_undo():
  *	Handle state for the vi undo command
  */
-protected void
+libedit_private void
 cv_undo(EditLine *el)
 {
 	c_undo_t *vu = &el->el_chared.c_undo;
@@ -84,7 +82,7 @@ cv_undo(EditLine *el)
 /* cv_yank():
  *	Save yank/delete data for paste
  */
-protected void
+libedit_private void
 cv_yank(EditLine *el, const wchar_t *ptr, int size)
 {
 	c_kill_t *k = &el->el_chared.c_kill;
@@ -97,7 +95,7 @@ cv_yank(EditLine *el, const wchar_t *ptr, int size)
 /* c_insert():
  *	Insert num characters
  */
-protected void
+libedit_private void
 c_insert(EditLine *el, int num)
 {
 	wchar_t *cp;
@@ -119,7 +117,7 @@ c_insert(EditLine *el, int num)
 /* c_delafter():
  *	Delete num characters after the cursor
  */
-protected void
+libedit_private void
 c_delafter(EditLine *el, int num)
 {
 
@@ -145,7 +143,7 @@ c_delafter(EditLine *el, int num)
 /* c_delafter1():
  *	Delete the character after the cursor, do not yank
  */
-protected void
+libedit_private void
 c_delafter1(EditLine *el)
 {
 	wchar_t *cp;
@@ -160,7 +158,7 @@ c_delafter1(EditLine *el)
 /* c_delbefore():
  *	Delete num characters before the cursor
  */
-protected void
+libedit_private void
 c_delbefore(EditLine *el, int num)
 {
 
@@ -188,7 +186,7 @@ c_delbefore(EditLine *el, int num)
 /* c_delbefore1():
  *	Delete the character before the cursor, do not yank
  */
-protected void
+libedit_private void
 c_delbefore1(EditLine *el)
 {
 	wchar_t *cp;
@@ -203,7 +201,7 @@ c_delbefore1(EditLine *el)
 /* ce__isword():
  *	Return if p is part of a word according to emacs
  */
-protected int
+libedit_private int
 ce__isword(wint_t p)
 {
 	return iswalnum(p) || wcschr(L"*?_-.[]~=", p) != NULL;
@@ -213,7 +211,7 @@ ce__isword(wint_t p)
 /* cv__isword():
  *	Return if p is part of a word according to vi
  */
-protected int
+libedit_private int
 cv__isword(wint_t p)
 {
 	if (iswalnum(p) || p == L'_')
@@ -227,7 +225,7 @@ cv__isword(wint_t p)
 /* cv__isWord():
  *	Return if p is part of a big word according to vi
  */
-protected int
+libedit_private int
 cv__isWord(wint_t p)
 {
 	return !iswspace(p);
@@ -237,7 +235,7 @@ cv__isWord(wint_t p)
 /* c__prev_word():
  *	Find the previous word
  */
-protected wchar_t *
+libedit_private wchar_t *
 c__prev_word(wchar_t *p, wchar_t *low, int n, int (*wtest)(wint_t))
 {
 	p--;
@@ -261,7 +259,7 @@ c__prev_word(wchar_t *p, wchar_t *low, int n, int (*wtest)(wint_t))
 /* c__next_word():
  *	Find the next word
  */
-protected wchar_t *
+libedit_private wchar_t *
 c__next_word(wchar_t *p, wchar_t *high, int n, int (*wtest)(wint_t))
 {
 	while (n--) {
@@ -279,7 +277,7 @@ c__next_word(wchar_t *p, wchar_t *high, int n, int (*wtest)(wint_t))
 /* cv_next_word():
  *	Find the next word vi style
  */
-protected wchar_t *
+libedit_private wchar_t *
 cv_next_word(EditLine *el, wchar_t *p, wchar_t *high, int n,
     int (*wtest)(wint_t))
 {
@@ -309,7 +307,7 @@ cv_next_word(EditLine *el, wchar_t *p, wchar_t *high, int n,
 /* cv_prev_word():
  *	Find the previous word vi style
  */
-protected wchar_t *
+libedit_private wchar_t *
 cv_prev_word(wchar_t *p, wchar_t *low, int n, int (*wtest)(wint_t))
 {
 	int test;
@@ -335,7 +333,7 @@ cv_prev_word(wchar_t *p, wchar_t *low, int n, int (*wtest)(wint_t))
 /* cv_delfini():
  *	Finish vi delete action
  */
-protected void
+libedit_private void
 cv_delfini(EditLine *el)
 {
 	int size;
@@ -373,7 +371,7 @@ cv_delfini(EditLine *el)
 /* cv__endword():
  *	Go to the end of this word according to vi
  */
-protected wchar_t *
+libedit_private wchar_t *
 cv__endword(wchar_t *p, wchar_t *high, int n, int (*wtest)(wint_t))
 {
 	int test;
@@ -395,11 +393,9 @@ cv__endword(wchar_t *p, wchar_t *high, int n, int (*wtest)(wint_t))
 /* ch_init():
  *	Initialize the character editor
  */
-protected int
+libedit_private int
 ch_init(EditLine *el)
 {
-	c_macro_t *ma = &el->el_chared.c_macro;
-
 	el->el_line.buffer		= el_malloc(EL_BUFSIZ *
 	    sizeof(*el->el_line.buffer));
 	if (el->el_line.buffer == NULL)
@@ -451,19 +447,14 @@ ch_init(EditLine *el)
 	el->el_state.argument		= 1;
 	el->el_state.lastcmd		= ED_UNASSIGNED;
 
-	ma->level	= -1;
-	ma->offset	= 0;
-	ma->macro	= el_malloc(EL_MAXMACRO * sizeof(*ma->macro));
-	if (ma->macro == NULL)
-		return -1;
 	return 0;
 }
 
 /* ch_reset():
  *	Reset the character editor
  */
-protected void
-ch_reset(EditLine *el, int mclear)
+libedit_private void
+ch_reset(EditLine *el)
 {
 	el->el_line.cursor		= el->el_line.buffer;
 	el->el_line.lastchar		= el->el_line.buffer;
@@ -485,24 +476,13 @@ ch_reset(EditLine *el, int mclear)
 	el->el_state.lastcmd		= ED_UNASSIGNED;
 
 	el->el_history.eventno		= 0;
-
-	if (mclear)
-		ch__clearmacro(el);
-}
-
-static void
-ch__clearmacro(EditLine *el)
-{
-	c_macro_t *ma = &el->el_chared.c_macro;
-	while (ma->level >= 0)
-		el_free(ma->macro[ma->level--]);
 }
 
 /* ch_enlargebufs():
  *	Enlarge line buffer to be able to hold twice as much characters.
  *	Returns 1 if successful, 0 if not.
  */
-protected int
+libedit_private int
 ch_enlargebufs(EditLine *el, size_t addlen)
 {
 	size_t sz, newsz;
@@ -591,7 +571,7 @@ ch_enlargebufs(EditLine *el, size_t addlen)
 /* ch_end():
  *	Free the data structures used by the editor
  */
-protected void
+libedit_private void
 ch_end(EditLine *el)
 {
 	el_free(el->el_line.buffer);
@@ -606,9 +586,7 @@ ch_end(EditLine *el)
 	el->el_chared.c_redo.cmd = ED_UNASSIGNED;
 	el_free(el->el_chared.c_kill.buf);
 	el->el_chared.c_kill.buf = NULL;
-	ch_reset(el, 1);
-	el_free(el->el_chared.c_macro.macro);
-	el->el_chared.c_macro.macro = NULL;
+	ch_reset(el);
 }
 
 
@@ -674,7 +652,7 @@ out:
 /* c_gets():
  *	Get a string
  */
-protected int
+libedit_private int
 c_gets(EditLine *el, wchar_t *buf, const wchar_t *prompt)
 {
 	ssize_t len;
@@ -739,7 +717,7 @@ c_gets(EditLine *el, wchar_t *buf, const wchar_t *prompt)
 /* c_hpos():
  *	Return the current horizontal position of the cursor
  */
-protected int
+libedit_private int
 c_hpos(EditLine *el)
 {
 	wchar_t *ptr;
@@ -758,7 +736,7 @@ c_hpos(EditLine *el)
 	}
 }
 
-protected int
+libedit_private int
 ch_resizefun(EditLine *el, el_zfunc_t f, void *a)
 {
 	el->el_chared.c_resizefun = f;
@@ -766,7 +744,7 @@ ch_resizefun(EditLine *el, el_zfunc_t f, void *a)
 	return 0;
 }
 
-protected int
+libedit_private int
 ch_aliasfun(EditLine *el, el_afunc_t f, void *a)
 {
 	el->el_chared.c_aliasfun = f;

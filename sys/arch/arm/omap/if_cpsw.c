@@ -1,4 +1,4 @@
-/*	$NetBSD: if_cpsw.c,v 1.13 2016/02/09 08:32:08 ozaki-r Exp $	*/
+/*	$NetBSD: if_cpsw.c,v 1.18 2016/12/15 09:28:02 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 2013 Jonathan A. Kollasch
@@ -53,7 +53,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(1, "$NetBSD: if_cpsw.c,v 1.13 2016/02/09 08:32:08 ozaki-r Exp $");
+__KERNEL_RCSID(1, "$NetBSD: if_cpsw.c,v 1.18 2016/12/15 09:28:02 ozaki-r Exp $");
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -403,7 +403,7 @@ cpsw_attach(device_t parent, device_t self, void *aux)
 
 	sc->sc_dev = self;
 
-	aprint_normal(": TI CPSW Ethernet\n");
+	aprint_normal(": TI Layer 2 3-Port Switch\n");
 	aprint_naive("\n");
 
 	callout_init(&sc->sc_tick_ch, 0);
@@ -572,6 +572,7 @@ cpsw_attach(device_t parent, device_t self, void *aux)
 	}
 
 	if_attach(ifp);
+	if_deferred_start_init(ifp, NULL);
 	ether_ifattach(ifp, sc->sc_enaddr);
 
 	/* The attach is successful. */
@@ -745,7 +746,7 @@ cpsw_mii_wait(struct cpsw_softc * const sc, int reg)
 {
 	u_int tries;
 
-	for(tries = 0; tries < 1000; tries++) {
+	for (tries = 0; tries < 1000; tries++) {
 		if ((cpsw_read_4(sc, reg) & __BIT(31)) == 0)
 			return 0;
 		delay(1);
@@ -1162,13 +1163,9 @@ cpsw_rxintr(void *arg)
 		if (ISSET(dw[3], CPDMA_BD_PASSCRC))
 			len -= ETHER_CRC_LEN;
 
-		m->m_pkthdr.rcvif = ifp;
+		m_set_rcvif(m, ifp);
 		m->m_pkthdr.len = m->m_len = len;
 		m->m_data += off;
-
-		ifp->if_ipackets++;
-
-		bpf_mtap(ifp, m);
 
 		if_percpuq_enqueue(ifp->if_percpuq, m);
 
@@ -1303,7 +1300,7 @@ next:
 		ifp->if_timer = 0;
 
 	if (handled)
-		cpsw_start(ifp);
+		if_schedule_deferred_start(ifp);
 
 	return handled;
 }

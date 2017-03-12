@@ -1,4 +1,4 @@
-#	$NetBSD: t_forwarding.sh,v 1.12 2016/04/04 07:37:08 ozaki-r Exp $
+#	$NetBSD: t_forwarding.sh,v 1.20 2017/02/20 09:58:58 ozaki-r Exp $
 #
 # Copyright (c) 2015 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -25,9 +25,6 @@
 # POSSIBILITY OF SUCH DAMAGE.
 #
 
-inetserver="rump_server -lrumpnet -lrumpnet_net -lrumpnet_netinet -lrumpnet_shmif"
-inet6server="rump_server -lrumpnet -lrumpnet_net -lrumpnet_netinet -lrumpnet_netinet6 -lrumpnet_shmif"
-
 SOCKSRC=unix://commsock1
 SOCKFWD=unix://commsock2
 SOCKDST=unix://commsock3
@@ -40,33 +37,51 @@ IP6SRC=fc00:0:0:1::2
 IP6SRCGW=fc00:0:0:1::1
 IP6DSTGW=fc00:0:0:2::1
 IP6DST=fc00:0:0:2::2
-HTTPD_PID=httpd.pid
 HTML_FILE=index.html
 
-DEBUG=false
+DEBUG=${DEBUG:-false}
 TIMEOUT=5
 
-atf_test_case basic cleanup
-atf_test_case basic6 cleanup
-atf_test_case fastforward cleanup
-atf_test_case fastforward6 cleanup
-atf_test_case misc cleanup
+atf_test_case ipforwarding_v4 cleanup
+atf_test_case ipforwarding_v6 cleanup
+atf_test_case ipforwarding_fastforward_v4 cleanup
+atf_test_case ipforwarding_fastforward_v6 cleanup
+atf_test_case ipforwarding_misc cleanup
+atf_test_case ipforwarding_fragment_v4 cleanup
 
-basic_head()
+ipforwarding_v4_head()
 {
 	atf_set "descr" "Does IPv4 forwarding tests"
 	atf_set "require.progs" "rump_server"
 }
 
-basic6_head()
+ipforwarding_v6_head()
 {
 	atf_set "descr" "Does IPv6 forwarding tests"
 	atf_set "require.progs" "rump_server"
 }
 
-misc_head()
+ipforwarding_fastforward_v4_head()
+{
+	atf_set "descr" "Tests for IPv4 fastforward"
+	atf_set "require.progs" "rump_server"
+}
+
+ipforwarding_fastforward_v6_head()
+{
+	atf_set "descr" "Tests for IPv6 fastfoward"
+	atf_set "require.progs" "rump_server"
+}
+
+ipforwarding_misc_head()
 {
 	atf_set "descr" "Does IPv4 forwarding tests"
+	atf_set "require.progs" "rump_server"
+}
+
+ipforwarding_fragment_v4_head()
+{
+	atf_set "descr" "Tests for fragmented packet forwarding (IPv4)"
 	atf_set "require.progs" "rump_server"
 }
 
@@ -78,9 +93,9 @@ setup_endpoint()
 	mode=${4}
 	gw=${5}
 
+	rump_server_add_iface $sock shmif0 $bus
+
 	export RUMP_SERVER=${sock}
-	atf_check -s exit:0 rump.ifconfig shmif0 create
-	atf_check -s exit:0 rump.ifconfig shmif0 linkstr ${bus}
 	if [ $mode = "ipv6" ]; then
 		atf_check -s exit:0 rump.ifconfig shmif0 inet6 ${addr}
 		atf_check -s exit:0 -o ignore rump.route add -inet6 default ${gw}
@@ -116,12 +131,10 @@ setup_forwarder()
 {
 	mode=${1}
 
-	export RUMP_SERVER=$SOCKFWD
-	atf_check -s exit:0 rump.ifconfig shmif0 create
-	atf_check -s exit:0 rump.ifconfig shmif0 linkstr bus1
+	rump_server_add_iface $SOCKFWD shmif0 bus1
+	rump_server_add_iface $SOCKFWD shmif1 bus2
 
-	atf_check -s exit:0 rump.ifconfig shmif1 create
-	atf_check -s exit:0 rump.ifconfig shmif1 linkstr bus2
+	export RUMP_SERVER=$SOCKFWD
 
 	if [ $mode = "ipv6" ]; then
 		atf_check -s exit:0 rump.ifconfig shmif0 inet6 ${IP6SRCGW}
@@ -144,11 +157,23 @@ setup_forwarder()
 	fi
 }
 
+prepare_file()
+{
+	local file=$1
+	local data="0123456789"
+
+	touch $file
+	for i in `seq 1 512`
+	do
+		echo $data >> $file
+	done
+}
+
 setup()
 {
-	atf_check -s exit:0 ${inetserver} $SOCKSRC
-	atf_check -s exit:0 ${inetserver} $SOCKFWD
-	atf_check -s exit:0 ${inetserver} $SOCKDST
+	rump_server_start $SOCKSRC
+	rump_server_start $SOCKFWD
+	rump_server_start $SOCKDST
 
 	setup_endpoint $SOCKSRC $IP4SRC bus1 ipv4 $IP4SRCGW
 	setup_endpoint $SOCKDST $IP4DST bus2 ipv4 $IP4DSTGW
@@ -157,27 +182,13 @@ setup()
 
 setup6()
 {
-	atf_check -s exit:0 ${inet6server} $SOCKSRC
-	atf_check -s exit:0 ${inet6server} $SOCKFWD
-	atf_check -s exit:0 ${inet6server} $SOCKDST
+	rump_server_start $SOCKSRC netinet6
+	rump_server_start $SOCKFWD netinet6
+	rump_server_start $SOCKDST netinet6
 
 	setup_endpoint $SOCKSRC $IP6SRC bus1 ipv6 $IP6SRCGW
 	setup_endpoint $SOCKDST $IP6DST bus2 ipv6 $IP6DSTGW
 	setup_forwarder ipv6
-}
-
-setup_bozo()
-{
-	local ip=$1
-
-	export RUMP_SERVER=$SOCKDST
-
-	touch $HTML_FILE
-	# start bozo in daemon mode
-	atf_check -s exit:0 env LD_PRELOAD=/usr/lib/librumphijack.so \
-	    /usr/libexec/httpd -P $HTTPD_PID -i $ip -b -s $(pwd)
-
-	$DEBUG && rump.netstat -a
 }
 
 test_http_get()
@@ -268,6 +279,12 @@ teardown_icmp_bmcastecho()
 	atf_check -s exit:0 -o ignore rump.sysctl -w net.inet.icmp.bmcastecho=0
 }
 
+teardown_interfaces()
+{
+
+	rump_server_destroy_ifaces
+}
+
 test_setup_forwarding()
 {
 	export RUMP_SERVER=$SOCKFWD
@@ -292,33 +309,6 @@ test_teardown_forwarding6()
 	export RUMP_SERVER=$SOCKFWD
 	atf_check -s exit:0 -o match:"net.inet6.ip6.forwarding = 0" \
 	    rump.sysctl net.inet6.ip6.forwarding
-}
-
-cleanup()
-{
-	env RUMP_SERVER=$SOCKSRC rump.halt
-	env RUMP_SERVER=$SOCKFWD rump.halt
-	env RUMP_SERVER=$SOCKDST rump.halt
-}
-
-cleanup_bozo()
-{
-
-	if [ -f $HTTPD_PID ]; then
-		kill -9 "$(cat $HTTPD_PID)"
-		rm -f $HTTPD_PID
-	fi
-	rm -f $HTML_FILE
-}
-
-dump()
-{
-	env RUMP_SERVER=$SOCKSRC rump.netstat -nr
-	env RUMP_SERVER=$SOCKFWD rump.netstat -nr
-	env RUMP_SERVER=$SOCKDST rump.netstat -nr
-
-	/usr/bin/shmif_dumpbus -p - bus1 2>/dev/null| /usr/sbin/tcpdump -n -e -r -
-	/usr/bin/shmif_dumpbus -p - bus2 2>/dev/null| /usr/sbin/tcpdump -n -e -r -
 }
 
 test_ping_failure()
@@ -427,7 +417,23 @@ test_hoplimit()
 	$DEBUG && rump.ifconfig -v shmif0
 }
 
-basic_body()
+setup_mtu()
+{
+	local mtu=$1
+
+	export RUMP_SERVER=$SOCKFWD
+	atf_check -s exit:0 rump.ifconfig shmif0 mtu $mtu
+}
+
+disable_mtudisc()
+{
+	local mtu=$1
+
+	export RUMP_SERVER=$SOCKDST
+	atf_check -s exit:0 -o ignore rump.sysctl -w -q net.inet.ip.mtudisc=0
+}
+
+ipforwarding_v4_body()
 {
 	setup
 	test_setup
@@ -439,9 +445,11 @@ basic_body()
 	teardown_forwarding
 	test_teardown_forwarding
 	test_ping_failure
+
+	teardown_interfaces
 }
 
-basic6_body()
+ipforwarding_v6_body()
 {
 	setup6
 	test_setup6
@@ -454,9 +462,11 @@ basic6_body()
 	teardown_forwarding6
 	test_teardown_forwarding6
 	test_ping6_failure
+
+	teardown_interfaces
 }
 
-fastforward_body()
+ipforwarding_fastforward_v4_body()
 {
 	setup
 	test_setup
@@ -464,11 +474,16 @@ fastforward_body()
 	setup_forwarding
 	test_setup_forwarding
 
-	setup_bozo $IP4DST
+	touch $HTML_FILE
+	start_httpd $SOCKDST $IP4DST
+	$DEBUG && rump.netstat -a
+
 	test_http_get $IP4DST
+
+	teardown_interfaces
 }
 
-fastforward6_body()
+ipforwarding_fastforward_v6_body()
 {
 	setup6
 	test_setup6
@@ -476,11 +491,16 @@ fastforward6_body()
 	setup_forwarding6
 	test_setup_forwarding6
 
-	setup_bozo $IP6DST
+	touch $HTML_FILE
+	start_httpd $SOCKDST $IP6DST
+	$DEBUG && rump.netstat -a
+
 	test_http_get "[$IP6DST]"
+
+	teardown_interfaces
 }
 
-misc_body()
+ipforwarding_misc_body()
 {
 	setup
 	test_setup
@@ -492,50 +512,93 @@ misc_body()
 
 	test_directed_broadcast
 
-	setup_bozo $IP4DST
+	touch $HTML_FILE
+	start_httpd $SOCKDST $IP4DST
+	$DEBUG && rump.netstat -a
+
 	test_sysctl_ttl $IP4DST
 
+	teardown_interfaces
 	return 0
 }
 
-basic_cleanup()
+ipforwarding_fragment_v4_body()
 {
-	dump
+	setup
+	test_setup
+
+	setup_forwarding
+	test_setup_forwarding
+
+	prepare_file $HTML_FILE
+	start_httpd $SOCKDST $IP4DST
+	$DEBUG && rump.netstat -a
+	setup_mtu 1000
+	disable_mtudisc
+
+	extract_new_packets bus1 > ./out
+	extract_new_packets bus2 > ./out
+
+	test_http_get $IP4DST
+
+	# Packets of MTU size sent from the server
+	extract_new_packets bus2 > ./out
+	atf_check -s exit:0 -o match:'length 1514' cat ./out
+
+	# The packets are fragmented down to 1000
+	extract_new_packets bus1 > ./out
+	atf_check -s exit:0 -o match:'length 1010' cat ./out
+	atf_check -s exit:0 -o match:'length 538' cat ./out
+
+	teardown_interfaces
+}
+
+ipforwarding_v4_cleanup()
+{
+	$DEBUG && dump
 	cleanup
 }
 
-basic6_cleanup()
+ipforwarding_v6_cleanup()
 {
-	dump
+	$DEBUG && dump
 	cleanup
 }
 
-fastforward_cleanup()
+ipforwarding_fastforward_v4_cleanup()
 {
-	dump
-	cleanup_bozo
+	$DEBUG && dump
+	stop_httpd
 	cleanup
 }
 
-fastforward6_cleanup()
+ipforwarding_fastforward_v6_cleanup()
 {
-	dump
-	cleanup_bozo
+	$DEBUG && dump
+	stop_httpd
 	cleanup
 }
 
-misc_cleanup()
+ipforwarding_misc_cleanup()
 {
-	dump
-	cleanup_bozo
+	$DEBUG && dump
+	stop_httpd
+	cleanup
+}
+
+ipforwarding_fragment_v4_cleanup()
+{
+	$DEBUG && dump
+	stop_httpd
 	cleanup
 }
 
 atf_init_test_cases()
 {
-	atf_add_test_case basic
-	atf_add_test_case basic6
-	atf_add_test_case fastforward
-	atf_add_test_case fastforward6
-	atf_add_test_case misc
+	atf_add_test_case ipforwarding_v4
+	atf_add_test_case ipforwarding_v6
+	atf_add_test_case ipforwarding_fastforward_v4
+	atf_add_test_case ipforwarding_fastforward_v6
+	atf_add_test_case ipforwarding_misc
+	atf_add_test_case ipforwarding_fragment_v4
 }

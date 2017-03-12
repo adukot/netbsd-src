@@ -1,4 +1,4 @@
-/*	$NetBSD: parser.c,v 1.118 2016/05/03 03:16:55 kre Exp $	*/
+/*	$NetBSD: parser.c,v 1.120 2016/06/01 02:47:05 kre Exp $	*/
 
 /*-
  * Copyright (c) 1991, 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)parser.c	8.7 (Berkeley) 5/16/95";
 #else
-__RCSID("$NetBSD: parser.c,v 1.118 2016/05/03 03:16:55 kre Exp $");
+__RCSID("$NetBSD: parser.c,v 1.120 2016/06/01 02:47:05 kre Exp $");
 #endif
 #endif /* not lint */
 
@@ -488,30 +488,46 @@ TRACE(("expecting DO got %s %s\n", tokname[got], got == TWORD ? wordtext : ""));
 		n1->type = NSUBSHELL;
 		n1->nredir.n = list(0, 0);
 		n1->nredir.redirect = NULL;
+		if (n1->nredir.n == NULL)
+			synexpect(-1, 0);
 		if (readtoken() != TRP)
 			synexpect(TRP, 0);
 		checkkwd = 1;
 		break;
 	case TBEGIN:
 		n1 = list(0, 0);
+		if (posix && n1 == NULL)
+			synexpect(-1, 0);
 		if (readtoken() != TEND)
 			synexpect(TEND, 0);
 		checkkwd = 1;
 		break;
-	/* Handle an empty command like other simple commands.  */
+
 	case TSEMI:
+	case TAND:
+	case TOR:
+	case TPIPE:
+	case TNL:
+	case TEOF:
+	case TRP:
 		/*
-		 * An empty command before a ; doesn't make much sense, and
-		 * should certainly be disallowed in the case of `if ;'.
+		 * simple commands must have something in them,
+		 * either a word (which at this point includes a=b)
+		 * or a redirection.  If we reached the end of the
+		 * command (which one of these tokens indicates)
+		 * when we are just starting, and have not had a
+		 * redirect, then ...
+		 *
+		 * nb: it is still possible to end up with empty
+		 * simple commands, if the "command" is a var
+		 * expansion that produces nothing
+		 *	X= ; $X && $X
+		 * -->          &&
+		 * I am not sure if this is intended to be legal or not.
 		 */
 		if (!redir)
 			synexpect(-1, 0);
-	case TAND:
-	case TOR:
-	case TNL:
-	case TEOF:
 	case TWORD:
-	case TRP:
 		tokpushback++;
 		n1 = simplecmd(rpp, redir);
 		goto checkneg;
@@ -608,6 +624,9 @@ simplecmd(union node **rpp, union node *redir)
 			break;
 		}
 	}
+
+	if (args == NULL && redir == NULL)
+		synexpect(-1, 0);
 	*app = NULL;
 	*rpp = NULL;
 	n = stalloc(sizeof(struct ncmd));

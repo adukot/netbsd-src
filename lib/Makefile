@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.241 2016/03/17 00:09:47 mrg Exp $
+#	$NetBSD: Makefile,v 1.250 2017/02/22 02:58:31 maya Exp $
 #	from: @(#)Makefile	5.25.1.1 (Berkeley) 5/7/91
 
 .include <bsd.own.mk>
@@ -25,7 +25,7 @@ SUBDIR+=	libarch \
 		libcompat libcrypt \
 		libintl libipsec libkvm libm \
 		libossaudio libpci libpmc libposix libprop libpthread \
-		libpthread_dbg libpuffs libresolv librmt librpcsvc librt \
+		libpuffs libresolv librmt librpcsvc librt \
 		libtelnet libterminfo \
 		libusbhid libutil libwrap liby libz
 
@@ -39,6 +39,9 @@ LIBC_MACHINE_CPU?=${MACHINE_CPU}
 .if ${LIBC_MACHINE_CPU} == "arm" && empty(LIBC_MACHINE_ARCH:M*hf*)
 SUBDIR+=	libc_vfp
 .endif
+.endif
+.if ${MACHINE_ARCH} == "mips64el" || ${MACHINE_ARCH} == "mips64eb"
+SUBDIR+=	libc_fp
 .endif
 .if (${MKRUMP} != "no")
 SUBDIR+=	librumpclient
@@ -80,10 +83,6 @@ SUBDIR+=	../external/gpl2/libmalloc
 .if (${MKGCC} != "no")
 SUBDIR+=	../external/gpl3/${EXTERNAL_GCC_SUBDIR}/lib/libobjc
 SUBDIR+=	../external/gpl3/${EXTERNAL_GCC_SUBDIR}/lib/libgomp
-. if ${HAVE_GCC} == 48
-SUBDIR+=	../external/gpl3/${EXTERNAL_GCC_SUBDIR}/lib/libmudflap
-SUBDIR+=	../external/gpl3/${EXTERNAL_GCC_SUBDIR}/lib/libmudflapth
-. endif
 # Should probably move GMP, MPFR and MPC builds into the GCC >= 4.5
 # specific build area, but we get better parallelism this way.
 # We don't build compat versions of these.
@@ -172,12 +171,11 @@ SUBDIR+=	../external/gpl3/${EXTERNAL_GCC_SUBDIR}/lib/libsupc++
 #==================== 2nd library dependency barrier ====================
 SUBDIR+=	.WAIT
 
-SANITIZER_DIR=../external/gpl3/${EXTERNAL_GCC_SUBDIR}/lib/libasan
-.if !defined(HAVE_GCC) || ${HAVE_GCC} != 53
-.if exists(${SANITIZER_DIR})
-SUBDIR+=	${SANITIZER_DIR}
+.for sanitizer in asan ubsan
+.if exists(../external/gpl3/${EXTERNAL_GCC_SUBDIR}/lib/lib${sanitizer})
+SUBDIR+= ../external/gpl3/${EXTERNAL_GCC_SUBDIR}/lib/lib${sanitizer}
 .endif
-.endif
+.endfor
 
 SUBDIR+=	../external/bsd/libarchive/lib	# depends on libxz
 
@@ -225,6 +223,9 @@ SUBDIR+=	../external/bsd/openldap/lib	# depends on libcrypto, ...
 SUBDIR+=	.WAIT
 
 SUBDIR+=	../external/bsd/bind/lib	# depends on heimdal, libcrypto
+.if ${MKCRYPTO} != "no" && ${MKUNBOUND} != "no"
+SUBDIR+=	../external/bsd/unbound/lib	# depends on libcrypto
+.endif
 
 .if ${MKDTRACE} != "no"
 SUBDIR+=        ../external/cddl/osnet/lib/libdtrace	# depends on libproc

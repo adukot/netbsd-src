@@ -1,4 +1,4 @@
-#	$NetBSD: t_tap.sh,v 1.1 2016/03/04 02:44:45 ozaki-r Exp $
+#	$NetBSD: t_tap.sh,v 1.6 2016/11/25 08:51:16 ozaki-r Exp $
 #
 # Copyright (c) 2016 Internet Initiative Japan Inc.
 # All rights reserved.
@@ -25,10 +25,6 @@
 # POSSIBILITY OF SUCH DAMAGE.
 #
 
-RUMP_FLAGS="-lrumpnet -lrumpnet_net -lrumpnet_netinet -lrumpnet_netinet6"
-RUMP_FLAGS="$RUMP_FLAGS -lrumpnet_shmif -lrumpdev -lrumpnet_tap -lrumpnet_bridge"
-HIJACKING="env LD_PRELOAD=/usr/lib/librumphijack.so RUMPHIJACK=sysctl=yes"
-
 SOCK_LOCAL=unix://commsock1
 SOCK_REMOTE=unix://commsock2
 BUS=bus1
@@ -39,21 +35,21 @@ IP6_LOCAL=fc00::1
 IP6_TAP=fc00::2
 IP6_REMOTE=fc00::3
 
-DEBUG=false
+DEBUG=${DEBUG:-false}
 TIMEOUT=1
 
-atf_test_case create_destroy cleanup
-create_destroy_head()
+atf_test_case tap_create_destroy cleanup
+tap_create_destroy_head()
 {
 
 	atf_set "descr" "tests of creation and deletion of tap interface"
 	atf_set "require.progs" "rump_server"
 }
 
-create_destroy_body()
+tap_create_destroy_body()
 {
 
-	atf_check -s exit:0 rump_server ${RUMP_FLAGS} ${SOCK_LOCAL}
+	rump_server_start $SOCK_LOCAL netinet6 tap
 
 	export RUMP_SERVER=${SOCK_LOCAL}
 
@@ -74,29 +70,31 @@ create_destroy_body()
 	atf_check -s exit:0 rump.ifconfig tap0 destroy
 }
 
-create_destroy_cleanup()
+tap_create_destroy_cleanup()
 {
 
-	RUMP_SERVER=${SOCK_LOCAL} rump.halt
+	$DEBUG && dump
+	cleanup
 }
 
-atf_test_case stand_alone cleanup
-create_destroy_head()
+atf_test_case tap_stand_alone cleanup
+tap_create_destroy_head()
 {
 
 	atf_set "descr" "tests of alone tap interface"
 	atf_set "require.progs" "rump_server"
 }
 
-stand_alone_body()
+tap_stand_alone_body()
 {
-	atf_check -s exit:0 rump_server ${RUMP_FLAGS} ${SOCK_LOCAL}
-	atf_check -s exit:0 rump_server ${RUMP_FLAGS} ${SOCK_REMOTE}
+
+	rump_server_start $SOCK_LOCAL netinet6 tap
+	rump_server_start $SOCK_REMOTE netinet6 tap
+
+	rump_server_add_iface $SOCK_LOCAL shmif0 $BUS
+	rump_server_add_iface $SOCK_REMOTE shmif0 $BUS
 
 	export RUMP_SERVER=${SOCK_LOCAL}
-
-	atf_check -s exit:0 rump.ifconfig shmif0 create
-	atf_check -s exit:0 rump.ifconfig shmif0 linkstr $BUS
 	atf_check -s exit:0 rump.ifconfig shmif0 $IP4_LOCAL
 	atf_check -s exit:0 rump.ifconfig shmif0 inet6 $IP6_LOCAL
 	atf_check -s exit:0 rump.ifconfig shmif0 up
@@ -108,8 +106,6 @@ stand_alone_body()
 
 	export RUMP_SERVER=${SOCK_REMOTE}
 
-	atf_check -s exit:0 rump.ifconfig shmif0 create
-	atf_check -s exit:0 rump.ifconfig shmif0 linkstr $BUS
 	atf_check -s exit:0 rump.ifconfig shmif0 $IP4_REMOTE
 	atf_check -s exit:0 rump.ifconfig shmif0 inet6 $IP6_REMOTE
 	atf_check -s exit:0 rump.ifconfig shmif0 up
@@ -124,32 +120,36 @@ stand_alone_body()
 	# Cannot reach to an alone tap
 	atf_check -s not-exit:0 -o ignore -e ignore \
 	    rump.ping6 -n -X $TIMEOUT -c 1 $IP6_TAP
+
+	rump_server_destroy_ifaces
 }
 
-stand_alone_cleanup()
+tap_stand_alone_cleanup()
 {
 
-	RUMP_SERVER=${SOCK_LOCAL} rump.halt
-	RUMP_SERVER=${SOCK_REMOTE} rump.halt
+	$DEBUG && dump
+	cleanup
 }
 
-atf_test_case bridged cleanup
-bridged_head()
+atf_test_case tap_bridged cleanup
+tap_bridged_head()
 {
 
 	atf_set "descr" "tests of alone tap interface"
 	atf_set "require.progs" "rump_server"
 }
 
-bridged_body()
+tap_bridged_body()
 {
-	atf_check -s exit:0 rump_server ${RUMP_FLAGS} ${SOCK_LOCAL}
-	atf_check -s exit:0 rump_server ${RUMP_FLAGS} ${SOCK_REMOTE}
+
+	rump_server_start $SOCK_LOCAL netinet6 tap bridge
+	rump_server_start $SOCK_REMOTE netinet6 tap
+
+	rump_server_add_iface $SOCK_LOCAL shmif0 $BUS
+	rump_server_add_iface $SOCK_REMOTE shmif0 $BUS
 
 	export RUMP_SERVER=${SOCK_LOCAL}
 
-	atf_check -s exit:0 rump.ifconfig shmif0 create
-	atf_check -s exit:0 rump.ifconfig shmif0 linkstr $BUS
 	atf_check -s exit:0 rump.ifconfig shmif0 $IP4_LOCAL
 	atf_check -s exit:0 rump.ifconfig shmif0 inet6 $IP6_LOCAL
 	atf_check -s exit:0 rump.ifconfig shmif0 up
@@ -168,8 +168,6 @@ bridged_body()
 
 	export RUMP_SERVER=${SOCK_REMOTE}
 
-	atf_check -s exit:0 rump.ifconfig shmif0 create
-	atf_check -s exit:0 rump.ifconfig shmif0 linkstr $BUS
 	atf_check -s exit:0 rump.ifconfig shmif0 $IP4_REMOTE
 	atf_check -s exit:0 rump.ifconfig shmif0 inet6 $IP6_REMOTE
 	atf_check -s exit:0 rump.ifconfig shmif0 up
@@ -180,19 +178,21 @@ bridged_body()
 
 	atf_check -s exit:0 -o ignore rump.ping6 -n -X $TIMEOUT -c 1 $IP6_LOCAL
 	atf_check -s exit:0 -o ignore rump.ping6 -n -X $TIMEOUT -c 1 $IP6_TAP
+
+	rump_server_destroy_ifaces
 }
 
-bridged_cleanup()
+tap_bridged_cleanup()
 {
 
-	RUMP_SERVER=${SOCK_LOCAL} rump.halt
-	RUMP_SERVER=${SOCK_REMOTE} rump.halt
+	$DEBUG && dump
+	cleanup
 }
 
 atf_init_test_cases()
 {
 
-	atf_add_test_case create_destroy
-	atf_add_test_case stand_alone
-	atf_add_test_case bridged
+	atf_add_test_case tap_create_destroy
+	atf_add_test_case tap_stand_alone
+	atf_add_test_case tap_bridged
 }

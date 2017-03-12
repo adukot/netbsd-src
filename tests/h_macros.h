@@ -1,4 +1,4 @@
-/* $NetBSD: h_macros.h,v 1.11 2015/01/14 22:57:27 christos Exp $ */
+/* $NetBSD: h_macros.h,v 1.13 2016/08/20 15:49:08 christos Exp $ */
 
 /*-
  * Copyright (c) 2008, 2009 The NetBSD Foundation, Inc.
@@ -45,13 +45,15 @@
 	ATF_CHECK_MSG((x) != (v), "%s: %s", #x, strerror(errno))
 
 #define RL(x) REQUIRE_LIBC(x, -1)
+#define RLF(x, fmt, arg) \
+	ATF_CHECK_MSG((x) != -1, "%s [" fmt "]: %s", #x, arg, strerror(errno))
 #define RZ(x)								\
 do {									\
 	int RZ_rv = x;							\
 	ATF_REQUIRE_MSG(RZ_rv == 0, "%s: %s", #x, strerror(RZ_rv));	\
 } while (/*CONSTCOND*/0)
 
-static __inline __printflike(1, 2) void
+__dead static __inline __printflike(1, 2) void
 atf_tc_fail_errno(const char *fmt, ...)
 {
 	va_list ap;

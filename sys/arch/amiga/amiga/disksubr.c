@@ -1,4 +1,4 @@
-/*	$NetBSD: disksubr.c,v 1.63 2015/07/04 06:13:01 maxv Exp $	*/
+/*	$NetBSD: disksubr.c,v 1.66 2017/02/27 15:59:36 rin Exp $	*/
 
 /*
  * Copyright (c) 1982, 1986, 1988 Regents of the University of California.
@@ -66,7 +66,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: disksubr.c,v 1.63 2015/07/04 06:13:01 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: disksubr.c,v 1.66 2017/02/27 15:59:36 rin Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -239,7 +239,11 @@ readdisklabel(dev_t dev, void (*strat)(struct buf *), struct disklabel *lp, stru
 		lp->d_partitions[i].p_offset = 0;
 	}
 
-	lp->d_secsize = rbp->nbytes;
+	if (lp->d_secsize != rbp->nbytes) {
+		lp->d_secsize = rbp->nbytes;
+		allocbuf(bp, (int)lp->d_secsize, 1);
+		rbp = baddr(bp);
+	}
 	lp->d_nsectors = rbp->nsectors;
 	lp->d_ntracks = rbp->nheads;
 	/*
@@ -378,7 +382,7 @@ readdisklabel(dev_t dev, void (*strat)(struct buf *), struct disklabel *lp, stru
 #ifdef DIAGNOSTIC
 		if (lp->d_secpercyl * lp->d_secsize !=
 		    (pbp->e.secpertrk * pbp->e.numheads * pbp->e.sizeblock<<2)) {
-			if (pbp->partname[0] < sizeof(pbp->partname))
+			if (pbp->partname[0] + 1 < sizeof(pbp->partname))
 				pbp->partname[pbp->partname[0] + 1] = 0;
 			else
 				pbp->partname[sizeof(pbp->partname) - 1] = 0;
@@ -396,7 +400,8 @@ readdisklabel(dev_t dev, void (*strat)(struct buf *), struct disklabel *lp, stru
 			daddr_t boff;
 
 			boff = pbp->e.lowcyl * pbp->e.secpertrk
-			    * pbp->e.numheads;
+			    * pbp->e.numheads
+			    * ((pbp->e.sizeblock << 2) / lp->d_secsize);
 			if (boff > (pp - 1)->p_offset)
 				break;
 			*pp = *(pp - 1);	/* struct copy */

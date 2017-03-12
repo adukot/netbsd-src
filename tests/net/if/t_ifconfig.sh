@@ -1,4 +1,4 @@
-# $NetBSD: t_ifconfig.sh,v 1.9 2016/04/28 01:20:31 ozaki-r Exp $
+# $NetBSD: t_ifconfig.sh,v 1.17 2017/02/17 00:51:52 ozaki-r Exp $
 #
 # Copyright (c) 2015 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -30,18 +30,22 @@ RUMP_SERVER2=unix://./r2
 
 RUMP_FLAGS=\
 "-lrumpnet -lrumpnet_net -lrumpnet_netinet -lrumpnet_netinet6 -lrumpnet_shmif"
+RUMP_FLAGS="${RUMP_FLAGS} -lrumpdev"
 
 TIMEOUT=3
 
-atf_test_case create_destroy cleanup
-create_destroy_head()
+anycast="[Aa][Nn][Yy][Cc][Aa][Ss][Tt]"
+deprecated="[Dd][Ee][Pp][Rr][Ee][Cc][Aa][Tt][Ee][Dd]"
+
+atf_test_case ifconfig_create_destroy cleanup
+ifconfig_create_destroy_head()
 {
 
 	atf_set "descr" "tests of ifconfig create and destroy"
 	atf_set "require.progs" "rump_server"
 }
 
-create_destroy_body()
+ifconfig_create_destroy_body()
 {
 	atf_check -s exit:0 rump_server ${RUMP_FLAGS} ${RUMP_SERVER1}
 
@@ -68,21 +72,21 @@ create_destroy_body()
 	unset RUMP_SERVER
 }
 
-create_destroy_cleanup()
+ifconfig_create_destroy_cleanup()
 {
 
 	RUMP_SERVER=${RUMP_SERVER1} rump.halt
 }
 
-atf_test_case options cleanup
-options_head()
+atf_test_case ifconfig_options cleanup
+ifconfig_options_head()
 {
 
 	atf_set "descr" "tests of ifconfig options"
 	atf_set "require.progs" "rump_server"
 }
 
-options_body()
+ifconfig_options_body()
 {
 
 	export RUMP_SERVER=${RUMP_SERVER1}
@@ -177,26 +181,26 @@ options_body()
 
 	# ifconfig -C
 	#   -C shows all of the interface cloners available on the system
-	atf_check -s exit:0 -o match:'shmif lo carp' rump.ifconfig -C
+	atf_check -s exit:0 -o match:'shmif carp lo' rump.ifconfig -C
 
 	unset RUMP_SERVER
 }
 
-options_cleanup()
+ifconfig_options_cleanup()
 {
 
 	env RUMP_SERVER=${RUMP_SERVER1} rump.halt
 }
 
 
-atf_test_case parameters cleanup
-parameters_head()
+atf_test_case ifconfig_parameters cleanup
+ifconfig_parameters_head()
 {
-	atf_set "descr" "tests of interface parametors"
+	atf_set "descr" "tests of interface parameters"
 	atf_set "require.progs" "rump_server"
 }
 
-parameters_body()
+ifconfig_parameters_body()
 {
 	local interval=
 
@@ -226,16 +230,17 @@ parameters_body()
 	    rump.ifconfig shmif0
 	# down, up
 	atf_check -s exit:0 rump.ifconfig shmif0 down
-	atf_check -s ignore -o ignore -e match:'down' rump.ping -c 1 \
+	atf_check -s not-exit:0 -o ignore -e ignore rump.ping -c 1 \
 	    -w $TIMEOUT -n 192.168.0.2
 	atf_check -s exit:0 rump.ifconfig shmif0 up
+	atf_check -s exit:0 rump.ifconfig -w 10
 	atf_check -s exit:0 -o ignore rump.ping -c 1 -w $TIMEOUT -n 192.168.0.2
 
 	# alias
 	atf_check -s exit:0 rump.ifconfig shmif0 inet 192.168.1.1/24 alias
-	atf_check -s exit:0 -o match:'alias 192.168.1.1' rump.ifconfig shmif0
+	atf_check -s exit:0 -o match:'192.168.1.1/24' rump.ifconfig shmif0
 	atf_check -s exit:0 rump.ifconfig shmif0 inet 192.168.1.1/24 -alias
-	atf_check -s exit:0 -o not-match:'192.168.1.1' rump.ifconfig shmif0
+	atf_check -s exit:0 -o not-match:'192.168.1.1/24' rump.ifconfig shmif0
 	atf_check -s exit:0 rump.ifconfig shmif0 inet6 fc00::1
 	atf_check -s exit:0 rump.ifconfig shmif0 inet6 fc00::2
 	atf_check -s exit:0 -o match:'fc00::1' rump.ifconfig shmif0 inet6
@@ -289,22 +294,22 @@ parameters_body()
 
 	# anycast
 	atf_check -s exit:0 rump.ifconfig shmif0 inet6 fc00::2 anycast
-	atf_check -s exit:0 -o match:'fc00::2.+anycast' rump.ifconfig shmif0 inet6
+	atf_check -s exit:0 -o match:"fc00::2.+$anycast" rump.ifconfig shmif0 inet6
 
 	# deprecated
 	atf_check -s exit:0 rump.ifconfig shmif0 inet6 fc00::3 deprecated
 	# Not deprecated immediately. Need to wait nd6_timer that does it is scheduled.
 	interval=$(sysctl -n net.inet6.icmp6.nd6_prune)
 	atf_check -s exit:0 sleep $((interval + 1))
-	atf_check -s exit:0 -o match:'fc00::3.+deprecated' rump.ifconfig shmif0 inet6
+	atf_check -s exit:0 -o match:"fc00::3.+$deprecated" rump.ifconfig shmif0 inet6
 	atf_check -s exit:0 rump.ifconfig shmif0 inet6 fc00::3 -deprecated
-	atf_check -s exit:0 -o not-match:'fc00::3.+deprecated' rump.ifconfig shmif0 inet6
+	atf_check -s exit:0 -o not-match:"fc00::3.+$deprecated" rump.ifconfig shmif0 inet6
 
 	# pltime
 	atf_check -s exit:0 rump.ifconfig shmif0 inet6 fc00::3 pltime 3
-	atf_check -s exit:0 -o not-match:'fc00::3.+deprecated' rump.ifconfig shmif0 inet6
+	atf_check -s exit:0 -o not-match:"fc00::3.+$deprecated" rump.ifconfig shmif0 inet6
 	atf_check -s exit:0 sleep 5
-	atf_check -s exit:0 -o match:'fc00::3.+deprecated' rump.ifconfig shmif0 inet6
+	atf_check -s exit:0 -o match:"fc00::3.+$deprecated" rump.ifconfig shmif0 inet6
 
 	# eui64
 	atf_check -s exit:0 rump.ifconfig shmif0 inet6 fc00:1::0 eui64
@@ -313,16 +318,143 @@ parameters_body()
 	unset RUMP_SERVER
 }
 
-parameters_cleanup()
+ifconfig_parameters_cleanup()
 {
 	env RUMP_SERVER=${RUMP_SERVER1} rump.halt
 	env RUMP_SERVER=${RUMP_SERVER2} rump.halt
 }
 
+ifconfig_up_down_common()
+{
+	local family=$1
+	local ip=$2
+
+	if [ $family = inet6 ]; then
+		rump_server_start $RUMP_SERVER1 netinet6
+	else
+		rump_server_start $RUMP_SERVER1
+	fi
+	rump_server_add_iface $RUMP_SERVER1 shmif0 bus1
+
+	export RUMP_SERVER=$RUMP_SERVER1
+	rump.ifconfig shmif0
+
+	# Set the same number of trials to make the following test
+	# work for both IPv4 and IPv6
+	if [ $family = inet6 ]; then
+		atf_check -s exit:0 -o ignore \
+		    rump.sysctl -w net.inet6.ip6.dad_count=5
+	else
+		atf_check -s exit:0 -o ignore \
+		    rump.sysctl -w net.inet.ip.dad_count=5
+	fi
+
+	#
+	# Assign an address and up the interface at once
+	#
+	atf_check -s exit:0 rump.ifconfig shmif0 $family $ip/24 up
+	# UP
+	atf_check -s exit:0 \
+	    -o match:'shmif0.*UP.*RUNNING' rump.ifconfig shmif0
+	# The address is TENTATIVE
+	atf_check -s exit:0 \
+	    -o match:"$ip.*TENTATIVE" rump.ifconfig shmif0
+	# Waiting for DAD completion
+	atf_check -s exit:0 rump.ifconfig -w 10
+	# The address left TENTATIVE
+	atf_check -s exit:0 \
+	    -o not-match:"$ip.*TENTATIVE" rump.ifconfig shmif0
+
+	#
+	# ifconfig down
+	#
+	atf_check -s exit:0 rump.ifconfig shmif0 down
+	atf_check -s exit:0 \
+	    -o not-match:'shmif0.*UP.*RUNNING' rump.ifconfig shmif0
+	# The address becomes DETATCHED
+	atf_check -s exit:0 \
+	    -o match:"$ip.*DETACHED" rump.ifconfig shmif0
+	# ifconfig up
+	atf_check -s exit:0 rump.ifconfig shmif0 up
+	# The address becomes TENTATIVE
+	atf_check -s exit:0 \
+	    -o match:"$ip.*TENTATIVE" rump.ifconfig shmif0
+	# Waiting for DAD completion
+	atf_check -s exit:0 rump.ifconfig -w 10
+	# The address left TENTATIVE
+	atf_check -s exit:0 \
+	    -o not-match:"$ip.*TENTATIVE" rump.ifconfig shmif0
+
+	# Clean up
+	atf_check -s exit:0 rump.ifconfig shmif0 $family $ip delete
+
+	#
+	# Assign an address
+	#
+	atf_check -s exit:0 rump.ifconfig shmif0 $family $ip/24
+	# UP automatically
+	atf_check -s exit:0 \
+	    -o match:'shmif0.*UP.*RUNNING' rump.ifconfig shmif0
+	# Need some delay
+	sleep 1
+	# The IP becomes TENTATIVE
+	atf_check -s exit:0 \
+	    -o match:"$ip.*TENTATIVE" rump.ifconfig shmif0
+	# Waiting for DAD completion
+	atf_check -s exit:0 rump.ifconfig -w 10
+	# The address left TENTATIVE
+	atf_check -s exit:0 \
+	    -o not-match:"$ip.*TENTATIVE" rump.ifconfig shmif0
+
+	rump_server_destroy_ifaces
+}
+
+atf_test_case ifconfig_up_down_ipv4 cleanup
+ifconfig_up_down_ipv4_head()
+{
+	atf_set "descr" "tests of interface up/down (IPv4)"
+	atf_set "require.progs" "rump_server"
+}
+
+ifconfig_up_down_ipv4_body()
+{
+
+	ifconfig_up_down_common inet 10.0.0.1
+}
+
+ifconfig_up_down_ipv4_cleanup()
+{
+
+	$DEBUG && dump
+	cleanup
+}
+
+atf_test_case ifconfig_up_down_ipv6 cleanup
+ifconfig_up_down_ipv6_head()
+{
+	atf_set "descr" "tests of interface up/down (IPv6)"
+	atf_set "require.progs" "rump_server"
+}
+
+ifconfig_up_down_ipv6_body()
+{
+
+	ifconfig_up_down_common inet6 fc00::1
+}
+
+ifconfig_up_down_ipv6_cleanup()
+{
+
+	$DEBUG && dump
+	cleanup
+}
+
 atf_init_test_cases()
 {
 
-	atf_add_test_case create_destroy
-	atf_add_test_case options
-	atf_add_test_case parameters
+	atf_add_test_case ifconfig_create_destroy
+	atf_add_test_case ifconfig_options
+	atf_add_test_case ifconfig_parameters
+	atf_add_test_case ifconfig_up_down_ipv4
+	atf_add_test_case ifconfig_up_down_ipv6
 }

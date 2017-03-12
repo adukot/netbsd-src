@@ -1,5 +1,5 @@
 /* $KAME: sctp6_usrreq.c,v 1.38 2005/08/24 08:08:56 suz Exp $ */
-/* $NetBSD: sctp6_usrreq.c,v 1.4 2016/04/25 21:21:02 rjs Exp $ */
+/* $NetBSD: sctp6_usrreq.c,v 1.11 2016/12/13 08:29:03 ozaki-r Exp $ */
 
 /*
  * Copyright (c) 2001, 2002, 2003, 2004 Cisco Systems, Inc.
@@ -33,12 +33,13 @@
  * SUCH DAMAGE.
  */
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: sctp6_usrreq.c,v 1.4 2016/04/25 21:21:02 rjs Exp $");
+__KERNEL_RCSID(0, "$NetBSD: sctp6_usrreq.c,v 1.11 2016/12/13 08:29:03 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
 #include "opt_ipsec.h"
 #include "opt_sctp.h"
+#include "opt_net_mpsafe.h"
 #endif /* _KERNEL_OPT */
 
 #include <sys/param.h>
@@ -78,7 +79,6 @@ __KERNEL_RCSID(0, "$NetBSD: sctp6_usrreq.c,v 1.4 2016/04/25 21:21:02 rjs Exp $")
 #include <netinet/icmp6.h>
 #include <netinet6/sctp6_var.h>
 #include <netinet6/ip6protosw.h>
-#include <netinet6/nd6.h>
 
 #ifdef IPSEC
 #include <netipsec/ipsec.h>
@@ -90,8 +90,6 @@ __KERNEL_RCSID(0, "$NetBSD: sctp6_usrreq.c,v 1.4 2016/04/25 21:21:02 rjs Exp $")
 #endif
 
 #include <net/net_osdep.h>
-
-extern struct protosw inetsw[];
 
 #if defined(HAVE_NRL_INPCB) || defined(__FreeBSD__)
 #ifndef in6pcb
@@ -160,8 +158,8 @@ sctp6_input(struct mbuf **mp, int *offp, int proto)
 	if (sh->dest_port == 0)
 		goto bad;
 	if ((sctp_no_csum_on_loopback == 0) ||
-	   (m->m_pkthdr.rcvif == NULL) ||
-	   (m->m_pkthdr.rcvif->if_type != IFT_LOOP)) {
+	   (m_get_rcvif_NOMPSAFE(m) == NULL) ||
+	   (m_get_rcvif_NOMPSAFE(m)->if_type != IFT_LOOP)) {
 		/* we do NOT validate things from the loopback if the
 		 * sysctl is set to 1.
 		 */
@@ -462,8 +460,8 @@ sctp6_ctlinput(int cmd, const struct sockaddr *pktdst, void *d)
 		final.sin6_addr = ((const struct sockaddr_in6 *)pktdst)->sin6_addr;
 		final.sin6_port = sh.dest_port;
 		s = splsoftnet();
-		stcb = sctp_findassociation_addr_sa((struct sockaddr *)ip6cp->ip6c_src,
-						    (struct sockaddr *)&final,
+		stcb = sctp_findassociation_addr_sa(sin6tosa(ip6cp->ip6c_src),
+						    sin6tosa(&final),
 						    &inp, &net, 1);
 		/* inp's ref-count increased && stcb locked */
 		if (stcb != NULL && inp && (inp->sctp_socket != NULL)) {
@@ -480,8 +478,7 @@ sctp6_ctlinput(int cmd, const struct sockaddr *pktdst, void *d)
 				} else {
 					cm = inet6ctlerrmap[cmd];
 				}
-				sctp_notify(inp, cm, &sh,
-					    (struct sockaddr *)&final,
+				sctp_notify(inp, cm, &sh, sin6tosa(&final),
 					    stcb, net);
 				/* inp's ref-count reduced && stcb unlocked */
 			}
@@ -1295,15 +1292,20 @@ static int
 sctp6_purgeif(struct socket *so, struct ifnet *ifp)
 {
 	struct ifaddr *ifa;
-	IFADDR_FOREACH(ifa, ifp) {
+	/* FIXME NOMPSAFE */
+	IFADDR_READER_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family == PF_INET6) {
 			sctp_delete_ip_address(ifa);
 		}
 	}
 
+#ifndef NET_MPSAFE
 	mutex_enter(softnet_lock);
+#endif
 	in6_purgeif(ifp);
+#ifndef NET_MPSAFE
 	mutex_exit(softnet_lock);
+#endif
 
 	return 0;
 }

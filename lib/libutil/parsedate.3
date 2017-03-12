@@ -1,4 +1,4 @@
-.\"     $NetBSD: parsedate.3,v 1.20 2015/12/10 21:32:35 wiz Exp $
+.\"     $NetBSD: parsedate.3,v 1.22 2016/12/23 06:01:41 abhinav Exp $
 .\"
 .\" Copyright (c) 2006 The NetBSD Foundation, Inc.
 .\" All rights reserved.
@@ -64,7 +64,7 @@ then the current time zone is used.
 The
 .Ar datestr
 is a sequence of white-space separated items.
-The white-space is optional the concatenated items are not ambiguous.
+The white-space is optional if the concatenated items are not ambiguous.
 An empty
 .Ar datestr
 is equivalent to midnight today (the beginning of this day).
@@ -131,11 +131,7 @@ The following words are recognized in English only:
 .Dv p.m. ,
 .Dv midnight ,
 .Dv mn ,
-.Dv noon ,
-.Dv dawn ,
-.Dv sunup ,
-.Dv sunset ,
-.Dv sundown .
+.Dv noon .
 .Pp
 The months:
 .Dv january ,
@@ -159,7 +155,7 @@ The days of the week:
 .Dv wednesday ,
 .Dv thursday ,
 .Dv friday ,
-.Dv saturday .
+.Dv saturday ,
 and common abbreviations for them.
 .Pp
 Time units:

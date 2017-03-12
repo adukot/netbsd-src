@@ -713,6 +713,7 @@ dt_module_load_proc(dtrace_hdl_t *dtp, dt_module_t *dmp)
 	arg.dpa_count = 0;
 	if (Pobject_iter_resolved(p, dt_module_load_proc_count, &arg) != 0) {
 		dt_dprintf("failed to iterate objects\n");
+		dt_proc_unlock(dtp, p);
 		dt_proc_release(dtp, p);
 		return (dt_set_errno(dtp, EDT_CANTLOAD));
 	}
@@ -1179,8 +1180,9 @@ dt_module_update(dtrace_hdl_t *dtp, struct kld_file_stat *k_stat)
 	size_t len;
 
 	if (strcmp("netbsd", name) == 0) {
-		/* want the kernel */
-		dt_bootfile(fname, sizeof(fname));
+		/* want the kernel, but it is not absolute */
+		dt_bootfile(machine, sizeof(machine));
+		snprintf(fname, sizeof(fname), "/%s", machine);
 	} else {
 
 		/* build stand module path from system */

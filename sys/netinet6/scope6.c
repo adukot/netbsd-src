@@ -1,4 +1,4 @@
-/*	$NetBSD: scope6.c,v 1.12 2016/04/26 08:44:45 ozaki-r Exp $	*/
+/*	$NetBSD: scope6.c,v 1.17 2017/01/16 15:44:47 christos Exp $	*/
 /*	$KAME$	*/
 
 /*-
@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: scope6.c,v 1.12 2016/04/26 08:44:45 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: scope6.c,v 1.17 2017/01/16 15:44:47 christos Exp $");
 
 #include <sys/param.h>
 #include <sys/malloc.h>
@@ -56,7 +56,8 @@ int ip6_use_defzone = 0;
 
 static struct scope6_id sid_default;
 #define SID(ifp) \
-	(((struct in6_ifextra *)(ifp)->if_afdata[AF_INET6])->scope6_id)
+    ((ifp)->if_afdata[AF_INET6] == NULL ? NULL : \
+	((struct in6_ifextra *)(ifp)->if_afdata[AF_INET6])->scope6_id)
 
 void
 scope6_init(void)
@@ -100,9 +101,7 @@ scope6_set(struct ifnet *ifp, const struct scope6_id *idlist)
 {
 	int i;
 	int error = 0;
-	struct scope6_id *sid = NULL;
-
-	sid = SID(ifp);
+	struct scope6_id *sid = SID(ifp);
 
 	if (!sid)	/* paranoid? */
 		return (EINVAL);
@@ -120,6 +119,7 @@ scope6_set(struct ifnet *ifp, const struct scope6_id *idlist)
 	for (i = 0; i < 16; i++) {
 		if (idlist->s6id_list[i] &&
 		    idlist->s6id_list[i] != sid->s6id_list[i]) {
+			int s;
 			/*
 			 * An interface zone ID must be the corresponding
 			 * interface index by definition.
@@ -128,6 +128,7 @@ scope6_set(struct ifnet *ifp, const struct scope6_id *idlist)
 			    idlist->s6id_list[i] != ifp->if_index)
 				return (EINVAL);
 
+			s = pserialize_read_enter();
 			if (i == IPV6_ADDR_SCOPE_LINKLOCAL &&
 			    !if_byindex(idlist->s6id_list[i])) {
 				/*
@@ -136,8 +137,10 @@ scope6_set(struct ifnet *ifp, const struct scope6_id *idlist)
 				 * IDs, but we check the consistency for
 				 * safety in later use.
 				 */
+				pserialize_read_exit(s);
 				return (EINVAL);
 			}
+			pserialize_read_exit(s);
 
 			/*
 			 * XXX: we must need lots of work in this case,
@@ -295,15 +298,20 @@ sa6_embedscope(struct sockaddr_in6 *sin6, int defaultok)
 	if (zoneid != 0 &&
 	    (IN6_IS_SCOPE_LINKLOCAL(&sin6->sin6_addr) ||
 	    IN6_IS_ADDR_MC_INTFACELOCAL(&sin6->sin6_addr))) {
+		int s;
 		/*
 		 * At this moment, we only check interface-local and
 		 * link-local scope IDs, and use interface indices as the
 		 * zone IDs assuming a one-to-one mapping between interfaces
 		 * and links.
 		 */
+		s = pserialize_read_enter();
 		ifp = if_byindex(zoneid);
-		if (ifp == NULL)
+		if (ifp == NULL) {
+			pserialize_read_exit(s);
 			return (ENXIO);
+		}
+		pserialize_read_exit(s);
 
 		/* XXX assignment to 16bit from 32bit variable */
 		sin6->sin6_addr.s6_addr16[1] = htons(zoneid & 0xffff);
@@ -335,11 +343,12 @@ int
 sa6_recoverscope(struct sockaddr_in6 *sin6)
 {
 	uint32_t zoneid;
+	char ip6buf[INET6_ADDRSTRLEN];
 
 	if (sin6->sin6_scope_id != 0) {
 		log(LOG_NOTICE,
 		    "sa6_recoverscope: assumption failure (non 0 ID): %s%%%d\n",
-		    ip6_sprintf(&sin6->sin6_addr), sin6->sin6_scope_id);
+		    IN6_PRINT(ip6buf, &sin6->sin6_addr), sin6->sin6_scope_id);
 		/* XXX: proceed anyway... */
 	}
 	if (IN6_IS_SCOPE_LINKLOCAL(&sin6->sin6_addr) ||
@@ -349,8 +358,12 @@ sa6_recoverscope(struct sockaddr_in6 *sin6)
 		 */
 		zoneid = ntohs(sin6->sin6_addr.s6_addr16[1]);
 		if (zoneid) {
-			if (!if_byindex(zoneid))
+			int s = pserialize_read_enter();
+			if (!if_byindex(zoneid)) {
+				pserialize_read_exit(s);
 				return (ENXIO);
+			}
+			pserialize_read_exit(s);
 			sin6->sin6_addr.s6_addr16[1] = 0;
 			sin6->sin6_scope_id = zoneid;
 		}
@@ -380,12 +393,8 @@ in6_setscope(struct in6_addr *in6, const struct ifnet *ifp, uint32_t *ret_id)
 	uint32_t zoneid = 0;
 	const struct scope6_id *sid = SID(ifp);
 
-#ifdef DIAGNOSTIC
-	if (sid == NULL) { /* should not happen */
-		panic("in6_setscope: scope array is NULL");
-		/* NOTREACHED */
-	}
-#endif
+	if (sid == NULL)
+		return EINVAL;
 
 	/*
 	 * special case: the loopback address can only belong to a loopback

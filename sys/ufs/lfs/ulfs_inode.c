@@ -1,5 +1,5 @@
-/*	$NetBSD: ulfs_inode.c,v 1.12 2015/11/14 22:03:54 pgoyette Exp $	*/
-/*  from NetBSD: ufs_inode.c,v 1.89 2013/01/22 09:39:18 dholland Exp  */
+/*	$NetBSD: ulfs_inode.c,v 1.16 2016/08/20 12:37:09 hannken Exp $	*/
+/*  from NetBSD: ufs_inode.c,v 1.95 2015/06/13 14:56:45 hannken Exp  */
 
 /*
  * Copyright (c) 1991, 1993
@@ -38,7 +38,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ulfs_inode.c,v 1.12 2015/11/14 22:03:54 pgoyette Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ulfs_inode.c,v 1.16 2016/08/20 12:37:09 hannken Exp $");
 
 #if defined(_KERNEL_OPT)
 #include "opt_lfs.h"
@@ -149,11 +149,6 @@ ulfs_reclaim(struct vnode *vp)
 	lfs_update(vp, NULL, NULL, UPDATE_CLOSE);
 	lfs_update(vp, NULL, NULL, UPDATE_CLOSE);
 
-	/*
-	 * Remove the inode from the vnode cache.
-	 */
-	vcache_remove(vp->v_mount, &ip->i_number, sizeof(ip->i_number));
-
 	if (ip->i_devvp) {
 		vrele(ip->i_devvp);
 		ip->i_devvp = 0;
@@ -226,6 +221,7 @@ ulfs_balloc_range(struct vnode *vp, off_t off, off_t len, kauth_cred_t cred,
 	    VM_PROT_WRITE, 0, PGO_SYNCIO | PGO_PASTEOF | PGO_NOBLOCKALLOC |
 	    PGO_NOTIMESTAMP | PGO_GLOCKHELD);
 	if (error) {
+		genfs_node_unlock(vp);
 		goto out;
 	}
 

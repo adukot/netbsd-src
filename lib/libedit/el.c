@@ -1,4 +1,4 @@
-/*	$NetBSD: el.c,v 1.90 2016/05/02 16:48:34 christos Exp $	*/
+/*	$NetBSD: el.c,v 1.92 2016/05/22 19:44:26 christos Exp $	*/
 
 /*-
  * Copyright (c) 1992, 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)el.c	8.2 (Berkeley) 1/3/94";
 #else
-__RCSID("$NetBSD: el.c,v 1.90 2016/05/02 16:48:34 christos Exp $");
+__RCSID("$NetBSD: el.c,v 1.92 2016/05/22 19:44:26 christos Exp $");
 #endif
 #endif /* not lint && not SCCSID */
 
@@ -141,6 +141,7 @@ el_end(EditLine *el)
 	if (!(el->el_flags & NO_TTY))
 		tty_end(el);
 	ch_end(el);
+	read_end(el->el_read);
 	search_end(el);
 	hist_end(el);
 	prompt_end(el);
@@ -165,7 +166,7 @@ el_reset(EditLine *el)
 {
 
 	tty_cookedmode(el);
-	ch_reset(el, 0);		/* XXX: Do we want that? */
+	ch_reset(el);		/* XXX: Do we want that? */
 }
 
 
@@ -613,7 +614,7 @@ el_beep(EditLine *el)
 /* el_editmode()
  *	Set the state of EDIT_DISABLED from the `edit' command.
  */
-protected int
+libedit_private int
 /*ARGSUSED*/
 el_editmode(EditLine *el, int argc, const wchar_t **argv)
 {

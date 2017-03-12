@@ -1,5 +1,5 @@
-/*	$NetBSD: authfile.c,v 1.13 2016/03/11 01:55:00 christos Exp $	*/
-/* $OpenBSD: authfile.c,v 1.120 2015/12/11 04:21:11 mmcc Exp $ */
+/*	$NetBSD: authfile.c,v 1.15 2016/12/25 00:07:46 christos Exp $	*/
+/* $OpenBSD: authfile.c,v 1.122 2016/11/25 23:24:45 djm Exp $ */
 
 /*
  * Copyright (c) 2000, 2013 Markus Friedl.  All rights reserved.
@@ -26,7 +26,7 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: authfile.c,v 1.13 2016/03/11 01:55:00 christos Exp $");
+__RCSID("$NetBSD: authfile.c,v 1.15 2016/12/25 00:07:46 christos Exp $");
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
@@ -101,13 +101,25 @@ sshkey_load_file(int fd, struct sshbuf *blob)
 	u_char buf[1024];
 	size_t len;
 	struct stat st;
-	int r;
+	int r, dontmax = 0;
 
 	if (fstat(fd, &st) < 0)
 		return SSH_ERR_SYSTEM_ERROR;
 	if ((st.st_mode & (S_IFSOCK|S_IFCHR|S_IFIFO)) == 0 &&
 	    st.st_size > MAX_KEY_FILE_SIZE)
 		return SSH_ERR_INVALID_FORMAT;
+	/*
+	 * Pre-allocate the buffer used for the key contents and clamp its
+	 * maximum size. This ensures that key contents are never leaked via
+	 * implicit realloc() in the sshbuf code.
+	 */
+	if ((st.st_mode & S_IFREG) == 0 || st.st_size <= 0) {
+		st.st_size = 64*1024; /* 64k should be enough for anyone :) */
+		dontmax = 1;
+	}
+	if ((r = sshbuf_allocate(blob, st.st_size)) != 0 ||
+	    (dontmax && (r = sshbuf_set_max_size(blob, st.st_size)) != 0))
+		return r;
 	for (;;) {
 		if ((len = atomicio(read, fd, buf, sizeof(buf))) == 0) {
 			if (errno == EPIPE)
@@ -148,7 +160,8 @@ sshkey_load_public_rsa1(int fd, struct sshkey **keyp, char **commentp)
 	struct sshbuf *b = NULL;
 	int r;
 
-	*keyp = NULL;
+	if (keyp != NULL)
+		*keyp = NULL;
 	if (commentp != NULL)
 		*commentp = NULL;
 
@@ -198,7 +211,8 @@ sshkey_load_private_type(int type, const char *filename, const char *passphrase,
 {
 	int fd, r;
 
-	*keyp = NULL;
+	if (keyp != NULL)
+		*keyp = NULL;
 	if (commentp != NULL)
 		*commentp = NULL;
 
@@ -229,6 +243,8 @@ sshkey_load_private_type_fd(int fd, int type, const char *passphrase,
 	struct sshbuf *buffer = NULL;
 	int r;
 
+	if (keyp != NULL)
+		*keyp = NULL;
 	if ((buffer = sshbuf_new()) == NULL) {
 		r = SSH_ERR_ALLOC_FAIL;
 		goto out;
@@ -253,7 +269,8 @@ sshkey_load_private(const char *filename, const char *passphrase,
 	struct sshbuf *buffer = NULL;
 	int r, fd;
 
-	*keyp = NULL;
+	if (keyp != NULL)
+		*keyp = NULL;
 	if (commentp != NULL)
 		*commentp = NULL;
 
@@ -406,7 +423,8 @@ sshkey_load_cert(const char *filename, struct sshkey **keyp)
 	char *file = NULL;
 	int r = SSH_ERR_INTERNAL_ERROR;
 
-	*keyp = NULL;
+	if (keyp != NULL)
+		*keyp = NULL;
 
 	if (asprintf(&file, "%s-cert.pub", filename) == -1)
 		return SSH_ERR_ALLOC_FAIL;
@@ -416,11 +434,12 @@ sshkey_load_cert(const char *filename, struct sshkey **keyp)
 	}
 	if ((r = sshkey_try_load_public(pub, file, NULL)) != 0)
 		goto out;
-
-	*keyp = pub;
-	pub = NULL;
+	/* success */
+	if (keyp != NULL) {
+		*keyp = pub;
+		pub = NULL;
+	}
 	r = 0;
-
  out:
 	free(file);
 	sshkey_free(pub);
@@ -435,7 +454,8 @@ sshkey_load_private_cert(int type, const char *filename, const char *passphrase,
 	struct sshkey *key = NULL, *cert = NULL;
 	int r;
 
-	*keyp = NULL;
+	if (keyp != NULL)
+		*keyp = NULL;
 
 	switch (type) {
 #ifdef WITH_OPENSSL
@@ -465,8 +485,10 @@ sshkey_load_private_cert(int type, const char *filename, const char *passphrase,
 	    (r = sshkey_cert_copy(cert, key)) != 0)
 		goto out;
 	r = 0;
-	*keyp = key;
-	key = NULL;
+	if (keyp != NULL) {
+		*keyp = key;
+		key = NULL;
+	}
  out:
 	sshkey_free(key);
 	sshkey_free(cert);

@@ -1,4 +1,4 @@
-/*	$NetBSD: efs_vnops.c,v 1.34 2016/03/02 19:27:05 christos Exp $	*/
+/*	$NetBSD: efs_vnops.c,v 1.36 2016/08/20 12:37:07 hannken Exp $	*/
 
 /*
  * Copyright (c) 2006 Stephen M. Rumble <rumble@ephemeral.org>
@@ -17,7 +17,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: efs_vnops.c,v 1.34 2016/03/02 19:27:05 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: efs_vnops.c,v 1.36 2016/08/20 12:37:07 hannken Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -173,7 +173,7 @@ efs_getattr(void *v)
 	struct vop_getattr_args /* {
 		const struct vnodeop_desc *a_desc;
 		struct vnode *a_vp;
-		struct vattr *a_vap; 
+		struct vattr *a_vap;
 		struct ucred *a_cred;
 	} */ *ap = v;
 
@@ -237,7 +237,7 @@ efs_read(void *v)
 	struct vop_read_args /* {
 		const struct vnodeop_desc *a_desc;
 		struct vnode *a_vp;
-		struct uio *a_uio; 
+		struct uio *a_uio;
 		int a_ioflag;
 		struct ucred *a_cred;
 	} */ *ap = v;
@@ -294,8 +294,8 @@ efs_readdir(void *v)
 {
 	struct vop_readdir_args /* {
 		const struct vnodeop_desc *a_desc;
-		struct vnode *a_vp; 
-		struct uio *a_uio; 
+		struct vnode *a_vp;
+		struct uio *a_uio;
 		struct ucred *a_cred;
 		int *a_eofflag;
 		off_t **a_cookies;
@@ -420,7 +420,7 @@ efs_readdir(void *v)
 				err = uiomove(dp, s, uio);
 				if (err) {
 					brelse(bp, 0);
-					goto exit_err;	
+					goto exit_err;
 				}
 
 				offset += s;
@@ -583,7 +583,6 @@ efs_reclaim(void *v)
 	struct vnode *vp = ap->a_vp;
 	struct efs_inode *eip = EFS_VTOI(vp);
 
-	vcache_remove(vp->v_mount, &eip->ei_number, sizeof(eip->ei_number));
 	genfs_node_destroy(vp);
 	pool_put(&efs_inode_pool, eip);
 	vp->v_data = NULL;
@@ -736,7 +735,7 @@ efs_pathconf(void *v)
 	/* IRIX 4 values */
 	switch (ap->a_name) {
 	case _PC_LINK_MAX:
-		*ap->a_retval = 30000; 
+		*ap->a_retval = 30000;
 		break;
 	case _PC_NAME_MAX:
 		*ap->a_retval = 255;

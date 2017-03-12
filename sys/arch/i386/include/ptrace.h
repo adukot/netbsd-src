@@ -1,4 +1,4 @@
-/*	$NetBSD: ptrace.h,v 1.15 2015/09/25 16:05:17 christos Exp $	*/
+/*	$NetBSD: ptrace.h,v 1.18 2017/02/23 03:34:22 kamil Exp $	*/
 
 /*
  * Copyright (c) 2001 Wasabi Systems, Inc.
@@ -84,8 +84,10 @@
 #define	__HAVE_PROCFS_MACHDEP
 
 /* The machine-dependent ptrace(2) requests. */
-#define	PT_GETXMMREGS	(PT_FIRSTMACH + 5)
-#define	PT_SETXMMREGS	(PT_FIRSTMACH + 6)
+#define	PT_GETXMMREGS		(PT_FIRSTMACH + 5)
+#define	PT_SETXMMREGS		(PT_FIRSTMACH + 6)
+#define	PT_GETDBREGS		(PT_FIRSTMACH + 7)
+#define	PT_SETDBREGS		(PT_FIRSTMACH + 8)
 
 #define PT_MACHDEP_STRINGS \
 	"PT_STEP", \
@@ -94,7 +96,10 @@
 	"PT_GETFPREGS", \
 	"PT_SETFPREGS", \
 	"PT_GETXMMREGS", \
-	"PT_SETXMMREGS",
+	"PT_SETXMMREGS", \
+	"PT_GETDBREGS", \
+	"PT_SETDBREGS",
+
 
 #include <machine/reg.h>
 #define PTRACE_REG_PC(r)	(r)->r_eip

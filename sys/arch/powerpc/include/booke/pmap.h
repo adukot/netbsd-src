@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap.h,v 1.15 2015/01/26 04:47:53 nonaka Exp $	*/
+/*	$NetBSD: pmap.h,v 1.17 2016/12/24 18:34:31 cherry Exp $	*/
 /*-
  * Copyright (c) 2010, 2011 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -51,6 +51,7 @@
 #include <sys/cpu.h>
 #include <sys/kcore.h>
 #include <uvm/uvm_page.h>
+#include <uvm/uvm_physseg.h>
 #ifdef __PMAP_PRIVATE
 #include <powerpc/booke/cpuvar.h>
 #endif
@@ -131,7 +132,7 @@ pmap_md_vca_add(struct vm_page *pg, vaddr_t va, pt_entry_t *nptep)
 }
 
 static inline void
-pmap_md_vca_remove(struct vm_page *pg, vaddr_t va)
+pmap_md_vca_remove(struct vm_page *pg, vaddr_t va, bool dirty)
 {
 
 }
@@ -140,11 +141,20 @@ static inline void
 pmap_md_vca_clean(struct vm_page *pg, vaddr_t va, int op)
 {
 }
+#endif
 
+#ifdef __PMAP_PRIVATE
 static inline size_t
 pmap_md_tlb_asid_max(void)
 {
 	return PMAP_TLB_NUM_PIDS - 1;
+}
+
+struct vm_physseg;
+static inline bool
+pmap_md_ok_to_steal_p(const uvm_physseg_t bank, size_t npgs)
+{
+	return true;
 }
 #endif
 

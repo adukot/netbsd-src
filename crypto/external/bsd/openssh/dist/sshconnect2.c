@@ -1,5 +1,5 @@
-/*	$NetBSD: sshconnect2.c,v 1.25 2016/03/11 01:55:00 christos Exp $	*/
-/* $OpenBSD: sshconnect2.c,v 1.239 2016/02/23 01:34:14 djm Exp $ */
+/*	$NetBSD: sshconnect2.c,v 1.27 2016/12/25 00:07:47 christos Exp $	*/
+/* $OpenBSD: sshconnect2.c,v 1.251 2016/12/04 23:54:02 djm Exp $ */
 
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
@@ -27,7 +27,7 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: sshconnect2.c,v 1.25 2016/03/11 01:55:00 christos Exp $");
+__RCSID("$NetBSD: sshconnect2.c,v 1.27 2016/12/25 00:07:47 christos Exp $");
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
@@ -73,6 +73,9 @@ __RCSID("$NetBSD: sshconnect2.c,v 1.25 2016/03/11 01:55:00 christos Exp $");
 #include "uidswap.h"
 #include "hostfile.h"
 #include "ssherr.h"
+#include "utf8.h"
+/* XXX */
+const char     *auth_get_canonical_hostname(struct ssh *, int);
 
 #ifdef GSSAPI
 #include "ssh-gss.h"
@@ -178,13 +181,9 @@ ssh_kex2(char *host, struct sockaddr *hostaddr, u_short port)
 	    compat_cipher_proposal(options.ciphers);
 	myproposal[PROPOSAL_ENC_ALGS_STOC] =
 	    compat_cipher_proposal(options.ciphers);
-	if (options.compression) {
-		myproposal[PROPOSAL_COMP_ALGS_CTOS] =
-		myproposal[PROPOSAL_COMP_ALGS_STOC] = "zlib@openssh.com,zlib,none";
-	} else {
-		myproposal[PROPOSAL_COMP_ALGS_CTOS] =
-		myproposal[PROPOSAL_COMP_ALGS_STOC] = "none,zlib@openssh.com,zlib";
-	}
+	myproposal[PROPOSAL_COMP_ALGS_CTOS] =
+	    myproposal[PROPOSAL_COMP_ALGS_STOC] = options.compression ?
+	    "zlib@openssh.com,zlib,none" : "none,zlib@openssh.com,zlib";
 	myproposal[PROPOSAL_MAC_ALGS_CTOS] =
 	    myproposal[PROPOSAL_MAC_ALGS_STOC] = options.macs;
 	if (options.hostkeyalgorithms != NULL) {
@@ -213,6 +212,9 @@ ssh_kex2(char *host, struct sockaddr *hostaddr, u_short port)
 #ifdef WITH_OPENSSL
 	kex->kex[KEX_DH_GRP1_SHA1] = kexdh_client;
 	kex->kex[KEX_DH_GRP14_SHA1] = kexdh_client;
+	kex->kex[KEX_DH_GRP14_SHA256] = kexdh_client;
+	kex->kex[KEX_DH_GRP16_SHA512] = kexdh_client;
+	kex->kex[KEX_DH_GRP18_SHA512] = kexdh_client;
 	kex->kex[KEX_DH_GEX_SHA1] = kexgex_client;
 	kex->kex[KEX_DH_GEX_SHA256] = kexgex_client;
 	kex->kex[KEX_ECDH_SHA2] = kexecdh_client;
@@ -324,6 +326,7 @@ void	userauth(Authctxt *, char *);
 static int sign_and_send_pubkey(Authctxt *, Identity *);
 static void pubkey_prepare(Authctxt *);
 static void pubkey_cleanup(Authctxt *);
+static void pubkey_reset(Authctxt *);
 static Key *load_identity_file(Identity *);
 
 static Authmethod *authmethod_get(char *authlist);
@@ -430,6 +433,9 @@ ssh_userauth2(const char *local_user, const char *server_user, char *host,
 			fprintf(stderr, "NONE cipher switch disabled when a TTY is allocated\n");
 		}
 	}
+	if (!authctxt.success)
+		fatal("Authentication failed.");
+
 	debug("Authentication succeeded (%s).", authctxt.method->name);
 }
 
@@ -522,21 +528,15 @@ input_userauth_error(int type, u_int32_t seq, void *ctxt)
 int
 input_userauth_banner(int type, u_int32_t seq, void *ctxt)
 {
-	char *msg, *raw, *lang;
+	char *msg, *lang;
 	u_int len;
 
-	debug3("input_userauth_banner");
-	raw = packet_get_string(&len);
+	debug3("%s", __func__);
+	msg = packet_get_string(&len);
 	lang = packet_get_string(NULL);
-	if (len > 0 && options.log_level >= SYSLOG_LEVEL_INFO) {
-		if (len > 65536)
-			len = 65536;
-		msg = xmalloc(len * 4 + 1); /* max expansion from strnvis() */
-		strvisx(msg, raw, len, VIS_SAFE|VIS_OCTAL|VIS_NOSLASH);
-		fprintf(stderr, "%s", msg);
-		free(msg);
-	}
-	free(raw);
+	if (len > 0 && options.log_level >= SYSLOG_LEVEL_INFO)
+		fmprintf(stderr, "%s", msg);
+	free(msg);
 	free(lang);
 	return 0;
 }
@@ -588,10 +588,9 @@ input_userauth_failure(int type, u_int32_t seq, void *ctxt)
 	packet_check_eom();
 
 	if (partial != 0) {
-		logit("Authenticated with partial success.");
+		verbose("Authenticated with partial success.");
 		/* reset state */
-		pubkey_cleanup(authctxt);
-		pubkey_prepare(authctxt);
+		pubkey_reset(authctxt);
 	}
 	debug("Authentications that can continue: %s", authlist);
 
@@ -1122,8 +1121,8 @@ sign_and_send_pubkey(Authctxt *authctxt, Identity *id)
 	/*
 	 * If the key is an certificate, try to find a matching private key
 	 * and use it to complete the signature.
-	 * If no such private key exists, return failure and continue with
-	 * other methods of authentication.
+	 * If no such private key exists, fall back to trying the certificate
+	 * key itself in case it has a private half already loaded.
 	 */
 	if (key_is_cert(id->key)) {
 		matched = 0;
@@ -1140,12 +1139,8 @@ sign_and_send_pubkey(Authctxt *authctxt, Identity *id)
 			    "certificate", __func__, id->filename,
 			    id->agent_fd != -1 ? " from agent" : "");
 		} else {
-			/* XXX maybe verbose/error? */
-			debug("%s: no private key for certificate "
+			debug("%s: no separate private key for certificate "
 			    "\"%s\"", __func__, id->filename);
-			free(blob);
-			buffer_free(&b);
-			return 0;
 		}
 	}
 
@@ -1328,29 +1323,6 @@ pubkey_prepare(Authctxt *authctxt)
 		id->userprovided = options.identity_file_userprovided[i];
 		TAILQ_INSERT_TAIL(&files, id, next);
 	}
-	/* Prefer PKCS11 keys that are explicitly listed */
-	TAILQ_FOREACH_SAFE(id, &files, next, tmp) {
-		if (id->key == NULL || (id->key->flags & SSHKEY_FLAG_EXT) == 0)
-			continue;
-		found = 0;
-		TAILQ_FOREACH(id2, &files, next) {
-			if (id2->key == NULL ||
-			    (id2->key->flags & SSHKEY_FLAG_EXT) == 0)
-				continue;
-			if (sshkey_equal(id->key, id2->key)) {
-				TAILQ_REMOVE(&files, id, next);
-				TAILQ_INSERT_TAIL(preferred, id, next);
-				found = 1;
-				break;
-			}
-		}
-		/* If IdentitiesOnly set and key not found then don't use it */
-		if (!found && options.identities_only) {
-			TAILQ_REMOVE(&files, id, next);
-			explicit_bzero(id, sizeof(*id));
-			free(id);
-		}
-	}
 	/* list of certificates specified by user */
 	for (i = 0; i < options.num_certificate_files; i++) {
 		key = options.certificates[i];
@@ -1409,6 +1381,29 @@ pubkey_prepare(Authctxt *authctxt)
 		}
 		authctxt->agent_fd = agent_fd;
 	}
+	/* Prefer PKCS11 keys that are explicitly listed */
+	TAILQ_FOREACH_SAFE(id, &files, next, tmp) {
+		if (id->key == NULL || (id->key->flags & SSHKEY_FLAG_EXT) == 0)
+			continue;
+		found = 0;
+		TAILQ_FOREACH(id2, &files, next) {
+			if (id2->key == NULL ||
+			    (id2->key->flags & SSHKEY_FLAG_EXT) == 0)
+				continue;
+			if (sshkey_equal(id->key, id2->key)) {
+				TAILQ_REMOVE(&files, id, next);
+				TAILQ_INSERT_TAIL(preferred, id, next);
+				found = 1;
+				break;
+			}
+		}
+		/* If IdentitiesOnly set and key not found then don't use it */
+		if (!found && options.identities_only) {
+			TAILQ_REMOVE(&files, id, next);
+			explicit_bzero(id, sizeof(*id));
+			free(id);
+		}
+	}
 	/* append remaining keys from the config file */
 	for (id = TAILQ_FIRST(&files); id; id = TAILQ_FIRST(&files)) {
 		TAILQ_REMOVE(&files, id, next);
@@ -1448,6 +1443,15 @@ pubkey_cleanup(Authctxt *authctxt)
 		free(id->filename);
 		free(id);
 	}
+}
+
+static void
+pubkey_reset(Authctxt *authctxt)
+{
+	Identity *id;
+
+	TAILQ_FOREACH(id, &authctxt->keys, next)
+		id->tried = 0;
 }
 
 static int
@@ -1498,6 +1502,7 @@ userauth_pubkey(Authctxt *authctxt)
 				}
 				key_free(id->key);
 				id->key = NULL;
+				id->isprivate = 0;
 			}
 		}
 		if (sent)
@@ -1874,6 +1879,7 @@ ssh_krb5_helper(krb5_data *ap)
 	const char *remotehost;
 	int ret;
 	const char *errtxt;
+	struct ssh *ssh = active_state;	/* XXX */
 
 	memset(ap, 0, sizeof(*ap));
 
@@ -1911,7 +1917,7 @@ ssh_krb5_helper(krb5_data *ap)
 		goto out;
 	}
 
-	remotehost = get_canonical_hostname(1);
+	remotehost = auth_get_canonical_hostname(ssh, 1);
 
 	problem = krb5_mk_req(*context, auth_context, AP_OPTS_MUTUAL_REQUIRED,
 	    "host", remotehost, NULL, ccache, ap);
@@ -2054,8 +2060,8 @@ authmethods_get(void)
 			buffer_append(&b, method->name, strlen(method->name));
 		}
 	}
-	buffer_append(&b, "\0", 1);
-	list = xstrdup(buffer_ptr(&b));
+	if ((list = sshbuf_dup_string(&b)) == NULL)
+		fatal("%s: sshbuf_dup_string failed", __func__);
 	buffer_free(&b);
 	return list;
 }

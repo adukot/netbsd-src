@@ -1,4 +1,4 @@
-#	$NetBSD: t_ndp.sh,v 1.10 2016/04/04 07:37:08 ozaki-r Exp $
+#	$NetBSD: t_ndp.sh,v 1.18 2017/03/03 07:34:04 ozaki-r Exp $
 #
 # Copyright (c) 2015 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -25,49 +25,45 @@
 # POSSIBILITY OF SUCH DAMAGE.
 #
 
-inetserver="rump_server -lrumpnet -lrumpnet_net -lrumpnet_netinet"
-inetserver="$inetserver -lrumpnet_netinet6 -lrumpnet_shmif"
-HIJACKING="env LD_PRELOAD=/usr/lib/librumphijack.so RUMPHIJACK=sysctl=yes"
-
 SOCKSRC=unix://commsock1
 SOCKDST=unix://commsock2
 IP6SRC=fc00::1
 IP6DST=fc00::2
 
-DEBUG=true
+DEBUG=${DEBUG:-true}
 TIMEOUT=1
 
-atf_test_case cache_expiration cleanup
-atf_test_case command cleanup
-atf_test_case cache_overwriting cleanup
-atf_test_case neighborgcthresh cleanup
-atf_test_case link_activation cleanup
+atf_test_case ndp_cache_expiration cleanup
+atf_test_case ndp_commands cleanup
+atf_test_case ndp_cache_overwriting cleanup
+atf_test_case ndp_neighborgcthresh cleanup
+atf_test_case ndp_link_activation cleanup
 
-cache_expiration_head()
+ndp_cache_expiration_head()
 {
 	atf_set "descr" "Tests for NDP cache expiration"
 	atf_set "require.progs" "rump_server"
 }
 
-command_head()
+ndp_commands_head()
 {
 	atf_set "descr" "Tests for commands of ndp(8)"
 	atf_set "require.progs" "rump_server"
 }
 
-cache_overwriting_head()
+ndp_cache_overwriting_head()
 {
 	atf_set "descr" "Tests for behavior of overwriting NDP caches"
 	atf_set "require.progs" "rump_server"
 }
 
-neighborgcthresh_head()
+ndp_neighborgcthresh_head()
 {
 	atf_set "descr" "Tests for GC of neighbor caches"
 	atf_set "require.progs" "rump_server"
 }
 
-link_activation_head()
+ndp_link_activation_head()
 {
 	atf_set "descr" "Tests for activating a new MAC address"
 	atf_set "require.progs" "rump_server"
@@ -77,9 +73,8 @@ setup_dst_server()
 {
 	local assign_ip=$1
 
+	rump_server_add_iface $SOCKDST shmif0 bus1
 	export RUMP_SERVER=$SOCKDST
-	atf_check -s exit:0 rump.ifconfig shmif0 create
-	atf_check -s exit:0 rump.ifconfig shmif0 linkstr bus1
 	if [ "$assign_ip" != no ]; then
 		atf_check -s exit:0 rump.ifconfig shmif0 inet6 $IP6DST
 	fi
@@ -96,8 +91,7 @@ setup_src_server()
 	export RUMP_SERVER=$SOCKSRC
 
 	# Setup an interface
-	atf_check -s exit:0 rump.ifconfig shmif0 create
-	atf_check -s exit:0 rump.ifconfig shmif0 linkstr bus1
+	rump_server_add_iface $SOCKSRC shmif0 bus1
 	atf_check -s exit:0 rump.ifconfig shmif0 inet6 $IP6SRC
 	atf_check -s exit:0 rump.ifconfig shmif0 up
 	atf_check -s exit:0 rump.ifconfig -w 10
@@ -116,10 +110,11 @@ get_timeout()
 	echo $timeout
 }
 
-cache_expiration_body()
+ndp_cache_expiration_body()
 {
-	atf_check -s exit:0 ${inetserver} $SOCKSRC
-	atf_check -s exit:0 ${inetserver} $SOCKDST
+
+	rump_server_start $SOCKSRC netinet6
+	rump_server_start $SOCKDST netinet6
 
 	setup_dst_server
 	setup_src_server
@@ -142,7 +137,9 @@ cache_expiration_body()
 	$DEBUG && rump.ndp -n -a
 	atf_check -s exit:0 -o match:'permanent' rump.ndp -n $IP6SRC
 	# Expired but remains until GC sweaps it (1 day)
-	atf_check -s exit:0 -o match:'(1d0h0m|23h59m)' rump.ndp -n $IP6DST
+	atf_check -s exit:0 -o match:"$ONEDAYISH" rump.ndp -n $IP6DST
+
+	rump_server_destroy_ifaces
 }
 
 ifdown_dst_server()
@@ -152,10 +149,11 @@ ifdown_dst_server()
 	export RUMP_SERVER=$SOCKSRC
 }
 
-command_body()
+ndp_commands_body()
 {
-	atf_check -s exit:0 ${inetserver} $SOCKSRC
-	atf_check -s exit:0 ${inetserver} $SOCKDST
+
+	rump_server_start $SOCKSRC netinet6
+	rump_server_start $SOCKDST netinet6
 
 	setup_dst_server
 	setup_src_server
@@ -210,20 +208,20 @@ command_body()
 	atf_check -s exit:0 -o ignore -e ignore rump.ndp -n fc00::11
 	atf_check -s exit:0 -o ignore -e ignore rump.ndp -n fc00::12
 
-	# Test temp option (XXX it doesn't work; expire time isn't set)
 	$DEBUG && rump.ndp -n -a
-	#atf_check -s exit:0 -o ignore rump.ndp -s fc00::10 b2:a0:20:00:00:10 temp
+	atf_check -s exit:0 -o ignore rump.ndp -s fc00::10 b2:a0:20:00:00:10 temp
 	rump.ndp -s fc00::10 b2:a0:20:00:00:10 temp
 	$DEBUG && rump.ndp -n -a
-	#atf_check -s exit:0 -o not-match:'permanent' rump.ndp -n fc00::10
+	atf_check -s exit:0 -o not-match:'permanent' rump.ndp -n fc00::10
 
-	return 0
+	rump_server_destroy_ifaces
 }
 
-cache_overwriting_body()
+ndp_cache_overwriting_body()
 {
-	atf_check -s exit:0 ${inetserver} $SOCKSRC
-	atf_check -s exit:0 ${inetserver} $SOCKDST
+
+	rump_server_start $SOCKSRC netinet6
+	rump_server_start $SOCKDST netinet6
 
 	setup_dst_server
 	setup_src_server
@@ -249,7 +247,7 @@ cache_overwriting_body()
 	#atf_check -s not-exit:0 -e ignore rump.ndp -s fc00::10 b2:a0:20:00:00:ff
 	#$DEBUG && rump.ndp -n -a
 
-	return 0
+	rump_server_destroy_ifaces
 }
 
 get_n_caches()
@@ -258,11 +256,11 @@ get_n_caches()
 	echo $(rump.ndp -a -n |grep -v -e Neighbor -e permanent |wc -l)
 }
 
-neighborgcthresh_body()
+ndp_neighborgcthresh_body()
 {
 
-	atf_check -s exit:0 ${inetserver} $SOCKSRC
-	atf_check -s exit:0 ${inetserver} $SOCKDST
+	rump_server_start $SOCKSRC netinet6
+	rump_server_start $SOCKDST netinet6
 
 	setup_dst_server no
 	setup_src_server
@@ -311,7 +309,7 @@ neighborgcthresh_body()
 		atf_fail "Neighbor caches are not GC-ed"
 	fi
 
-	return 0
+	rump_server_destroy_ifaces
 }
 
 make_pkt_str_na()
@@ -324,33 +322,18 @@ make_pkt_str_na()
 	echo $pkt
 }
 
-extract_new_packets()
-{
-	local old=./old
-
-	if [ ! -f $old ]; then
-		old=/dev/null
-	fi
-
-	shmif_dumpbus -p - bus1 2>/dev/null| \
-	    tcpdump -n -e -r - 2>/dev/null > ./new
-	diff -u $old ./new |grep '^+' |cut -d '+' -f 2 > ./diff
-	mv -f ./new ./old
-	cat ./diff
-}
-
-link_activation_body()
+ndp_link_activation_body()
 {
 	local linklocal=
 
-	atf_check -s exit:0 ${inetserver} $SOCKSRC
-	atf_check -s exit:0 ${inetserver} $SOCKDST
+	rump_server_start $SOCKSRC netinet6
+	rump_server_start $SOCKDST netinet6
 
 	setup_dst_server
 	setup_src_server
 
 	# flush old packets
-	extract_new_packets > ./out
+	extract_new_packets bus1 > ./out
 
 	export RUMP_SERVER=$SOCKSRC
 
@@ -358,7 +341,7 @@ link_activation_body()
 	    b2:a1:00:00:00:01
 
 	atf_check -s exit:0 sleep 1
-	extract_new_packets > ./out
+	extract_new_packets bus1 > ./out
 	$DEBUG && cat ./out
 
 	linklocal=$(rump.ifconfig shmif0 |awk '/fe80/ {print $2;}' |awk -F % '{print $1;}')
@@ -371,7 +354,7 @@ link_activation_body()
 	    b2:a1:00:00:00:02 active
 
 	atf_check -s exit:0 sleep 1
-	extract_new_packets > ./out
+	extract_new_packets bus1 > ./out
 	$DEBUG && cat ./out
 
 	linklocal=$(rump.ifconfig shmif0 |awk '/fe80/ {print $2;}' |awk -F % '{print $1;}')
@@ -379,66 +362,35 @@ link_activation_body()
 
 	pkt=$(make_pkt_str_na $linklocal b2:a1:00:00:00:02)
 	atf_check -s exit:0 -x "cat ./out |grep -q '$pkt'"
+
+	rump_server_destroy_ifaces
 }
 
-cleanup()
-{
-	env RUMP_SERVER=$SOCKSRC rump.halt
-	env RUMP_SERVER=$SOCKDST rump.halt
-}
-
-dump_src()
-{
-	export RUMP_SERVER=$SOCKSRC
-	rump.netstat -nr
-	rump.ndp -n -a
-	rump.ifconfig
-	$HIJACKING dmesg
-}
-
-dump_dst()
-{
-	export RUMP_SERVER=$SOCKDST
-	rump.netstat -nr
-	rump.ndp -n -a
-	rump.ifconfig
-	$HIJACKING dmesg
-}
-
-dump()
-{
-	dump_src
-	dump_dst
-	shmif_dumpbus -p - bus1 2>/dev/null| tcpdump -n -e -r -
-	$DEBUG && gdb -ex bt /usr/bin/rump_server rump_server.core
-	$DEBUG && gdb -ex bt /usr/sbin/rump.ndp rump.ndp.core
-}
-
-cache_expiration_cleanup()
+ndp_cache_expiration_cleanup()
 {
 	$DEBUG && dump
 	cleanup
 }
 
-command_cleanup()
+ndp_commands_cleanup()
 {
 	$DEBUG && dump
 	cleanup
 }
 
-cache_overwriting_cleanup()
+ndp_cache_overwriting_cleanup()
 {
 	$DEBUG && dump
 	cleanup
 }
 
-neighborgcthresh_cleanup()
+ndp_neighborgcthresh_cleanup()
 {
 	$DEBUG && dump
 	cleanup
 }
 
-link_activation_cleanup()
+ndp_link_activation_cleanup()
 {
 	$DEBUG && dump
 	cleanup
@@ -446,9 +398,9 @@ link_activation_cleanup()
 
 atf_init_test_cases()
 {
-	atf_add_test_case cache_expiration
-	atf_add_test_case command
-	atf_add_test_case cache_overwriting
-	atf_add_test_case neighborgcthresh
-	atf_add_test_case link_activation
+	atf_add_test_case ndp_cache_expiration
+	atf_add_test_case ndp_commands
+	atf_add_test_case ndp_cache_overwriting
+	atf_add_test_case ndp_neighborgcthresh
+	atf_add_test_case ndp_link_activation
 }

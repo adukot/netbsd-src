@@ -1,4 +1,4 @@
-/* $NetBSD: pad.c,v 1.24 2016/02/26 13:17:04 nat Exp $ */
+/* $NetBSD: pad.c,v 1.28 2017/02/23 23:13:27 nat Exp $ */
 
 /*-
  * Copyright (c) 2007 Jared D. McNeill <jmcneill@invisible.ca>
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pad.c,v 1.24 2016/02/26 13:17:04 nat Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pad.c,v 1.28 2017/02/23 23:13:27 nat Exp $");
 
 #include <sys/types.h>
 #include <sys/param.h>
@@ -74,6 +74,7 @@ static void	pad_attach(device_t, device_t, void *);
 static int	pad_detach(device_t, int);
 static void	pad_childdet(device_t, device_t);
 
+static int	pad_audio_open(void *, int);
 static int	pad_query_encoding(void *, struct audio_encoding *);
 static int	pad_set_params(void *, int, int,
 				audio_params_t *, audio_params_t *,
@@ -99,6 +100,7 @@ static stream_filter_t *pad_swvol_filter_be(struct audio_softc *,
 static void	pad_swvol_dtor(stream_filter_t *);
 
 static const struct audio_hw_if pad_hw_if = {
+	.open = pad_audio_open,
 	.query_encoding = pad_query_encoding,
 	.set_params = pad_set_params,
 	.start_output = pad_start_output,
@@ -122,8 +124,8 @@ static const struct audio_format pad_formats[PAD_NFORMATS] = {
 
 extern void	padattach(int);
 
-static int		pad_add_block(pad_softc_t *, uint8_t *, int);
-static int		pad_get_block(pad_softc_t *, pad_block_t *, int);
+static int	pad_add_block(pad_softc_t *, uint8_t *, int);
+static int	pad_get_block(pad_softc_t *, pad_block_t *, int);
 
 dev_type_open(pad_open);
 dev_type_close(pad_close);
@@ -319,7 +321,6 @@ pad_open(dev_t dev, int flags, int fmt, struct lwp *l)
 	}
 	
 	getmicrotime(&sc->sc_last);
-	sc->sc_bytes_count = 0;
 
 	return 0;
 }
@@ -340,8 +341,7 @@ pad_close(dev_t dev, int flags, int fmt, struct lwp *l)
 }
 
 #define PAD_BYTES_PER_SEC (44100 * sizeof(int16_t) * 2)
-#define TIMENEXTREAD	(20 * 1000)
-#define BYTESTOSLEEP (PAD_BYTES_PER_SEC / (1000000 / TIMENEXTREAD))
+#define TIMENEXTREAD	(PAD_BLKSIZE * 1000 / PAD_BYTES_PER_SEC)
 
 int
 pad_read(dev_t dev, struct uio *uio, int flags)
@@ -360,39 +360,31 @@ pad_read(dev_t dev, struct uio *uio, int flags)
 
 	err = 0;
 
-	mutex_enter(&sc->sc_lock);
-	intr = sc->sc_intr;
-	intrarg = sc->sc_intrarg;
-
 	while (uio->uio_resid > 0 && !err) {
+		mutex_enter(&sc->sc_lock);
+		intr = sc->sc_intr;
+		intrarg = sc->sc_intrarg;
+
 		getmicrotime(&now);
 		nowusec = (now.tv_sec * 1000000) + now.tv_usec;
 		lastusec = (sc->sc_last.tv_sec * 1000000) +
 		     sc->sc_last.tv_usec;
-		if (lastusec + TIMENEXTREAD > nowusec &&
-		     sc->sc_bytes_count >= BYTESTOSLEEP) {
+		if (lastusec + TIMENEXTREAD > nowusec) {
 			wait_ticks = (hz * ((lastusec + TIMENEXTREAD) -
 			     nowusec)) / 1000000;
 			if (wait_ticks > 0) {
 				kpause("padwait", TRUE, wait_ticks,
-				     &sc->sc_lock);
+				    &sc->sc_lock);
 			}
-
-			sc->sc_bytes_count -= BYTESTOSLEEP;
-			getmicrotime(&sc->sc_last);
-		} else if (sc->sc_bytes_count >= BYTESTOSLEEP) {
-			sc->sc_bytes_count -= BYTESTOSLEEP;
-			getmicrotime(&sc->sc_last);
-		} else if (lastusec + TIMENEXTREAD <= nowusec)
-			getmicrotime(&sc->sc_last);
-
+		}
+		sc->sc_last.tv_sec =
+			(lastusec + TIMENEXTREAD) / 1000000;
+		sc->sc_last.tv_usec =
+			(lastusec + TIMENEXTREAD) % 1000000;
 		err = pad_get_block(sc, &pb, min(uio->uio_resid, PAD_BLKSIZE));
 		if (!err) {
-			sc->sc_bytes_count += pb.pb_len;
-
 			mutex_exit(&sc->sc_lock);
 			err = uiomove(pb.pb_ptr, pb.pb_len, uio);
-			mutex_enter(&sc->sc_lock);
 			continue;
 		}
 
@@ -405,18 +397,32 @@ pad_read(dev_t dev, struct uio *uio, int flags)
 			intr = sc->sc_intr;
 			intrarg = sc->sc_intrarg;
 			err = 0;
+			mutex_exit(&sc->sc_lock);
 			continue;
 		}
 		err = cv_wait_sig(&sc->sc_condvar, &sc->sc_lock);
-		if (err != 0)
+		if (err != 0) {
+			mutex_exit(&sc->sc_lock);
 			break;
+		}
 
-		intr = sc->sc_intr;
-		intrarg = sc->sc_intrarg;
+		mutex_exit(&sc->sc_lock);
 	}
-	mutex_exit(&sc->sc_lock);
 
 	return err;
+}
+
+static int
+pad_audio_open(void *opaque, int flags)
+{
+	pad_softc_t *sc;
+	sc = opaque;
+
+	if (sc->sc_open == 0)
+		return EIO;
+
+	getmicrotime(&sc->sc_last);
+	return 0;
 }
 
 static int
@@ -477,6 +483,8 @@ pad_start_output(void *opaque, void *block, int blksize,
 	sc = (pad_softc_t *)opaque;
 
 	KASSERT(mutex_owned(&sc->sc_lock));
+	if (!sc->sc_open)
+		return EIO;
 
 	sc->sc_intr = intr;
 	sc->sc_intrarg = intrarg;
@@ -760,7 +768,8 @@ pad_modcmd(modcmd_t cmd, void *arg)
 			return error;
 		}
 
-		error = devsw_attach(pad_cd.cd_name, NULL, &bmajor, &pad_cdevsw, &cmajor);
+		error = devsw_attach(pad_cd.cd_name, NULL, &bmajor,
+		    &pad_cdevsw, &cmajor);
 		if (error) {
 			error = config_cfdata_detach(pad_cfdata);
 			if (error) {

@@ -1,4 +1,4 @@
-/*	$NetBSD: lock_stubs_llsc.S,v 1.4 2015/06/07 06:07:49 matt Exp $	*/
+/*	$NetBSD: lock_stubs_llsc.S,v 1.7 2016/08/19 10:05:35 skrll Exp $	*/
 
 /*-
  * Copyright (c) 2007 The NetBSD Foundation, Inc.
@@ -15,7 +15,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- *      
+ *
  * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
  * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
  * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
@@ -37,6 +37,8 @@
 
 #include <machine/asm.h>
 
+RCSID("$NetBSD: lock_stubs_llsc.S,v 1.7 2016/08/19 10:05:35 skrll Exp $")
+
 #include "assym.h"
 
 #if defined(DIAGNOSTIC) || defined(MULTIPROCESSOR)
@@ -45,8 +47,8 @@
 
 #if defined(MULTIPROCESSOR)
 #if defined(__OCTEON__)
-#define	SYNC		syncw
-#define	BDSYNC		syncw
+#define	SYNC		sync 4
+#define	BDSYNC		sync 4
 #else
 #define	SYNC		sync
 #define	BDSYNC		sync

@@ -1,4 +1,4 @@
-/*	$NetBSD: if_stf.c,v 1.88 2016/04/28 00:16:56 ozaki-r Exp $	*/
+/*	$NetBSD: if_stf.c,v 1.101 2016/12/12 03:55:57 ozaki-r Exp $	*/
 /*	$KAME: if_stf.c,v 1.62 2001/06/07 22:32:16 itojun Exp $ */
 
 /*
@@ -75,10 +75,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_stf.c,v 1.88 2016/04/28 00:16:56 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_stf.c,v 1.101 2016/12/12 03:55:57 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
+#include "stf.h"
 #endif
 
 #ifndef INET6
@@ -95,6 +96,8 @@ __KERNEL_RCSID(0, "$NetBSD: if_stf.c,v 1.88 2016/04/28 00:16:56 ozaki-r Exp $");
 #include <sys/proc.h>
 #include <sys/queue.h>
 #include <sys/syslog.h>
+#include <sys/device.h>
+#include <sys/module.h>
 
 #include <sys/cpu.h>
 
@@ -112,7 +115,6 @@ __KERNEL_RCSID(0, "$NetBSD: if_stf.c,v 1.88 2016/04/28 00:16:56 ozaki-r Exp $");
 
 #include <netinet/ip6.h>
 #include <netinet6/ip6_var.h>
-#include <netinet6/in6_gif.h>
 #include <netinet6/in6_var.h>
 #include <netinet/ip_ecn.h>
 
@@ -120,14 +122,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_stf.c,v 1.88 2016/04/28 00:16:56 ozaki-r Exp $");
 
 #include <net/net_osdep.h>
 
-#include "stf.h"
-#include "gif.h"	/*XXX*/
-
 #include <net/bpf.h>
-
-#if NGIF > 0
-#include <net/if_gif.h>
-#endif
 
 #include "ioconf.h"
 
@@ -149,11 +144,7 @@ static int	stf_clone_destroy(struct ifnet *);
 struct if_clone stf_cloner =
     IF_CLONE_INITIALIZER("stf", stf_clone_create, stf_clone_destroy);
 
-#if NGIF > 0
-extern int ip_gif_ttl;	/*XXX*/
-#else
-static int ip_gif_ttl = 40;	/*XXX*/
-#endif
+static int ip_stf_ttl = STF_TTL;
 
 extern struct domain inetdomain;
 
@@ -182,26 +173,59 @@ void
 stfattach(int count)
 {
 
+	/*
+	 * Nothing to do here, initialization is handled by the
+	 * module initialization code in stfinit() below).
+	 */
+}
+
+static void
+stfinit(void)
+{
+
 	LIST_INIT(&stf_softc_list);
 	if_clone_attach(&stf_cloner);
+}
+
+static int
+stfdetach(void)
+{
+	int error = 0;
+
+	if (!LIST_EMPTY(&stf_softc_list))
+		error = EBUSY;
+
+	if (error == 0)
+		if_clone_detach(&stf_cloner);
+
+	return error;
 }
 
 static int
 stf_clone_create(struct if_clone *ifc, int unit)
 {
 	struct stf_softc *sc;
+	int error;
+
+	sc = malloc(sizeof(struct stf_softc), M_DEVBUF, M_WAIT|M_ZERO);
+	if_initname(&sc->sc_if, ifc->ifc_name, unit);
+
+	error = encap_lock_enter();
+	if (error) {
+		free(sc, M_DEVBUF);
+		return error;
+	}
 
 	if (LIST_FIRST(&stf_softc_list) != NULL) {
 		/* Only one stf interface is allowed. */
+		encap_lock_exit();
+		free(sc, M_DEVBUF);
 		return (EEXIST);
 	}
 
-	sc = malloc(sizeof(struct stf_softc), M_DEVBUF, M_WAIT|M_ZERO);
-
-	if_initname(&sc->sc_if, ifc->ifc_name, unit);
-
 	sc->encap_cookie = encap_attach_func(AF_INET, IPPROTO_IPV6,
 	    stf_encapcheck, &in_stf_encapsw, sc);
+	encap_lock_exit();
 	if (sc->encap_cookie == NULL) {
 		printf("%s: unable to attach encap\n", if_name(&sc->sc_if));
 		free(sc, M_DEVBUF);
@@ -226,8 +250,10 @@ stf_clone_destroy(struct ifnet *ifp)
 {
 	struct stf_softc *sc = (void *) ifp;
 
+	encap_lock_enter();
 	LIST_REMOVE(sc, sc_list);
 	encap_detach(sc->encap_cookie);
+	encap_lock_exit();
 	bpf_detach(ifp);
 	if_detach(ifp);
 	rtcache_free(&sc->sc_ro);
@@ -301,11 +327,10 @@ stf_getsrcifa6(struct ifnet *ifp)
 	struct in_ifaddr *ia4;
 	struct sockaddr_in6 *sin6;
 	struct in_addr in;
+	int s;
 
-	IFADDR_FOREACH(ifa, ifp)
-	{
-		if (ifa->ifa_addr == NULL)
-			continue;
+	s = pserialize_read_enter();
+	IFADDR_READER_FOREACH(ifa, ifp) {
 		if (ifa->ifa_addr->sa_family != AF_INET6)
 			continue;
 		sin6 = (struct sockaddr_in6 *)ifa->ifa_addr;
@@ -313,12 +338,15 @@ stf_getsrcifa6(struct ifnet *ifp)
 			continue;
 
 		memcpy(&in, GET_V4(&sin6->sin6_addr), sizeof(in));
-		INADDR_TO_IA(in, ia4);
+		ia4 = in_get_ia(in);
 		if (ia4 == NULL)
 			continue;
 
+		pserialize_read_exit(s);
+		/* TODO NOMPSAFE */
 		return (struct in6_ifaddr *)ifa;
 	}
+	pserialize_read_exit(s);
 
 	return NULL;
 }
@@ -402,7 +430,7 @@ stf_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	    &ip->ip_src, sizeof(ip->ip_src));
 	memcpy(&ip->ip_dst, in4, sizeof(ip->ip_dst));
 	ip->ip_p = IPPROTO_IPV6;
-	ip->ip_ttl = ip_gif_ttl;	/*XXX*/
+	ip->ip_ttl = ip_stf_ttl;
 	ip->ip_len = htons(m->m_pkthdr.len);
 	if (ifp->if_flags & IFF_LINK1)
 		ip_ecn_ingress(ECN_ALLOWED, &ip->ip_tos, &tos);
@@ -418,11 +446,13 @@ stf_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 
 	/* If the route constitutes infinite encapsulation, punt. */
 	if (rt->rt_ifp == ifp) {
+		rtcache_unref(rt, &sc->sc_ro);
 		rtcache_free(&sc->sc_ro);
 		m_freem(m);
 		ifp->if_oerrors++;
 		return ENETUNREACH;
 	}
+	rtcache_unref(rt, &sc->sc_ro);
 
 	ifp->if_opackets++;
 	ifp->if_obytes += m->m_pkthdr.len - sizeof(struct ip);
@@ -479,8 +509,7 @@ stf_checkaddr4(struct stf_softc *sc, const struct in_addr *in,
 	/*
 	 * reject packets with broadcast
 	 */
-	TAILQ_FOREACH(ia4, &in_ifaddrhead, ia_list)
-	{
+	IN_ADDRLIST_READER_FOREACH(ia4) {
 		if ((ia4->ia_ifa.ifa_ifp->if_flags & IFF_BROADCAST) == 0)
 			continue;
 		if (in->s_addr == ia4->ia_broadaddr.sin_addr.s_addr)
@@ -506,10 +535,10 @@ stf_checkaddr4(struct stf_softc *sc, const struct in_addr *in,
 			    (uint32_t)ntohl(sin.sin_addr.s_addr));
 #endif
 			if (rt)
-				rtfree(rt);
+				rt_unref(rt);
 			return -1;
 		}
-		rtfree(rt);
+		rt_unref(rt);
 	}
 
 	return 0;
@@ -584,7 +613,7 @@ in_stf_input(struct mbuf *m, int off, int proto)
 	 * for source, perform ingress filter as well.
 	 */
 	if (stf_checkaddr4(sc, &ip->ip_dst, NULL) < 0 ||
-	    stf_checkaddr4(sc, &ip->ip_src, m->m_pkthdr.rcvif) < 0) {
+	    stf_checkaddr4(sc, &ip->ip_src, m_get_rcvif_NOMPSAFE(m)) < 0) {
 		m_freem(m);
 		return;
 	}
@@ -604,7 +633,7 @@ in_stf_input(struct mbuf *m, int off, int proto)
 	 * for source, perform ingress filter as well.
 	 */
 	if (stf_checkaddr6(sc, &ip6->ip6_dst, NULL) < 0 ||
-	    stf_checkaddr6(sc, &ip6->ip6_src, m->m_pkthdr.rcvif) < 0) {
+	    stf_checkaddr6(sc, &ip6->ip6_src, m_get_rcvif_NOMPSAFE(m)) < 0) {
 		m_freem(m);
 		return;
 	}
@@ -618,7 +647,7 @@ in_stf_input(struct mbuf *m, int off, int proto)
 	ip6->ip6_flow |= htonl((uint32_t)itos << 20);
 
 	pktlen = m->m_pkthdr.len;
-	m->m_pkthdr.rcvif = ifp;
+	m_set_rcvif(m, ifp);
 
 	bpf_mtap_af(ifp, AF_INET6, m);
 
@@ -702,3 +731,10 @@ stf_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 
 	return error;
 }
+
+/*
+ * Module infrastructure
+ */
+#include "if_module.h"
+
+IF_MODULE(MODULE_CLASS_DRIVER, stf, "")

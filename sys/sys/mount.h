@@ -1,4 +1,4 @@
-/*	$NetBSD: mount.h,v 1.218 2015/10/23 19:40:10 maxv Exp $	*/
+/*	$NetBSD: mount.h,v 1.221 2017/03/06 10:10:07 hannken Exp $	*/
 
 /*
  * Copyright (c) 1989, 1991, 1993
@@ -100,6 +100,7 @@
 #ifndef _STANDALONE
 
 struct vnode;
+struct vnode_impl;
 struct vattr;
 
 /*
@@ -109,9 +110,10 @@ struct vattr;
  */
 struct mount {
 	TAILQ_ENTRY(mount) mnt_list;		/* mount list */
-	TAILQ_HEAD(, vnode) mnt_vnodelist;	/* list of vnodes this mount */
+	TAILQ_HEAD(, vnode_impl) mnt_vnodelist;	/* list of vnodes this mount */
 	struct vfsops	*mnt_op;		/* operations on fs */
 	struct vnode	*mnt_vnodecovered;	/* vnode we mounted on */
+	struct mount	*mnt_lower;		/* fs mounted on */
 	int		mnt_synclist_slot;	/* synclist slot index */
 	void		*mnt_transinfo;		/* for FS-internal use */
 	void		*mnt_data;		/* private data */
@@ -459,7 +461,7 @@ extern int	syncer_maxdelay;
 extern kmutex_t	syncer_mutex;
 extern time_t	syncdelay;
 extern time_t	filedelay;
-extern time_t	dirdelay; 
+extern time_t	dirdelay;
 extern time_t	metadelay;
 void	vfs_syncer_add_to_worklist(struct mount *);
 void	vfs_syncer_remove_from_worklist(struct mount *);

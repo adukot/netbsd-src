@@ -1,4 +1,4 @@
-/*	$NetBSD: nfs_syscalls.c,v 1.156 2015/06/22 10:35:00 mrg Exp $	*/
+/*	$NetBSD: nfs_syscalls.c,v 1.158 2017/02/12 18:24:31 maxv Exp $	*/
 
 /*
  * Copyright (c) 1989, 1993
@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: nfs_syscalls.c,v 1.156 2015/06/22 10:35:00 mrg Exp $");
+__KERNEL_RCSID(0, "$NetBSD: nfs_syscalls.c,v 1.158 2017/02/12 18:24:31 maxv Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -325,6 +325,7 @@ do_nfssvc(struct nfssvc_copy_ops *ops, struct lwp *l, int flag, void *argp, regi
 					     M_COPYALL, M_WAIT);
 					break;
 				    default:
+					kmem_free(nuidp, sizeof(*nuidp));
 					return EAFNOSUPPORT;
 				    };
 				}
@@ -694,7 +695,7 @@ nfssvc_nfsd(struct nfssvc_copy_ops *ops, struct nfsd_srvargs *nsd,
 				}
 				m = mreq;
 				m->m_pkthdr.len = siz;
-				m->m_pkthdr.rcvif = (struct ifnet *)0;
+				m_reset_rcvif(m);
 				/*
 				 * For stream protocols, prepend a Sun RPC
 				 * Record Mark.

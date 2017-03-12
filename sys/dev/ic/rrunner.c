@@ -1,4 +1,4 @@
-/*	$NetBSD: rrunner.c,v 1.80 2016/02/09 08:32:10 ozaki-r Exp $	*/
+/*	$NetBSD: rrunner.c,v 1.83 2016/12/15 09:28:05 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 1997, 1998 The NetBSD Foundation, Inc.
@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: rrunner.c,v 1.80 2016/02/09 08:32:10 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: rrunner.c,v 1.83 2016/12/15 09:28:05 ozaki-r Exp $");
 
 #include "opt_inet.h"
 
@@ -2222,7 +2222,7 @@ esh_adjust_mbufs(struct esh_softc *sc, struct mbuf *m)
 
 	for (n0 = n = m; n; n = n->m_next) {
 		while (n && n->m_len == 0) {
-			MFREE(n, m0);
+			m0 = m_free(n);
 			if (n == m)
 				n = n0 = m = m0;
 			else
@@ -2243,7 +2243,7 @@ esh_adjust_mbufs(struct esh_softc *sc, struct mbuf *m)
 
 			MCLGET(o, M_DONTWAIT);
 			if (!(o->m_flags & M_EXT)) {
-				MFREE(o, m0);
+				m0 = m_free(o);
 				goto bogosity;
 			}
 
@@ -2340,7 +2340,7 @@ esh_read_snap_ring(struct esh_softc *sc, u_int16_t consumer, int error)
 			}
 			recv->ec_cur_pkt = recv->ec_cur_mbuf = m;
 			/* allocated buffers all have pkthdrs... */
-			m->m_pkthdr.rcvif = ifp;
+			m_set_rcvif(m, ifp);
 			m->m_pkthdr.len = m->m_len;
 		} else {
 			if (!recv->ec_cur_pkt)
@@ -2360,18 +2360,6 @@ esh_read_snap_ring(struct esh_softc *sc, u_int16_t consumer, int error)
 		if (control & RR_CT_PACKET_END) { /* XXX: RR2_ matches */
 			m = recv->ec_cur_pkt;
 			if (!error && !recv->ec_error) {
-				/*
-				 * We have a complete packet, send it up
-				 * the stack...
-				 */
-				ifp->if_ipackets++;
-
-				/*
-				 * Check if there's a BPF listener on this
-				 * interface.  If so, hand off the raw packet
-				 * to BPF.
-				 */
-				bpf_mtap(ifp, m);
 				if ((ifp->if_flags & IFF_RUNNING) == 0) {
 					m_freem(m);
 				} else {

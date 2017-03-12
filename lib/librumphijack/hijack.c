@@ -1,4 +1,4 @@
-/*      $NetBSD: hijack.c,v 1.119 2015/08/25 13:50:19 pooka Exp $	*/
+/*      $NetBSD: hijack.c,v 1.122 2017/02/16 08:08:01 ozaki-r Exp $	*/
 
 /*-
  * Copyright (c) 2011 Antti Kantee.  All Rights Reserved.
@@ -34,7 +34,7 @@
 #include <rump/rumpuser_port.h>
 
 #if !defined(lint)
-__RCSID("$NetBSD: hijack.c,v 1.119 2015/08/25 13:50:19 pooka Exp $");
+__RCSID("$NetBSD: hijack.c,v 1.122 2017/02/16 08:08:01 ozaki-r Exp $");
 #endif
 
 #include <sys/param.h>
@@ -89,7 +89,8 @@ __RCSID("$NetBSD: hijack.c,v 1.119 2015/08/25 13:50:19 pooka Exp $");
 enum dualcall {
 	DUALCALL_WRITE, DUALCALL_WRITEV, DUALCALL_PWRITE, DUALCALL_PWRITEV,
 	DUALCALL_IOCTL, DUALCALL_FCNTL,
-	DUALCALL_SOCKET, DUALCALL_ACCEPT, DUALCALL_BIND, DUALCALL_CONNECT,
+	DUALCALL_SOCKET, DUALCALL_ACCEPT, DUALCALL_PACCEPT,
+	DUALCALL_BIND, DUALCALL_CONNECT,
 	DUALCALL_GETPEERNAME, DUALCALL_GETSOCKNAME, DUALCALL_LISTEN,
 	DUALCALL_RECVFROM, DUALCALL_RECVMSG,
 	DUALCALL_SENDTO, DUALCALL_SENDMSG,
@@ -267,6 +268,7 @@ struct sysnames {
 } syscnames[] = {
 	{ DUALCALL_SOCKET,	S(REALSOCKET),	RSYS_NAME(SOCKET)	},
 	{ DUALCALL_ACCEPT,	"accept",	RSYS_NAME(ACCEPT)	},
+	{ DUALCALL_PACCEPT,	"paccept",	RSYS_NAME(PACCEPT)	},
 	{ DUALCALL_BIND,	"bind",		RSYS_NAME(BIND)		},
 	{ DUALCALL_CONNECT,	"connect",	RSYS_NAME(CONNECT)	},
 	{ DUALCALL_GETPEERNAME,	"getpeername",	RSYS_NAME(GETPEERNAME)	},
@@ -987,7 +989,6 @@ fd_rump2host_withdup(int fd)
 static int
 fd_host2rump(int fd)
 {
-
 	if (!isdup2d(fd))
 		return fd - hijack_fdoff;
 	else
@@ -1064,6 +1065,10 @@ dodup(int oldd, int minfd)
 			minfd -= hijack_fdoff;
 		isrump = 1;
 	} else {
+		if (minfd >= hijack_fdoff) {
+			errno = EINVAL;
+			return -1;
+		}
 		op_fcntl = GETSYSCALL(host, FCNTL);
 		isrump = 0;
 	}
@@ -1331,6 +1336,35 @@ accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 	return fd;
 }
 
+int
+paccept(int s, struct sockaddr *addr, socklen_t *addrlen,
+    const sigset_t * restrict sigmask, int flags)
+{
+	int (*op_paccept)(int, struct sockaddr *, socklen_t *,
+	    const sigset_t * restrict, int);
+	int fd;
+	bool isrump;
+
+	isrump = fd_isrump(s);
+
+	DPRINTF(("paccept -> %d", s));
+	if (isrump) {
+		op_paccept = GETSYSCALL(rump, PACCEPT);
+		s = fd_host2rump(s);
+	} else {
+		op_paccept = GETSYSCALL(host, PACCEPT);
+	}
+	fd = op_paccept(s, addr, addrlen, sigmask, flags);
+	if (fd != -1 && isrump)
+		fd = fd_rump2host(fd);
+	else
+		fd = fd_host2host(fd);
+
+	DPRINTF((" <- %d\n", fd));
+
+	return fd;
+}
+
 /*
  * ioctl() and fcntl() are varargs calls and need special treatment.
  */
@@ -1377,6 +1411,7 @@ fcntl(int fd, int cmd, ...)
 	DPRINTF(("fcntl -> %d (cmd %d)\n", fd, cmd));
 
 	switch (cmd) {
+	case F_DUPFD_CLOEXEC:	/* Ignore CLOEXEC bit for now */
 	case F_DUPFD:
 		va_start(ap, cmd);
 		minfd = va_arg(ap, int);

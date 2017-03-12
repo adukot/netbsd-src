@@ -1,4 +1,4 @@
-#       $NetBSD: Makefile,v 1.395 2016/04/09 06:21:16 riastradh Exp $
+#       $NetBSD: Makefile,v 1.403 2017/03/10 09:08:47 martin Exp $
 
 #	Makefile for section 9 (kernel function and variable) manual pages.
 
@@ -16,7 +16,7 @@ MAN=	accept_filter.9 accf_data.9 accf_http.9 \
 	cpu_startup.9 cpu_switchto.9 cpufreq.9 \
 	csf.9 ctod.9 \
 	curproc.9 \
-	delay.9 devsw_attach.9 disk.9 ddc.9 disklabel.9 dofileread.9 \
+	delay.9 devsw_attach.9 disk.9 ddc.9 disklabel.9 dksubr.9 dofileread.9 \
 	dopowerhooks.9 do_setresuid.9 doshutdownhooks.9 driver.9 \
 	edid.9 errno.9 ethersubr.9 evcnt.9 extattr.9 extent.9 \
 	fetch.9 file.9 fileassoc.9 filedesc.9 firmload.9 flash.9 \
@@ -59,8 +59,8 @@ MAN=	accept_filter.9 accf_data.9 accf_http.9 \
 	vattr.9 veriexec.9 vcons.9 vfs.9 vfs_hooks.9 vfsops.9 vfssubr.9 \
 	video.9 vme.9 \
 	vnfileops.9 vnode.9 vnodeops.9 vnsubr.9 \
-	ubc.9 usbd_status.9 usbdi.9 uvm.9 uvm_km.9 uvm_map.9 vmem.9 \
-	wapbl.9 wdc.9 workqueue.9 \
+	ubc.9 usbd_status.9 usbdi.9 uvm.9 uvm_hotplug.9 uvm_km.9 uvm_map.9 \
+	vmem.9 wapbl.9 wdc.9 workqueue.9 \
 	wscons.9 wsdisplay.9 wsfont.9 wskbd.9 wsmouse.9 \
 	xcall.9
 
@@ -258,7 +258,7 @@ MLINKS+=copy.9 copyin.9 copy.9 copyout.9 copy.9 copystr.9 \
 	copy.9 ioctl_copyin.9 copy.9 ioctl_copyout.9
 MLINKS+=cpu_dumpconf.9 cpu_dump.9 cpu_dumpconf.9 cpu_dumpsize.9 \
 	cpu_dumpconf.9 dumpsys.9
-MLINKS+=cpu_lwp_fork.9 child_return.9 cpu_lwp_fork.9 proc_trampoline.9
+MLINKS+=cpu_lwp_fork.9 child_return.9 cpu_lwp_fork.9 lwp_trampoline.9
 MLINKS+=cpu_rootconf.9 setroot.9 \
         cpu_rootconf.9 rootconf.9
 MLINKS+=cpufreq.9 cpufreq_register.9 \
@@ -429,6 +429,9 @@ MLINKS+=kcpuset.9 kcpuset_create.9 \
 MLINKS+=kmem.9 kmem_alloc.9 \
 	kmem.9 kmem_free.9 \
 	kmem.9 kmem_zalloc.9 \
+	kmem.9 kmem_intr_alloc.9 \
+	kmem.9 kmem_intr_free.9 \
+	kmem.9 kmem_intr_zalloc.9 \
 	kmem.9 kmem_asprintf.9
 MAN+=	kpreempt.9
 MLINKS+=kpreempt.9 kpreempt_disable.9 \
@@ -567,7 +570,9 @@ MLINKS+=pci.9 pci_conf_read.9 \
 	pci.9 pci_intr_string.9 \
 	pci.9 pci_intr_evcnt.9 \
 	pci.9 pci_intr_establish.9 \
+	pci.9 pci_intr_establish_xname.9 \
 	pci.9 pci_intr_disestablish.9 \
+	pci.9 pci_intr_setattr.9 \
 	pci.9 pci_get_powerstate.9 \
 	pci.9 pci_set_powerstate.9 \
 	pci.9 pci_vpd_read.9 \
@@ -643,6 +648,40 @@ MLINKS+=pfil.9 pfil_hook_get.9 \
 	pfil.9 pfil_head_unregister.9 \
 	pfil.9 pfil_head_get.9 \
 	pfil.9 pfil_run_hooks.9
+MLINKS+=pmap.9 pmap_init.9 \
+	pmap.9 pmap_virtual_space.9 \
+	pmap.9 pmap_steal_memory.9 \
+	pmap.9 pmap_kernel.9 \
+	pmap.9 pmap_create.9 \
+	pmap.9 pmap_destroy.9 \
+	pmap.9 pmap_reference.9 \
+	pmap.9 pmap_fork.9 \
+	pmap.9 pmap_resident_count.9 \
+	pmap.9 pmap_wired_count.9 \
+	pmap.9 pmap_growkernel.9 \
+	pmap.9 pmap_enter.9 \
+	pmap.9 pmap_remove.9 \
+	pmap.9 pmap_remove_all.9 \
+	pmap.9 pmap_protect.9 \
+	pmap.9 pmap_unwire.9 \
+	pmap.9 pmap_extract.9 \
+	pmap.9 pmap_kenter_pa.9 \
+	pmap.9 pmap_kremove.9 \
+	pmap.9 pmap_copy.9 \
+	pmap.9 pmap_update.9 \
+	pmap.9 pmap_activate.9 \
+	pmap.9 pmap_deactivate.9 \
+	pmap.9 pmap_zero_page.9 \
+	pmap.9 pmap_copy_page.9 \
+	pmap.9 pmap_page_protect.9 \
+	pmap.9 pmap_clear_modify.9 \
+	pmap.9 pmap_clear_reference.9 \
+	pmap.9 pmap_is_modified.9 \
+	pmap.9 pmap_is_referenced.9 \
+	pmap.9 pmap_phys_address.9 \
+	pmap.9 PMAP_MAP_POOLPAGE.9 \
+	pmap.9 PMAP_UNMAP_POOLPAGE.9 \
+	pmap.9 PMAP_PREFER.9
 MLINKS+=pmc.9 pmc_get_num_counters.9 \
 	pmc.9 pmc_get_counter_type.9 \
 	pmc.9 pmc_save_context.9 \
@@ -947,7 +986,6 @@ MLINKS+=vmem.9 vmem_alloc.9 \
 MLINKS+=vnode.9 vref.9 \
 	vnode.9 vrele.9 \
 	vnode.9 vrele_async.9 \
-	vnode.9 vget.9 \
 	vnode.9 vput.9 \
 	vnode.9 vhold.9 \
 	vnode.9 holdrele.9 \
@@ -955,7 +993,6 @@ MLINKS+=vnode.9 vref.9 \
 	vnode.9 vcache_new.9 \
 	vnode.9 vcache_rekey_enter.9 \
 	vnode.9 vcache_rekey_exit.9 \
-	vnode.9 vcache_remove.9 \
 	vnode.9 vrecycle.9 \
 	vnode.9 vgone.9 \
 	vnode.9 vgonel.9 \

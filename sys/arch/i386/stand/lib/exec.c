@@ -1,6 +1,6 @@
-/*	$NetBSD: exec.c,v 1.59 2014/04/06 19:18:00 jakllsch Exp $	 */
+/*	$NetBSD: exec.c,v 1.66 2017/02/23 12:14:53 nonaka Exp $	 */
 
-/*-
+/*
  * Copyright (c) 2008, 2009 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
@@ -88,8 +88,7 @@
  */
 
 /*
- * starts NetBSD a.out kernel
- * needs lowlevel startup from startprog.S
+ * Starts a NetBSD ELF kernel. The low level startup is done in startprog.S.
  * This is a special version of exec.c to support use of XMS.
  */
 
@@ -109,6 +108,10 @@
 #include "vbe.h"
 #ifdef SUPPORT_PS2
 #include "biosmca.h"
+#endif
+#ifdef EFIBOOT
+#include "efiboot.h"
+#undef DEBUG	/* XXX */
 #endif
 
 #define BOOT_NARGS	6
@@ -260,8 +263,8 @@ common_load_kernel(const char *file, u_long *basemem, u_long *extmem,
 {
 	int fd;
 #ifdef XMS
-	u_long		xmsmem;
-	physaddr_t	origaddr = loadaddr;
+	u_long xmsmem;
+	physaddr_t origaddr = loadaddr;
 #endif
 
 	*extmem = getextmem();
@@ -269,14 +272,14 @@ common_load_kernel(const char *file, u_long *basemem, u_long *extmem,
 
 #ifdef XMS
 	if ((getextmem1() == 0) && (xmsmem = checkxms())) {
-	        u_long kernsize;
+		u_long kernsize;
 
 		/*
 		 * With "CONSERVATIVE_MEMDETECT", extmem is 0 because
-		 *  getextmem() is getextmem1(). Without, the "smart"
-		 *  methods could fail to report all memory as well.
+		 * getextmem() is getextmem1(). Without, the "smart"
+		 * methods could fail to report all memory as well.
 		 * xmsmem is a few kB less than the actual size, but
-		 *  better than nothing.
+		 * better than nothing.
 		 */
 		if (xmsmem > *extmem)
 			*extmem = xmsmem;
@@ -294,6 +297,30 @@ common_load_kernel(const char *file, u_long *basemem, u_long *extmem,
 		loadaddr = xmsalloc(kernsize);
 		if (!loadaddr)
 			return ENOMEM;
+	}
+#endif
+#ifdef EFIBOOT
+	{
+		EFI_STATUS status;
+		EFI_PHYSICAL_ADDRESS addr;
+		UINTN kernsize;
+
+		marks[MARK_START] = loadaddr;
+		if ((fd = loadfile(file, marks, COUNT_KERNEL)) == -1)
+			return EIO;
+		close(fd);
+
+		/* Allocate temporary arena. */
+		addr = EFI_ALLOCATE_MAX_ADDRESS;
+		kernsize = marks[MARK_END] - loadaddr;
+		kernsize = EFI_SIZE_TO_PAGES(kernsize);
+		status = uefi_call_wrapper(BS->AllocatePages, 4,
+		    AllocateMaxAddress, EfiLoaderData, kernsize, &addr);
+		if (EFI_ERROR(status))
+			return ENOMEM;
+		efi_loadaddr = loadaddr = addr;
+
+		memset(marks, 0, sizeof(marks[0]) * MARK_MAX);
 	}
 #endif
 	marks[MARK_START] = loadaddr;
@@ -333,6 +360,15 @@ common_load_kernel(const char *file, u_long *basemem, u_long *extmem,
 		ppbcopy(loadaddr, origaddr, marks[MARK_END]);
 	}
 #endif
+#ifdef EFIBOOT
+	marks[MARK_START] -= loadaddr;
+	marks[MARK_ENTRY] -= loadaddr;
+	marks[MARK_DATA] -= loadaddr;
+	/* MARK_NSYM */
+	marks[MARK_SYM] -= loadaddr;
+	marks[MARK_END] -= loadaddr;
+	/* Copy the kernel to original load address later. */
+#endif
 	marks[MARK_END] = (((u_long) marks[MARK_END] + sizeof(int) - 1)) &
 	    (-sizeof(int));
 	image_end = marks[MARK_END];
@@ -343,20 +379,24 @@ common_load_kernel(const char *file, u_long *basemem, u_long *extmem,
 
 int
 exec_netbsd(const char *file, physaddr_t loadaddr, int boothowto, int floppy,
-	    void (*callback)(void))
+    void (*callback)(void))
 {
-	uint32_t	boot_argv[BOOT_NARGS];
-	u_long		marks[MARK_MAX];
+	uint32_t boot_argv[BOOT_NARGS];
+	u_long marks[MARK_MAX];
 	struct btinfo_symtab btinfo_symtab;
-	u_long		extmem;
-	u_long		basemem;
-
-#ifdef	DEBUG
-	printf("exec: file=%s loadaddr=0x%lx\n",
-	       file ? file : "NULL", loadaddr);
+	u_long extmem;
+	u_long basemem;
+	int error;
+#ifdef EFIBOOT
+	int i;
 #endif
 
-	BI_ALLOC(32); /* ??? */
+#ifdef	DEBUG
+	printf("exec: file=%s loadaddr=0x%lx\n", file ? file : "NULL",
+	    loadaddr);
+#endif
+
+	BI_ALLOC(BTINFO_MAX);
 
 	BI_ADD(&btinfo_console, BTINFO_CONSOLE, sizeof(struct btinfo_console));
 
@@ -364,8 +404,12 @@ exec_netbsd(const char *file, physaddr_t loadaddr, int boothowto, int floppy,
 
 	memset(marks, 0, sizeof(marks));
 
-	if (common_load_kernel(file, &basemem, &extmem, loadaddr, floppy, marks))
+	error = common_load_kernel(file, &basemem, &extmem, loadaddr, floppy,
+	    marks);
+	if (error) {
+		errno = error;
 		goto out;
+	}
 
 	boot_argv[0] = boothowto;
 	boot_argv[1] = 0;
@@ -405,13 +449,25 @@ exec_netbsd(const char *file, physaddr_t loadaddr, int boothowto, int floppy,
 
 	if (callback != NULL)
 		(*callback)();
+#ifdef EFIBOOT
+	/* Copy bootinfo to safe arena. */
+	for (i = 0; i < bootinfo->nentries; i++) {
+		struct btinfo_common *bi = (void *)(u_long)bootinfo->entry[i];
+		char *p = alloc(bi->len);
+		memcpy(p, bi, bi->len);
+		bootinfo->entry[i] = vtophys(p);
+	}
+
+	efi_kernel_start = marks[MARK_START];
+	efi_kernel_size = marks[MARK_END] - efi_kernel_start;
+#endif
 	startprog(marks[MARK_ENTRY], BOOT_NARGS, boot_argv,
-		  x86_trunc_page(basemem*1024));
+	    x86_trunc_page(basemem * 1024));
 	panic("exec returned");
 
 out:
 	BI_FREE();
-	bootinfo = 0;
+	bootinfo = NULL;
 	return -1;
 }
 
@@ -670,11 +726,11 @@ exec_multiboot(const char *file, char *args)
 	struct multiboot_info *mbi;
 	struct multiboot_module *mbm;
 	struct bi_modulelist_entry *bim;
-	int		i, len;
-	u_long		marks[MARK_MAX];
-	u_long		extmem;
-	u_long		basemem;
-	char		*cmdline;
+	int i, len;
+	u_long marks[MARK_MAX];
+	u_long extmem;
+	u_long basemem;
+	char *cmdline;
 
 	mbi = alloc(sizeof(struct multiboot_info));
 	mbi->mi_flags = MULTIBOOT_INFO_HAS_MEMORY;
@@ -721,7 +777,6 @@ exec_multiboot(const char *file, char *args)
 	    marks[MARK_NSYM], marks[MARK_SYM], marks[MARK_END]);
 #endif
 
-
 #if 0
 	if (btinfo_symtab.nsym) {
 		mbi->mi_flags |= MULTIBOOT_INFO_HAS_ELF_SYMS;
@@ -732,11 +787,11 @@ exec_multiboot(const char *file, char *args)
 #endif
 
 	multiboot(marks[MARK_ENTRY], vtophys(mbi),
-		  x86_trunc_page(mbi->mi_mem_lower*1024));
+	    x86_trunc_page(mbi->mi_mem_lower * 1024));
 	panic("exec returned");
 
 out:
-        dealloc(mbi, 0);
+	dealloc(mbi, 0);
 	return -1;
 }
 

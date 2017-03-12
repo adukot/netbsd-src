@@ -1,4 +1,4 @@
-/*	$NetBSD: in_pcb.h,v 1.60 2016/04/26 08:44:44 ozaki-r Exp $	*/
+/*	$NetBSD: in_pcb.h,v 1.63 2017/03/02 05:29:31 ozaki-r Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -128,6 +128,9 @@ struct inpcb {
 				INP_PKTINFO)
 
 #define	sotoinpcb(so)		((struct inpcb *)(so)->so_pcb)
+#define	inp_lock(inp)		solock((inp)->inp_socket)
+#define	inp_unlock(inp)		sounlock((inp)->inp_socket)
+#define	inp_locked(inp)		solocked((inp)->inp_socket)
 
 #ifdef _KERNEL
 void	in_losing(struct inpcb *);
@@ -160,6 +163,7 @@ void	in_setpeeraddr(struct inpcb *, struct sockaddr_in *);
 void	in_setsockaddr(struct inpcb *, struct sockaddr_in *);
 struct rtentry *
 	in_pcbrtentry(struct inpcb *);
+void	in_pcbrtentry_unref(struct rtentry *, struct inpcb *);
 #endif
 
 #endif /* !_NETINET_IN_PCB_H_ */

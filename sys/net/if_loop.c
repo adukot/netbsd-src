@@ -1,4 +1,4 @@
-/*	$NetBSD: if_loop.c,v 1.86 2016/04/28 01:37:17 knakahara Exp $	*/
+/*	$NetBSD: if_loop.c,v 1.93 2016/11/22 02:06:00 ozaki-r Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -65,7 +65,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_loop.c,v 1.86 2016/04/28 01:37:17 knakahara Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_loop.c,v 1.93 2016/11/22 02:06:00 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -83,6 +83,8 @@ __KERNEL_RCSID(0, "$NetBSD: if_loop.c,v 1.86 2016/04/28 01:37:17 knakahara Exp $
 #include <sys/errno.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
+#include <sys/device.h>
+#include <sys/module.h>
 
 #include <sys/cpu.h>
 
@@ -135,6 +137,8 @@ static void	lostart(struct ifnet *);
 static int	loop_clone_create(struct if_clone *, int);
 static int	loop_clone_destroy(struct ifnet *);
 
+static void	loop_rtrequest(int, struct rtentry *, const struct rt_addrinfo *);
+
 static struct if_clone loop_cloner =
     IF_CLONE_INITIALIZER("lo", loop_clone_create, loop_clone_destroy);
 
@@ -142,8 +146,28 @@ void
 loopattach(int n)
 {
 
+	/*
+	 * Nothing to do here, initialization is handled by the
+	 * module initialization code in loopnit() below).
+	 */
+}
+
+void
+loopinit(void)
+{
+
+	if (lo0ifp != NULL)	/* can happen in rump kernel */
+		return;
+
 	(void)loop_clone_create(&loop_cloner, 0);	/* lo0 always exists */
 	if_clone_attach(&loop_cloner);
+}
+
+static int
+loopdetach(void)
+{
+	/* no detach for now; we don't allow lo0 to be deleted */
+	return EBUSY;
 }
 
 static int
@@ -157,6 +181,7 @@ loop_clone_create(struct if_clone *ifc, int unit)
 
 	ifp->if_mtu = LOMTU;
 	ifp->if_flags = IFF_LOOPBACK | IFF_MULTICAST | IFF_RUNNING;
+	ifp->if_extflags = IFEF_OUTPUT_MPSAFE;
 	ifp->if_ioctl = loioctl;
 	ifp->if_output = looutput;
 #ifdef ALTQ
@@ -211,23 +236,24 @@ looutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	struct ifqueue *ifq = NULL;
 	int s, isr = -1;
 	int csum_flags;
+	int error = 0;
 	size_t pktlen;
 
 	MCLAIM(m, ifp->if_mowner);
-#ifndef NET_MPSAFE
-	KASSERT(KERNEL_LOCKED_P());
-#endif
+
+	KERNEL_LOCK(1, NULL);
 
 	if ((m->m_flags & M_PKTHDR) == 0)
 		panic("looutput: no header mbuf");
 	if (ifp->if_flags & IFF_LOOPBACK)
 		bpf_mtap_af(ifp, dst->sa_family, m);
-	m->m_pkthdr.rcvif = ifp;
+	m_set_rcvif(m, ifp);
 
 	if (rt && rt->rt_flags & (RTF_REJECT|RTF_BLACKHOLE)) {
 		m_freem(m);
-		return (rt->rt_flags & RTF_BLACKHOLE ? 0 :
+		error = (rt->rt_flags & RTF_BLACKHOLE ? 0 :
 			rt->rt_flags & RTF_HOST ? EHOSTUNREACH : ENETUNREACH);
+		goto out;
 	}
 
 	pktlen = m->m_pkthdr.len;
@@ -241,8 +267,6 @@ looutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	 */
 	if ((ALTQ_IS_ENABLED(&ifp->if_snd) || TBR_IS_ENABLED(&ifp->if_snd)) &&
 	    ifp->if_start == lostart) {
-		int error;
-
 		/*
 		 * If the queueing discipline needs packet classification,
 		 * do it before prepending the link headers.
@@ -250,12 +274,14 @@ looutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 		IFQ_CLASSIFY(&ifp->if_snd, m, dst->sa_family);
 
 		M_PREPEND(m, sizeof(uint32_t), M_DONTWAIT);
-		if (m == NULL)
-			return (ENOBUFS);
+		if (m == NULL) {
+			error = ENOBUFS;
+			goto out;
+		}
 		*(mtod(m, uint32_t *)) = dst->sa_family;
 
-		error = ifp->if_transmit(ifp, m);
-		return (error);
+		error = if_transmit_lock(ifp, m);
+		goto out;
 	}
 #endif /* ALTQ */
 
@@ -310,12 +336,13 @@ looutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 		printf("%s: can't handle af%d\n", ifp->if_xname,
 		    dst->sa_family);
 		m_freem(m);
-		return (EAFNOSUPPORT);
+		error = EAFNOSUPPORT;
+		goto out;
 	}
 
 	s = splnet();
 	if (__predict_true(pktq)) {
-		int error = 0;
+		error = 0;
 
 		if (__predict_true(pktq_enqueue(pktq, m, 0))) {
 			ifp->if_ipackets++;
@@ -325,20 +352,23 @@ looutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 			error = ENOBUFS;
 		}
 		splx(s);
-		return error;
+		goto out;
 	}
 	if (IF_QFULL(ifq)) {
 		IF_DROP(ifq);
 		m_freem(m);
 		splx(s);
-		return (ENOBUFS);
+		error = ENOBUFS;
+		goto out;
 	}
 	IF_ENQUEUE(ifq, m);
 	schednetisr(isr);
 	ifp->if_ipackets++;
 	ifp->if_ibytes += m->m_pkthdr.len;
 	splx(s);
-	return (0);
+out:
+	KERNEL_UNLOCK_ONE(NULL);
+	return error;
 }
 
 #ifdef ALTQ
@@ -413,8 +443,8 @@ lostart(struct ifnet *ifp)
 #endif /* ALTQ */
 
 /* ARGSUSED */
-void
-lortrequest(int cmd, struct rtentry *rt,
+static void
+loop_rtrequest(int cmd, struct rtentry *rt,
     const struct rt_addrinfo *info)
 {
 
@@ -439,7 +469,7 @@ loioctl(struct ifnet *ifp, u_long cmd, void *data)
 		ifp->if_flags |= IFF_UP;
 		ifa = (struct ifaddr *)data;
 		if (ifa != NULL)
-			ifa->ifa_rtrequest = lortrequest;
+			ifa->ifa_rtrequest = loop_rtrequest;
 		/*
 		 * Everything else is done at a higher level.
 		 */
@@ -481,3 +511,10 @@ loioctl(struct ifnet *ifp, u_long cmd, void *data)
 	}
 	return (error);
 }
+
+/*
+ * Module infrastructure
+ */
+#include "if_module.h"
+
+IF_MODULE(MODULE_CLASS_DRIVER, loop, "")

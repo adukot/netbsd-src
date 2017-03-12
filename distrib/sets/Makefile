@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.100 2015/12/19 22:29:23 christos Exp $
+#	$NetBSD: Makefile,v 1.103 2016/08/16 01:05:19 mrg Exp $
 
 # Experimental RCS METALOG versioning
 # (Needs host's rcs(1) commands)
@@ -66,6 +66,9 @@ MAKESRCTARS_FLAGS+= 	-q
 .if !defined(MAKETARSETS)
 MAKETARSETS!= ${SETSCMD} ./makeflist -l ${MAKEFLIST_FLAGS}
 .endif
+
+print_have_xorg_server_ver: .PHONY
+	@echo ${HAVE_XORG_SERVER_VER}
 
 print_have_gcc: .PHONY
 	@echo ${HAVE_GCC}

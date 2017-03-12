@@ -1,4 +1,4 @@
-/*	$NetBSD: if_ieee1394subr.c,v 1.55 2016/04/28 01:37:17 knakahara Exp $	*/
+/*	$NetBSD: if_ieee1394subr.c,v 1.59 2017/02/14 03:05:06 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 2000 The NetBSD Foundation, Inc.
@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_ieee1394subr.c,v 1.55 2016/04/28 01:37:17 knakahara Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_ieee1394subr.c,v 1.59 2017/02/14 03:05:06 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -154,10 +154,21 @@ ieee1394_output(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
 #endif /* INET */
 #ifdef INET6
 	case AF_INET6:
-		if (unicast && (!nd6_storelladdr(ifp, rt, m0, dst,
-		    hwdst->iha_uid, IEEE1394_ADDR_LEN))) {
-			/* something bad happened */
-			return 0;
+#if 0
+		/*
+		 * XXX This code was in nd6_storelladdr, which was replaced with
+		 * nd6_resolve, but it never be used because nd6_storelladdr was
+		 * called only if unicast. Should it be enabled?
+		 */
+		if (m0->m_flags & M_BCAST)
+			memcpy(hwdst->iha_uid, ifp->if_broadcastaddr,
+			    MIN(IEEE1394_ADDR_LEN, ifp->if_addrlen));
+#endif
+		if (unicast) {
+			error = nd6_resolve(ifp, rt, m0, dst, hwdst->iha_uid,
+			    IEEE1394_ADDR_LEN);
+			if (error != 0)
+				return error == EWOULDBLOCK ? 0 : error;
 		}
 		etype = htons(ETHERTYPE_IPV6);
 		break;
@@ -221,7 +232,7 @@ ieee1394_output(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
 	while ((m = m0) != NULL) {
 		m0 = m->m_nextpkt;
 
-		error = (*ifp->if_transmit)(ifp, m);
+		error = if_transmit_lock(ifp, m);
 		if (error) {
 			/* mbuf is already freed */
 			goto bad;
@@ -288,8 +299,10 @@ ieee1394_fragment(struct ifnet *ifp, struct mbuf *m0, int maxsize,
 		ifh->ifh_dgl = htons(ic->ic_dgl);
 		ifh->ifh_reserved = 0;
 		m->m_next = m_copy(m0, sizeof(*ifh) + off, fraglen);
-		if (m->m_next == NULL)
+		if (m->m_next == NULL) {
+			m_freem(m);
 			goto bad;
+		}
 		m->m_pkthdr.len = sizeof(*ifh) + fraglen;
 		off += fraglen;
 		*mp = m;
@@ -316,7 +329,6 @@ ieee1394_input(struct ifnet *ifp, struct mbuf *m, uint16_t src)
 	pktqueue_t *pktq = NULL;
 	struct ifqueue *inq;
 	uint16_t etype;
-	int s;
 	struct ieee1394_unfraghdr *iuh;
 	int isr = 0;
 
@@ -393,15 +405,16 @@ ieee1394_input(struct ifnet *ifp, struct mbuf *m, uint16_t src)
 		return;
 	}
 
-	s = splnet();
+	IFQ_LOCK(inq);
 	if (IF_QFULL(inq)) {
 		IF_DROP(inq);
+		IFQ_UNLOCK(inq);
 		m_freem(m);
 	} else {
 		IF_ENQUEUE(inq, m);
+		IFQ_UNLOCK(inq);
 		schednetisr(isr);
 	}
-	splx(s);
 }
 
 static struct mbuf *

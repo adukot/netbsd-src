@@ -1,4 +1,4 @@
-/*	$NetBSD: kern_mutex.c,v 1.62 2015/05/25 21:02:37 prlw1 Exp $	*/
+/*	$NetBSD: kern_mutex.c,v 1.64 2017/01/26 04:11:56 christos Exp $	*/
 
 /*-
  * Copyright (c) 2002, 2006, 2007, 2008 The NetBSD Foundation, Inc.
@@ -40,7 +40,7 @@
 #define	__MUTEX_PRIVATE
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: kern_mutex.c,v 1.62 2015/05/25 21:02:37 prlw1 Exp $");
+__KERNEL_RCSID(0, "$NetBSD: kern_mutex.c,v 1.64 2017/01/26 04:11:56 christos Exp $");
 
 #include <sys/param.h>
 #include <sys/atomic.h>
@@ -82,7 +82,7 @@ __KERNEL_RCSID(0, "$NetBSD: kern_mutex.c,v 1.62 2015/05/25 21:02:37 prlw1 Exp $"
     LOCKDEBUG_UNLOCKED(MUTEX_DEBUG_P(mtx), (mtx),		\
         (uintptr_t)__builtin_return_address(0), 0)
 #define	MUTEX_ABORT(mtx, msg)					\
-    mutex_abort(mtx, __func__, msg)
+    mutex_abort(__func__, __LINE__, mtx, msg)
 
 #if defined(LOCKDEBUG)
 
@@ -261,8 +261,8 @@ __strong_alias(mutex_spin_enter,mutex_vector_enter);
 __strong_alias(mutex_spin_exit,mutex_vector_exit);
 #endif
 
-static void		mutex_abort(kmutex_t *, const char *, const char *);
-static void		mutex_dump(volatile void *);
+static void	mutex_abort(const char *, size_t, kmutex_t *, const char *);
+static void	mutex_dump(volatile void *);
 
 lockops_t mutex_spin_lockops = {
 	"Mutex",
@@ -307,11 +307,11 @@ mutex_dump(volatile void *cookie)
  *	we ask the compiler to not inline it.
  */
 void __noinline
-mutex_abort(kmutex_t *mtx, const char *func, const char *msg)
+mutex_abort(const char *func, size_t line, kmutex_t *mtx, const char *msg)
 {
 
-	LOCKDEBUG_ABORT(mtx, (MUTEX_SPIN_P(mtx) ?
-	    &mutex_spin_lockops : &mutex_adaptive_lockops), func, msg);
+	LOCKDEBUG_ABORT(func, line, mtx, (MUTEX_SPIN_P(mtx) ?
+	    &mutex_spin_lockops : &mutex_adaptive_lockops), msg);
 }
 
 /*
@@ -479,7 +479,7 @@ mutex_vector_enter(kmutex_t *mtx)
 			if (panicstr != NULL)
 				break;
 			while (MUTEX_SPINBIT_LOCKED_P(mtx)) {
-				SPINLOCK_BACKOFF(count); 
+				SPINLOCK_BACKOFF(count);
 #ifdef LOCKDEBUG
 				if (SPINLOCK_SPINOUT(spins))
 					MUTEX_ABORT(mtx, "spinout");
@@ -904,7 +904,7 @@ mutex_spin_retry(kmutex_t *mtx)
 		if (panicstr != NULL)
 			break;
 		while (MUTEX_SPINBIT_LOCKED_P(mtx)) {
-			SPINLOCK_BACKOFF(count); 
+			SPINLOCK_BACKOFF(count);
 #ifdef LOCKDEBUG
 			if (SPINLOCK_SPINOUT(spins))
 				MUTEX_ABORT(mtx, "spinout");

@@ -1,4 +1,4 @@
-/*	$NetBSD: umac.c,v 1.9 2015/04/03 23:58:19 christos Exp $	*/
+/*	$NetBSD: umac.c,v 1.12 2016/12/25 00:07:47 christos Exp $	*/
 /* $OpenBSD: umac.c,v 1.11 2014/07/22 07:13:42 guenther Exp $ */
 /* -----------------------------------------------------------------------
  * 
@@ -67,7 +67,7 @@
 /* ---------------------------------------------------------------------- */
 
 #include "includes.h"
-__RCSID("$NetBSD: umac.c,v 1.9 2015/04/03 23:58:19 christos Exp $");
+__RCSID("$NetBSD: umac.c,v 1.12 2016/12/25 00:07:47 christos Exp $");
 #include <sys/types.h>
 #include <sys/endian.h>
 #include <string.h>
@@ -578,13 +578,13 @@ static void endian_convert(void *buf, UWORD bpw, UINT32 num_bytes)
             p++;
         } while (--iters);
     } else if (bpw == 8) {
-        UINT32 *p = (UINT32 *)buf;
-        UINT32 t;
+        UINT64 *p = (UINT64 *)buf;
+        UINT64 th;
+        UINT64 t;
         do {
-            t = LOAD_UINT32_REVERSED(p+1);
-            p[1] = LOAD_UINT32_REVERSED(p);
-            p[0] = t;
-            p += 2;
+            t = LOAD_UINT32_REVERSED((UINT32 *)p+1);
+            th = LOAD_UINT32_REVERSED((UINT32 *)p);
+            *p++ = t | (th << 32);
         } while (--iters);
     }
 }

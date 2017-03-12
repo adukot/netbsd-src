@@ -1,4 +1,4 @@
-/*	$NetBSD: ntpq.c,v 1.15 2016/05/01 23:32:01 christos Exp $	*/
+/*	$NetBSD: ntpq.c,v 1.17 2016/11/22 03:09:31 christos Exp $	*/
 
 /*
  * ntpq - query an NTP server using mode 6 commands
@@ -36,6 +36,7 @@
 #include "openssl/evp.h"
 #include "openssl/objects.h"
 #include "openssl/err.h"
+#include "libssl_compat.h"
 #endif
 #include <ssl_applink.c>
 
@@ -1065,7 +1066,7 @@ getresponse(
 
 		if (n < shouldbesize) {
 			printf("Response packet claims %u octets payload, above %ld received\n",
-			       count, (long)n - CTL_HEADER_LEN);
+			       count, (long)(n - CTL_HEADER_LEN));
 			return ERR_INCOMPLETE;
 		}
 
@@ -1198,7 +1199,10 @@ getresponse(
 		 * If we've seen the last fragment, look for holes in the sequence.
 		 * If there aren't any, we're done.
 		 */
-	  maybe_final:
+#if !defined(SYS_WINNT) && defined(EINTR)
+		maybe_final:
+#endif
+
 		if (seenlastfrag && offsets[0] == 0) {
 			for (f = 1; f < numfrags; f++)
 				if (offsets[f-1] + counts[f-1] !=
@@ -3581,7 +3585,7 @@ static void list_md_fn(const EVP_MD *m, const char *from, const char *to, void *
     size_t len, n;
     const char *name, *cp, **seen;
     struct hstate *hstate = arg;
-    EVP_MD_CTX ctx;
+    EVP_MD_CTX *ctx;
     u_int digest_len;
     u_char digest[EVP_MAX_MD_SIZE];
 
@@ -3612,8 +3616,10 @@ static void list_md_fn(const EVP_MD *m, const char *from, const char *to, void *
      * Keep this consistent with keytype_from_text() in ssl_init.c.
      */
 
-    EVP_DigestInit(&ctx, EVP_get_digestbyname(name));
-    EVP_DigestFinal(&ctx, digest, &digest_len);
+    ctx = EVP_MD_CTX_new();
+    EVP_DigestInit(ctx, EVP_get_digestbyname(name));
+    EVP_DigestFinal(ctx, digest, &digest_len);
+    EVP_MD_CTX_free(ctx);
     if (digest_len > (MAX_MAC_LEN - sizeof(keyid_t)))
         return;
 

@@ -1,4 +1,4 @@
-/*	$NetBSD: pci_machdep.c,v 1.73 2015/11/26 16:27:05 jakllsch Exp $	*/
+/*	$NetBSD: pci_machdep.c,v 1.78 2017/02/25 01:13:50 nonaka Exp $	*/
 
 /*-
  * Copyright (c) 1997, 1998 The NetBSD Foundation, Inc.
@@ -73,7 +73,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pci_machdep.c,v 1.73 2015/11/26 16:27:05 jakllsch Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pci_machdep.c,v 1.78 2017/02/25 01:13:50 nonaka Exp $");
 
 #include <sys/types.h>
 #include <sys/param.h>
@@ -483,25 +483,26 @@ pci_attach_hook(device_t parent, device_t self, struct pcibus_attach_args *pba)
 	    PCI_SUBCLASS(class) != PCI_SUBCLASS_BRIDGE_HOST)
 		return;
 
-	if (pci_has_msi_quirk(id, PCI_QUIRK_DISABLE_MSI)) {
+	/* VMware and KVM use old chipset, but they can use MSI/MSI-X */
+	if ((cpu_feature[1] & CPUID2_RAZ)
+	    && (pci_has_msi_quirk(id, PCI_QUIRK_ENABLE_MSI_VM))) {
+			pba->pba_flags |= PCI_FLAGS_MSI_OKAY;
+			pba->pba_flags |= PCI_FLAGS_MSIX_OKAY;
+	} else if (pci_has_msi_quirk(id, PCI_QUIRK_DISABLE_MSI)) {
 		pba->pba_flags &= ~PCI_FLAGS_MSI_OKAY;
 		pba->pba_flags &= ~PCI_FLAGS_MSIX_OKAY;
-		aprint_verbose_dev(self, "This pci host supports neither MSI nor MSI-X.\n");
+		aprint_verbose("\n");
+		aprint_verbose_dev(self,
+		    "This pci host supports neither MSI nor MSI-X.");
 	} else if (pci_has_msi_quirk(id, PCI_QUIRK_DISABLE_MSIX)) {
 		pba->pba_flags |= PCI_FLAGS_MSI_OKAY;
 		pba->pba_flags &= ~PCI_FLAGS_MSIX_OKAY;
-		aprint_verbose_dev(self, "This pci host does not support MSI-X.\n");
+		aprint_verbose("\n");
+		aprint_verbose_dev(self,
+		    "This pci host does not support MSI-X.");
 	} else {
 		pba->pba_flags |= PCI_FLAGS_MSI_OKAY;
 		pba->pba_flags |= PCI_FLAGS_MSIX_OKAY;
-	}
-
-	/* VMware and KVM use old chipset, but they can use MSI/MSI-X */
-	if (cpu_feature[1] & CPUID2_RAZ) {
-		if (pci_has_msi_quirk(id, PCI_QUIRK_ENABLE_MSI_VM)) {
-			pba->pba_flags |= PCI_FLAGS_MSI_OKAY;
-			pba->pba_flags |= PCI_FLAGS_MSIX_OKAY;
-		}
 	}
 
 	/*
@@ -512,10 +513,12 @@ pci_attach_hook(device_t parent, device_t self, struct pcibus_attach_args *pba)
 	 * If that device has a HyperTransport capability, bus 0 must
 	 * be a HyperTransport bus and we disable MSI.
 	 */
-	tag = pci_make_tag(pc, 0, 24, 0);
-	if (pci_get_capability(pc, tag, PCI_CAP_LDT, NULL, NULL)) {
-		pba->pba_flags &= ~PCI_FLAGS_MSI_OKAY;
-		pba->pba_flags &= ~PCI_FLAGS_MSIX_OKAY;
+	if (24 < pci_bus_maxdevs(pc, 0)) {
+		tag = pci_make_tag(pc, 0, 24, 0);
+		if (pci_get_capability(pc, tag, PCI_CAP_LDT, NULL, NULL)) {
+			pba->pba_flags &= ~PCI_FLAGS_MSI_OKAY;
+			pba->pba_flags &= ~PCI_FLAGS_MSIX_OKAY;
+		}
 	}
 #endif /* __HAVE_PCI_MSI_MSIX */
 }
@@ -1092,6 +1095,8 @@ device_pci_register(device_t dev, void *aux)
 				if (ri->ri_bits != NULL) {
 					prop_dictionary_set_uint64(dict,
 					    "virtual_address",
+					    ri->ri_hwbits != NULL ?
+					    (vaddr_t)ri->ri_hworigbits :
 					    (vaddr_t)ri->ri_origbits);
 				}
 #endif
@@ -1118,6 +1123,11 @@ device_pci_register(device_t dev, void *aux)
 
 #if NWSDISPLAY > 0 && NGENFB > 0
 				if (device_is_a(dev, "genfb")) {
+					prop_dictionary_set_bool(dict,
+					    "enable_shadowfb",
+					    ri->ri_hwbits != NULL ?
+					      true : false);
+
 					x86_genfb_set_console_dev(dev);
 #ifdef DDB
 					db_trap_callback =

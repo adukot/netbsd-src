@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.16 2016/02/02 19:15:40 christos Exp $
+#	$NetBSD: Makefile,v 1.19 2016/11/01 14:02:15 christos Exp $
 
 NOLINKLIB=	# defined
 NOLINT=		# defined
@@ -27,7 +27,7 @@ BINDIR=/usr/bin
 .if exists(${DEFS_MK})
 .include "${DEFS_MK}"
 
-SHLIB_MAJOR=	14
+SHLIB_MAJOR=	15
 SHLIB_MINOR=	0
 
 LIBDPLIBS+=	z	${.CURDIR}/../../../../../lib/libz
@@ -42,6 +42,7 @@ CPPFLAGS.elf.c +=	-O0
 .endif
 
 COPTS.pei-x86_64.c += -Wno-stack-protector
+COPTS.elfxx-mips.c += -Wno-stack-protector
 
 GSRCS=		${G_libbfd_la_OBJECTS:libbfd.lo=lib_bfd.lo} \
 		${G_libbfd_la_DEPENDENCIES:M*.lo}
@@ -49,9 +50,11 @@ SRCS=		${GSRCS:.lo=.c}
 
 DPSRCS+=	elf32-target.h elf64-target.h targmatch.h \
 		elf32-ia64.c elf64-ia64.c peigen.c pepigen.c \
+		elf32-riscv.c elf64-riscv.c elf32-aarch64.c elf64-aarch64.c \
 		pex64igen.c
 CLEANFILES+=	elf32-target.h elf64-target.h targmatch.h \
 		elf32-ia64.c elf64-ia64.c peigen.c pepigen.c \
+		elf32-riscv.c elf64-riscv.c elf32-aarch64.c elf64-aarch64.c \
 		pex64igen.c
 
 TEXINFO=	bfd.texinfo
@@ -93,6 +96,14 @@ elf32-riscv.c: elfnn-riscv.c
 	${TOOL_SED} -e s/NN/32/g < $> > $@
 
 elf64-riscv.c: elfnn-riscv.c
+	${_MKTARGET_CREATE}
+	${TOOL_SED} -e s/NN/64/g < $> > $@
+
+elf32-aarch64.c: elfnn-aarch64.c
+	${_MKTARGET_CREATE}
+	${TOOL_SED} -e s/NN/32/g < $> > $@
+
+elf64-aarch64.c: elfnn-aarch64.c
 	${_MKTARGET_CREATE}
 	${TOOL_SED} -e s/NN/64/g < $> > $@
 

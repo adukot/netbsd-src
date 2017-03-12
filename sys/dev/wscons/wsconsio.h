@@ -1,4 +1,4 @@
-/* $NetBSD: wsconsio.h,v 1.114 2015/07/19 13:22:42 mlelstv Exp $ */
+/* $NetBSD: wsconsio.h,v 1.116 2017/01/10 20:08:52 christos Exp $ */
 
 /*
  * Copyright (c) 1996, 1997 Christopher G. Demetriou.  All rights reserved.
@@ -46,6 +46,7 @@
 
 #include <sys/types.h>
 #include <sys/ioccom.h>
+#include <sys/time.h>
 #include <dev/wscons/wsksymvar.h>
 
 
@@ -338,6 +339,7 @@ struct wsmouse_repeat {
 #define	WSDISPLAY_TYPE_MGX	61	/* SSB 4096V-MGX */
 #define	WSDISPLAY_TYPE_MESON	62	/* Amlogic Meson ARM SoC */
 #define	WSDISPLAY_TYPE_TEGRA	63	/* NVIDIA Tegra ARM SoC */
+#define	WSDISPLAY_TYPE_PLATINUM	64	/* Apple onboard video 'platinum' */
 
 /* Basic display information.  Not applicable to all display types. */
 struct wsdisplay_fbinfo {

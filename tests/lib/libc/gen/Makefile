@@ -1,10 +1,10 @@
-# $NetBSD: Makefile,v 1.49 2015/12/22 14:25:58 christos Exp $
+# $NetBSD: Makefile,v 1.51 2017/02/09 03:27:07 christos Exp $
 
 .include <bsd.own.mk>
 
 TESTSDIR=	${TESTSBASE}/lib/libc/gen
 
-TESTS_SUBDIRS=	execve
+TESTS_SUBDIRS+=	execve
 TESTS_SUBDIRS+=	posix_spawn
 
 TESTS_C+=	t_alarm

@@ -1,4 +1,4 @@
-/*	$NetBSD: linux_machdep.c,v 1.161 2015/12/08 21:27:50 christos Exp $	*/
+/*	$NetBSD: linux_machdep.c,v 1.163 2017/02/05 10:42:22 maxv Exp $	*/
 
 /*-
  * Copyright (c) 1995, 2000, 2008, 2009 The NetBSD Foundation, Inc.
@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: linux_machdep.c,v 1.161 2015/12/08 21:27:50 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: linux_machdep.c,v 1.163 2017/02/05 10:42:22 maxv Exp $");
 
 #if defined(_KERNEL_OPT)
 #include "opt_vm86.h"
@@ -107,8 +107,9 @@ __KERNEL_RCSID(0, "$NetBSD: linux_machdep.c,v 1.161 2015/12/08 21:27:50 christos
 #define DPRINTF(a)
 #endif
 
-static struct biosdisk_info *fd2biosinfo(struct proc *, struct file *);
 extern struct disklist *x86_alldisks;
+
+static struct biosdisk_info *fd2biosinfo(struct proc *, struct file *);
 static void linux_save_ucontext(struct lwp *, struct trapframe *,
     const sigset_t *, struct sigaltstack *, struct linux_ucontext *);
 static void linux_save_sigcontext(struct lwp *, struct trapframe *,
@@ -534,7 +535,7 @@ linux_read_ldt(struct lwp *l, const struct linux_sys_modify_ldt_args *uap,
 	error = x86_get_ldt1(l, &gl, ldt_buf);
 	/* NB gl.num might have changed */
 	if (error == 0) {
-		*retval = gl.num * sizeof *ldt;
+		*retval = gl.num * sizeof(*ldtstore);
 		error = copyout(ldt_buf, SCARG(uap, ptr),
 		    gl.num * sizeof *ldt_buf);
 	}
@@ -761,6 +762,8 @@ fd2biosinfo(struct proc *p, struct file *fp)
 	struct nativedisk_info *nip;
 	struct disklist *dl = x86_alldisks;
 
+	if (dl == NULL)
+		return NULL;
 	if (fp->f_type != DTYPE_VNODE)
 		return NULL;
 	vp = (struct vnode *)fp->f_data;

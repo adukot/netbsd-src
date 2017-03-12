@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.inc,v 1.22 2014/08/18 04:40:51 christos Exp $
+#	$NetBSD: Makefile.inc,v 1.25 2017/01/28 23:34:14 christos Exp $
 
 .if !defined(BIND9_MAKEFILE_INC)
 BIND9_MAKEFILE_INC=yes
@@ -29,7 +29,8 @@ IDIST=		${NETBSDSRCDIR}/external/bsd/bind/dist
 BIND_SRCDIR=	${NETBSDSRCDIR}/external/bsd/bind
 BIND_HTMLDIR=	/usr/share/doc/reference/ref8/bind9
 
-.include "${IDIST}/version"
+VERSIONFILE=${IDIST}/version
+.include "${VERSIONFILE}"
 
 VERSION=${MAJORVER}.${MINORVER}.${PATCHVER}${RELEASETYPE}${RELEASEVER}
 SYSCONFDIR=/etc
@@ -90,16 +91,16 @@ LIBDPLIBS+=      pthread  ${NETBSDSRCDIR}/lib/libpthread
 .endif
 
 .if ${NAMED_USE_OPENSSL} == "yes"
-CPPFLAGS+=-DOPENSSL -DUSE_ISC_SPNEGO
+CPPFLAGS+=-DOPENSSL -DUSE_ISC_SPNEGO -DHAVE_OPENSSL_GOST -DAES_SIT
 .if ${MKKERBEROS} != "no"
 CPPFLAGS+=-DGSSAPI
 .endif
 .if ${MKKERBEROS} != "no"
 .if !defined (LIB) || empty(LIB)
 LDADD+= -lgssapi -lheimntlm -lkrb5 -lhx509 -lheimbase \
-	-lcom_err  -lroken -lasn1 -lwind
+	-lcom_err  -lroken -lasn1 -lwind -lsqlite3
 DPADD+= ${LIBGSSAPI} ${LIBKRB5} ${LIBHX509} ${LIBHEIMNTLM} ${LIBHEIMBASE} \
-	${LIBCOM_ERR} ${LIBROKEN} ${LIBASN1} ${LIBWIND}
+	${LIBCOM_ERR} ${LIBROKEN} ${LIBASN1} ${LIBWIND} ${LIBSQLITE3}
 .else
 .for L in gssapi krb5 hx509 heimntlm heimbase com_err roken asn1 wind
 LIBDPLIBS+=	$L ${NETBSDSRCDIR}/crypto/external/bsd/heimdal/lib/lib$L

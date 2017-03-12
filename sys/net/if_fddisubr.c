@@ -1,4 +1,4 @@
-/*	$NetBSD: if_fddisubr.c,v 1.99 2016/04/28 00:16:56 ozaki-r Exp $	*/
+/*	$NetBSD: if_fddisubr.c,v 1.105 2017/02/14 03:05:06 ozaki-r Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -96,7 +96,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_fddisubr.c,v 1.99 2016/04/28 00:16:56 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_fddisubr.c,v 1.105 2017/02/14 03:05:06 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_gateway.h"
@@ -111,8 +111,6 @@ __KERNEL_RCSID(0, "$NetBSD: if_fddisubr.c,v 1.99 2016/04/28 00:16:56 ozaki-r Exp
 #include <sys/kernel.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
-#include <sys/protosw.h>
-#include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <sys/errno.h>
 #include <sys/syslog.h>
@@ -203,10 +201,16 @@ fddi_output(struct ifnet *ifp0, struct mbuf *m0, const struct sockaddr *dst,
 		struct ifaddr *ifa;
 
 		/* loop back if this is going to the carp interface */
-		if (dst != NULL && ifp0->if_link_state == LINK_STATE_UP &&
-		    (ifa = ifa_ifwithaddr(dst)) != NULL &&
-		    ifa->ifa_ifp == ifp0)
-			return (looutput(ifp0, m, dst, rt));
+		if (dst != NULL && ifp0->if_link_state == LINK_STATE_UP) {
+			int s = pserialize_read_enter();
+			ifa = ifa_ifwithaddr(dst);
+			if (ifa != NULL &&
+			    ifa->ifa_ifp == ifp0) {
+				pserialize_read_exit(s);
+				return (looutput(ifp0, m, dst, rt));
+			}
+			pserialize_read_exit(s);
+		}
 
 		ifp = ifp->if_carpdev;
 		/* ac = (struct arpcom *)ifp; */
@@ -246,9 +250,18 @@ fddi_output(struct ifnet *ifp0, struct mbuf *m0, const struct sockaddr *dst,
 #endif
 #ifdef INET6
 	case AF_INET6:
-		if (!nd6_storelladdr(ifp, rt, m, dst, edst, sizeof(edst))){
-			/* something bad happened */
-			return (0);
+		if (m->m_flags & M_BCAST)
+			(void)memcpy(edst, fddibroadcastaddr, sizeof(edst));
+		else if (m->m_flags & M_MCAST) {
+			ETHER_MAP_IPV6_MULTICAST(&satocsin6(dst)->sin6_addr,
+			    edst);
+		} else {
+			error = nd6_resolve(ifp, rt, m, dst, edst,
+			    sizeof(edst));
+			if (error != 0) {
+				error = error == EWOULDBLOCK ? 0 : error;
+				return error;
+			}
 		}
 		etype = htons(ETHERTYPE_IPV6);
 		break;
@@ -257,11 +270,13 @@ fddi_output(struct ifnet *ifp0, struct mbuf *m0, const struct sockaddr *dst,
 	case AF_ARP: {
 		struct arphdr *ah = mtod(m, struct arphdr *);
 		if (m->m_flags & M_BCAST)
-                	memcpy(edst, etherbroadcastaddr, sizeof(edst));
+			memcpy(edst, etherbroadcastaddr, sizeof(edst));
 		else {
 			void *tha = ar_tha(ah);
-			if (tha == NULL)
+			if (tha == NULL) {
+				m_freem(m);
 				return 0;
+			}
 			memcpy(edst, tha, sizeof(edst));
 		}
 
@@ -285,6 +300,9 @@ fddi_output(struct ifnet *ifp0, struct mbuf *m0, const struct sockaddr *dst,
 #ifdef NETATALK
 	case AF_APPLETALK: {
 		struct at_ifaddr *aa;
+		struct ifaddr *ifa;
+		int s;
+
 		if (!aarpresolve(ifp, m, (const struct sockaddr_at *)dst, edst)) {
 #ifdef NETATALKDEBUG
 			printf("aarpresolv: failed\n");
@@ -294,9 +312,13 @@ fddi_output(struct ifnet *ifp0, struct mbuf *m0, const struct sockaddr *dst,
 		/*
 		 * ifaddr is the first thing in at_ifaddr
 		 */
-		if ((aa = (struct at_ifaddr *)at_ifawithnet(
-		    (const struct sockaddr_at *)dst, ifp)) == NULL)
+		s = pserialize_read_enter();
+		ifa = at_ifawithnet((const struct sockaddr_at *)dst, ifp);
+		if (ifa == NULL) {
+			pserialize_read_exit(s);
 			goto bad;
+		}
+		aa = (struct at_ifaddr *)ifa;
 
 		/*
 		 * In the phase 2 case, we need to prepend an mbuf for the llc
@@ -320,6 +342,7 @@ fddi_output(struct ifnet *ifp0, struct mbuf *m0, const struct sockaddr *dst,
 		} else {
 			etype = htons(ETHERTYPE_ATALK);
 		}
+		pserialize_read_exit(s);
 		break;
 	}
 #endif /* NETATALK */
@@ -421,7 +444,6 @@ fddi_input(struct ifnet *ifp, struct mbuf *m)
 #if defined(NETATALK)
 	struct ifqueue *inq = NULL;
 	int isr = 0;
-	int s;
 #endif
 
 	struct llc *l;
@@ -569,18 +591,20 @@ fddi_input(struct ifnet *ifp, struct mbuf *m)
 	}
 #endif
 #if defined(NETATALK)
-	if (!inq) {
+	if (inq == NULL) {
 		m_freem(m);
+		return;
 	}
-	s = splnet();
+	IFQ_LOCK(inq);
 	if (IF_QFULL(inq)) {
 		IF_DROP(inq);
+		IFQ_UNLOCK(inq);
 		m_freem(m);
 	} else {
 		IF_ENQUEUE(inq, m);
+		IFQ_UNLOCK(inq);
 		schednetisr(isr);
 	}
-	splx(s);
 #endif
 }
 

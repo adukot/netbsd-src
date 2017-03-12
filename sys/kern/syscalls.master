@@ -1,4 +1,4 @@
-	$NetBSD: syscalls.master,v 1.284 2016/04/23 23:08:26 christos Exp $
+	$NetBSD: syscalls.master,v 1.286 2016/11/02 00:11:59 pgoyette Exp $
 
 ;	@(#)syscalls.master	8.2 (Berkeley) 1/13/94
 
@@ -100,11 +100,12 @@
 21	COMPAT_40 MODULAR compat	\
 		{ int|sys||mount(const char *type, const char *path, \
 			    int flags, void *data); }
-22	STD 	 RUMP	{ int|sys||unmount(const char *path, int flags); }
+22	STD 	RUMP	{ int|sys||unmount(const char *path, int flags); }
 23	STD 	RUMP	{ int|sys||setuid(uid_t uid); }
 24	NOERR 	RUMP	{ uid_t|sys||getuid_with_euid(void); } getuid
 25	NOERR 	RUMP	{ uid_t|sys||geteuid(void); }
-26	STD 		{ int|sys||ptrace(int req, pid_t pid, void *addr, \
+26	STD 	MODULAR ptrace	\
+			{ int|sys||ptrace(int req, pid_t pid, void *addr, \
 			    int data); }
 27	STD 	RUMP	{ ssize_t|sys||recvmsg(int s, struct msghdr *msg, \
 			    int flags); }
@@ -692,7 +693,7 @@
 349	STD 		{ int|sys||_sched_getaffinity(pid_t pid, lwpid_t lid, \
 			    size_t size, cpuset_t *cpuset); }
 350	STD 		{ int|sys||sched_yield(void); }
-351	UNIMPL
+351	STD		{ int|sys||_sched_protect(int priority); }	
 352	UNIMPL
 353	UNIMPL
 

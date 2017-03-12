@@ -1,4 +1,4 @@
-/*	$NetBSD: pq3etsec.c,v 1.26 2016/02/09 08:32:09 ozaki-r Exp $	*/
+/*	$NetBSD: pq3etsec.c,v 1.29 2016/12/15 09:28:04 ozaki-r Exp $	*/
 /*-
  * Copyright (c) 2010, 2011 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -41,7 +41,7 @@
 
 #include <sys/cdefs.h>
 
-__KERNEL_RCSID(0, "$NetBSD: pq3etsec.c,v 1.26 2016/02/09 08:32:09 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pq3etsec.c,v 1.29 2016/12/15 09:28:04 ozaki-r Exp $");
 
 #include <sys/param.h>
 #include <sys/cpu.h>
@@ -791,14 +791,14 @@ pq3etsec_attach(device_t parent, device_t self, void *aux)
 	ifp->if_stop = pq3etsec_ifstop;
 	IFQ_SET_READY(&ifp->if_snd);
 
-	pq3etsec_ifstop(ifp, true);
-
 	/*
 	 * Attach the interface.
 	 */
 	if_initialize(ifp);
 	ether_ifattach(ifp, enaddr);
 	if_register(ifp);
+
+	pq3etsec_ifstop(ifp, true);
 
 	evcnt_attach_dynamic(&sc->sc_ev_rx_stall, EVCNT_TYPE_MISC,
 	    NULL, xname, "rx stall");
@@ -1567,16 +1567,14 @@ pq3etsec_rx_input(
 	if (rxbd_flags & RXBD_MC)
 		m->m_flags |= M_MCAST;
 	m->m_flags |= M_HASFCS;
-	m->m_pkthdr.rcvif = &sc->sc_if;
+	m_set_rcvif(m, &sc->sc_if);
 
-	ifp->if_ipackets++;
 	ifp->if_ibytes += m->m_pkthdr.len;
 
 	/*
 	 * Let's give it to the network subsystm to deal with.
 	 */
 	int s = splnet();
-	bpf_mtap(ifp, m);
 	if_input(ifp, m);
 	splx(s);
 }

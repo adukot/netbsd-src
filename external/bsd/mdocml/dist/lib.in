@@ -1,4 +1,4 @@
-/*	$Id: lib.in,v 1.19 2015/12/17 22:31:12 christos Exp $ */
+/*	Id: lib.in,v 1.18 2014/01/06 00:53:33 schwarze Exp  */
 /*
  * Copyright (c) 2009 Kristaps Dzonsons <kristaps@bsd.lv>
  * Copyright (c) 2009, 2012 Joerg Sonnenberger <joerg@netbsd.org>
@@ -94,6 +94,7 @@ LINE("libppath",	"Property-List Paths Library (libppath, \\-lppath)")
 LINE("libproc",		"Process Manipulation Library (libproc, \\-lproc)")
 LINE("libprop",		"Property Container Object Library (libprop, \\-lprop)")
 LINE("libpthread",	"POSIX Threads Library (libpthread, \\-lpthread)")
+LINE("libpthread_dbg",	"POSIX Debug Threads Library (libpthread_dbg, \\-lpthread_dbg)")
 LINE("libpuffs",	"puffs Convenience Library (libpuffs, \\-lpuffs)")
 LINE("libquota",	"Disk Quota Access and Control Library (libquota, \\-lquota)")
 LINE("libradius",	"RADIUS Client Library (libradius, \\-lradius)")

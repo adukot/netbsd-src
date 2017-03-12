@@ -1,5 +1,5 @@
-/*	$NetBSD: ssh-keygen.c,v 1.23 2016/03/16 21:41:25 christos Exp $	*/
-/* $OpenBSD: ssh-keygen.c,v 1.288 2016/02/15 09:47:49 dtucker Exp $ */
+/*	$NetBSD: ssh-keygen.c,v 1.25 2016/12/25 00:07:47 christos Exp $	*/
+/* $OpenBSD: ssh-keygen.c,v 1.292 2016/09/12 03:29:16 dtucker Exp $ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -15,7 +15,7 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: ssh-keygen.c,v 1.23 2016/03/16 21:41:25 christos Exp $");
+__RCSID("$NetBSD: ssh-keygen.c,v 1.25 2016/12/25 00:07:47 christos Exp $");
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -204,8 +204,7 @@ type_bits_valid(int type, const char *name, u_int32_t *bitsp)
 				*bitsp = sshkey_curve_nid_to_bits(nid);
 			if (*bitsp == 0)
 				*bitsp = DEFAULT_BITS_ECDSA;
-		}
-		else
+		} else
 #endif
 			*bitsp = DEFAULT_BITS;
 	}
@@ -874,7 +873,7 @@ do_fingerprint(struct passwd *pw)
 	char *comment = NULL, *cp, *ep, line[SSH_MAX_PUBKEY_BYTES];
 	int i, invalid = 1;
 	const char *path;
-	long int lnum = 0;
+	u_long lnum = 0;
 
 	if (!have_identity)
 		ask_filename(pw, "Enter file in which the key is");
@@ -937,7 +936,7 @@ do_fingerprint(struct passwd *pw)
 		}
 		/* Retry after parsing leading hostname/key options */
 		if (public == NULL && (public = try_read_key(&cp)) == NULL) {
-			debug("%s:%ld: not a public key", path, lnum);
+			debug("%s:%lu: not a public key", path, lnum);
 			continue;
 		}
 
@@ -1589,6 +1588,12 @@ do_ca_sign(struct passwd *pw, int argc, char **argv)
 		ca = load_identity(tmp);
 	free(tmp);
 
+	if (key_type_name != NULL &&
+	    sshkey_type_from_name(key_type_name) != ca->type)  {
+		fatal("CA key type %s doesn't match specified %s",
+		    sshkey_ssh_name(ca), key_type_name);
+	}
+
 	for (i = 0; i < argc; i++) {
 		/* Split list of principals */
 		n = 0;
@@ -1630,8 +1635,8 @@ do_ca_sign(struct passwd *pw, int argc, char **argv)
 		    &public->cert->signature_key)) != 0)
 			fatal("key_from_private (ca key): %s", ssh_err(r));
 
-		if (sshkey_certify(public, ca) != 0)
-			fatal("Couldn't not certify key %s", tmp);
+		if ((r = sshkey_certify(public, ca, key_type_name)) != 0)
+			fatal("Couldn't certify key %s: %s", tmp, ssh_err(r));
 
 		if ((cp = strrchr(tmp, '.')) != NULL && strcmp(cp, ".pub") == 0)
 			*cp = '\0';
@@ -1910,7 +1915,7 @@ do_show_cert(struct passwd *pw)
 	FILE *f;
 	char *cp, line[SSH_MAX_PUBKEY_BYTES];
 	const char *path;
-	long int lnum = 0;
+	u_long lnum = 0;
 
 	if (!have_identity)
 		ask_filename(pw, "Enter file in which the key is");
@@ -2434,10 +2439,10 @@ main(int argc, char **argv)
 			break;
 		case 'J':
 			lines_to_process = strtoul(optarg, NULL, 10);
-                        break;
+			break;
 		case 'j':
 			start_lineno = strtoul(optarg, NULL, 10);
-                        break;
+			break;
 		case 'K':
 			if (strlen(optarg) >= PATH_MAX)
 				fatal("Checkpoint filename too long");

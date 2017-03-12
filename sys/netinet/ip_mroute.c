@@ -1,4 +1,4 @@
-/*	$NetBSD: ip_mroute.c,v 1.139 2016/04/26 08:44:44 ozaki-r Exp $	*/
+/*	$NetBSD: ip_mroute.c,v 1.146 2017/01/24 07:09:24 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 1992, 1993
@@ -93,7 +93,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ip_mroute.c,v 1.139 2016/04/26 08:44:44 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ip_mroute.c,v 1.146 2017/01/24 07:09:24 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -111,7 +111,6 @@ __KERNEL_RCSID(0, "$NetBSD: ip_mroute.c,v 1.139 2016/04/26 08:44:44 ozaki-r Exp 
 #include <sys/mbuf.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
-#include <sys/protosw.h>
 #include <sys/errno.h>
 #include <sys/time.h>
 #include <sys/kernel.h>
@@ -785,7 +784,6 @@ static int
 add_vif(struct vifctl *vifcp)
 {
 	struct vif *vifp;
-	struct ifaddr *ifa;
 	struct ifnet *ifp;
 	int error, s;
 	struct sockaddr_in sin;
@@ -811,11 +809,18 @@ add_vif(struct vifctl *vifcp)
 	} else
 #endif
 	{
+		struct ifaddr *ifa;
+
 		sockaddr_in_init(&sin, &vifcp->vifc_lcl_addr, 0);
+		s = pserialize_read_enter();
 		ifa = ifa_ifwithaddr(sintosa(&sin));
-		if (ifa == NULL)
-			return (EADDRNOTAVAIL);
+		if (ifa == NULL) {
+			pserialize_read_exit(s);
+			return EADDRNOTAVAIL;
+		}
 		ifp = ifa->ifa_ifp;
+		/* FIXME NOMPSAFE */
+		pserialize_read_exit(s);
 	}
 
 	if (vifcp->vifc_flags & VIFF_TUNNEL) {
@@ -832,8 +837,12 @@ add_vif(struct vifctl *vifcp)
 		 * this requires both radix tree lookup and then a
 		 * function to check, and this is not supported yet.
 		 */
+		error = encap_lock_enter();
+		if (error)
+			return error;
 		vifp->v_encap_cookie = encap_attach_func(AF_INET, IPPROTO_IPV4,
 		    vif_encapcheck, &vif_encapsw, vifp);
+		encap_lock_exit();
 		if (!vifp->v_encap_cookie)
 			return (EINVAL);
 
@@ -929,7 +938,9 @@ reset_vif(struct vif *vifp)
 	callout_stop(&vifp->v_repq_ch);
 
 	/* detach this vif from decapsulator dispatch table */
+	encap_lock_enter();
 	encap_detach(vifp->v_encap_cookie);
+	encap_lock_exit();
 	vifp->v_encap_cookie = NULL;
 
 	/*
@@ -1550,9 +1561,10 @@ static void
 expire_upcalls(void *v)
 {
 	int i;
-	int s;
 
-	s = splsoftnet();
+	/* XXX NOMPSAFE still need softnet_lock */
+	mutex_enter(softnet_lock);
+	KERNEL_LOCK(1, NULL);
 
 	for (i = 0; i < MFCTBLSIZ; i++) {
 		struct mfc *rt, *nrt;
@@ -1588,9 +1600,11 @@ expire_upcalls(void *v)
 		}
 	}
 
-	splx(s);
 	callout_reset(&expire_upcalls_ch, EXPIRE_TIMEOUT,
 	    expire_upcalls, NULL);
+
+	KERNEL_UNLOCK_ONE(NULL);
+	mutex_exit(softnet_lock);
 }
 
 /*
@@ -1881,7 +1895,7 @@ vif_input(struct mbuf *m, int off, int proto)
 	}
 
 	m_adj(m, off);
-	m->m_pkthdr.rcvif = vifp->v_ifp;
+	m_set_rcvif(m, vifp->v_ifp);
 
 	if (__predict_false(!pktq_enqueue(ip_pktq, m, 0))) {
 		m_freem(m);
@@ -2104,7 +2118,7 @@ tbf_send_packet(struct vif *vifp, struct mbuf *m)
 		/* if physical interface option, extract the options and then send */
 		struct ip_moptions imo;
 
-		imo.imo_multicast_ifp = vifp->v_ifp;
+		imo.imo_multicast_if_index = if_get_index(vifp->v_ifp);
 		imo.imo_multicast_ttl = mtod(m, struct ip *)->ip_ttl - 1;
 		imo.imo_multicast_loop = 1;
 #ifdef RSVP_ISI

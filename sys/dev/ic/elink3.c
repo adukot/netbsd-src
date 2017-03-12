@@ -1,4 +1,4 @@
-/*	$NetBSD: elink3.c,v 1.137 2016/02/09 08:32:10 ozaki-r Exp $	*/
+/*	$NetBSD: elink3.c,v 1.140 2016/12/15 09:28:05 ozaki-r Exp $	*/
 
 /*-
  * Copyright (c) 1998, 2001 The NetBSD Foundation, Inc.
@@ -62,7 +62,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: elink3.c,v 1.137 2016/02/09 08:32:10 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: elink3.c,v 1.140 2016/12/15 09:28:05 ozaki-r Exp $");
 
 #include "opt_inet.h"
 
@@ -1202,8 +1202,7 @@ startagain:
 				bus_space_write_multi_1(iot, ioh,
 				    txreg, mtod(m, u_int8_t *), m->m_len);
 			}
-			MFREE(m, m0);
-			m = m0;
+			m = m0 = m_free(m);
 		}
 	} else {
 		for (m = m0; m;) {
@@ -1223,8 +1222,7 @@ startagain:
 				bus_space_write_1(iot, ioh, txreg,
 				     *(mtod(m, u_int8_t *) + m->m_len - 1));
 			}
-			MFREE(m, m0);
-			m = m0;
+			m = m0 = m_free(m);
 		}
 	}
 	while (pad--)
@@ -1488,14 +1486,6 @@ again:
 		goto abort;
 	}
 
-	++ifp->if_ipackets;
-
-	/*
-	 * Check if there's a BPF listener on this interface.
-	 * If so, hand off the raw packet to BPF.
-	 */
-	bpf_mtap(ifp, m);
-
 	if_percpuq_enqueue(ifp->if_percpuq, m);
 
 	/*
@@ -1565,7 +1555,7 @@ epget(struct ep_softc *sc, int totlen)
 		m->m_flags = M_PKTHDR;
 		memset(&m->m_pkthdr, 0, sizeof(m->m_pkthdr));
 	}
-	m->m_pkthdr.rcvif = ifp;
+	m_set_rcvif(m, ifp);
 	m->m_pkthdr.len = totlen;
 	len = MHLEN;
 

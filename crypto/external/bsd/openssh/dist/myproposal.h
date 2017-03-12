@@ -1,5 +1,5 @@
-/*	$NetBSD: myproposal.h,v 1.13 2016/03/11 01:55:00 christos Exp $	*/
-/* $OpenBSD: myproposal.h,v 1.50 2016/02/09 05:30:04 djm Exp $ */
+/*	$NetBSD: myproposal.h,v 1.15 2016/12/25 00:07:47 christos Exp $	*/
+/* $OpenBSD: myproposal.h,v 1.54 2016/09/28 16:33:07 djm Exp $ */
 
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
@@ -28,17 +28,22 @@
 #ifdef WITH_OPENSSL
 
 #define KEX_COMMON_KEX		\
+	"curve25519-sha256," \
 	"curve25519-sha256@libssh.org," \
 	"ecdh-sha2-nistp256," \
 	"ecdh-sha2-nistp384," \
 	"ecdh-sha2-nistp521," \
-	"diffie-hellman-group-exchange-sha256"
+	"diffie-hellman-group-exchange-sha256," \
+	"diffie-hellman-group16-sha512," \
+	"diffie-hellman-group18-sha512" \
 
 #define KEX_SERVER_KEX KEX_COMMON_KEX "," \
+	"diffie-hellman-group14-sha256," \
 	"diffie-hellman-group14-sha1"
 
 #define KEX_CLIENT_KEX KEX_COMMON_KEX "," \
 	"diffie-hellman-group-exchange-sha1," \
+	"diffie-hellman-group14-sha256," \
 	"diffie-hellman-group14-sha1"
 
 #define	KEX_DEFAULT_PK_ALG	\
@@ -61,7 +66,7 @@
 	"aes128-gcm@openssh.com,aes256-gcm@openssh.com"
 
 #define KEX_CLIENT_ENCRYPT KEX_SERVER_ENCRYPT "," \
-	"aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc"
+	"aes128-cbc,aes192-cbc,aes256-cbc"
 
 #define	KEX_SERVER_MAC \
 	"umac-64-etm@openssh.com," \
@@ -80,6 +85,7 @@
 #else /* WITH_OPENSSL */
 
 #define KEX_SERVER_KEX		\
+	"curve25519-sha256," \
 	"curve25519-sha256@libssh.org"
 #define	KEX_DEFAULT_PK_ALG	\
 	"ssh-ed25519-cert-v01@openssh.com," \
@@ -110,7 +116,7 @@
 #define KEX_SERVER_ENCRYPT_INCLUDE_NONE KEX_SERVER_ENCRYPT \
 	",none"
 
-#define	KEX_DEFAULT_COMP	"none,zlib@openssh.com,zlib"
+#define	KEX_DEFAULT_COMP	"none,zlib@openssh.com"
 #define	KEX_DEFAULT_LANG	""
 
 #define KEX_CLIENT \

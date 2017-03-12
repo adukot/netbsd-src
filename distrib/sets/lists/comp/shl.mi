@@ -1,4 +1,4 @@
-# $NetBSD: shl.mi,v 1.288 2016/04/15 01:35:26 ozaki-r Exp $
+# $NetBSD: shl.mi,v 1.301 2017/02/16 08:39:10 knakahara Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 #
@@ -8,6 +8,7 @@
 ./usr/lib/libamu_pic.a				comp-obsolete		obsolete
 ./usr/lib/libarchive_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libasan_pic.a				comp-c-piclib		compatfile,picinstall,gcc=48
+./usr/lib/libasan_pic.a				comp-c-piclib		compatfile,picinstall,gcc=53
 ./usr/lib/libasn1_pic.a				comp-c-piclib		compatfile,picinstall,kerberos
 ./usr/lib/libatf-c++_pic.a			comp-atf-piclib		compatfile,picinstall,atf
 ./usr/lib/libatf-c_pic.a			comp-atf-piclib		compatfile,picinstall,atf
@@ -47,13 +48,13 @@
 ./usr/lib/libg++_pic.a				comp-obsolete		obsolete
 ./usr/lib/libg2c_pic.a				comp-obsolete		obsolete
 ./usr/lib/libgcc_eh.a				comp-c-lib		compatfile,gcccmds
-./usr/lib/libgcc_eh_p.a				comp-c-proflib		obsolete
-./usr/lib/libgcc_eh_pic.a			comp-c-piclib		obsolete
-./usr/lib/libgcc_pic.a				comp-c-lib		obsolete
-./usr/lib/libgmp.so				comp-c-shlib		obsolete
-./usr/lib/libgmp.so.10				comp-c-shlib		obsolete
-./usr/lib/libgmp.so.10.2			comp-c-shlib		obsolete
-./usr/lib/libgmp_pic.a				comp-c-piclib		obsolete
+./usr/lib/libgcc_eh_p.a				comp-obsolete		obsolete
+./usr/lib/libgcc_eh_pic.a			comp-obsolete		obsolete
+./usr/lib/libgcc_pic.a				comp-obsolete		obsolete
+./usr/lib/libgmp.so				comp-obsolete		obsolete
+./usr/lib/libgmp.so.10				comp-obsolete		obsolete
+./usr/lib/libgmp.so.10.2			comp-obsolete		obsolete
+./usr/lib/libgmp_pic.a				comp-obsolete		obsolete
 ./usr/lib/libgnumalloc_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libgomp_pic.a				comp-c-piclib		compatfile,picinstall,gcc
 ./usr/lib/libgssapi_pic.a			comp-c-piclib		compatfile,picinstall,kerberos
@@ -90,15 +91,15 @@
 ./usr/lib/libm_pic.a				comp-c-piclib		compatfile,picinstall
 ./usr/lib/libmagic_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libmenu_pic.a				comp-c-piclib		compatfile,picinstall
-./usr/lib/libmj_pic.a				comp-c-piclib		compatfile,picinstall
-./usr/lib/libmpc.so				comp-c-shlib		obsolete
-./usr/lib/libmpc.so.2				comp-c-shlib		obsolete
-./usr/lib/libmpc.so.2.0				comp-c-shlib		obsolete
-./usr/lib/libmpc_pic.a				comp-c-piclib		obsolete
-./usr/lib/libmpfr.so				comp-c-shlib		obsolete
-./usr/lib/libmpfr.so.4				comp-c-shlib		obsolete
-./usr/lib/libmpfr.so.4.1			comp-c-shlib		obsolete
-./usr/lib/libmpfr_pic.a				comp-c-piclib		obsolete
+./usr/lib/libmj_pic.a				comp-c-piclib		compatfile,picinstall,crypto
+./usr/lib/libmpc.so				comp-obsolete		obsolete
+./usr/lib/libmpc.so.2				comp-obsolete		obsolete
+./usr/lib/libmpc.so.2.0				comp-obsolete		obsolete
+./usr/lib/libmpc_pic.a				comp-obsolete		obsolete
+./usr/lib/libmpfr.so				comp-obsolete		obsolete
+./usr/lib/libmpfr.so.4				comp-obsolete		obsolete
+./usr/lib/libmpfr.so.4.1			comp-obsolete		obsolete
+./usr/lib/libmpfr_pic.a				comp-obsolete		obsolete
 ./usr/lib/libmudflap.so				comp-c-shlib		compatfile,gcc=48
 ./usr/lib/libmudflap.so.0			comp-c-shlib		compatfile,gcc=48
 ./usr/lib/libmudflap.so.0.0			comp-c-shlib		compatfile,gcc=48
@@ -113,10 +114,10 @@
 ./usr/lib/libntp_pic.a				comp-obsolete		obsolete
 ./usr/lib/libnvpair_pic.a			comp-zfs-piclib		compatfile,picinstall,zfs
 ./usr/lib/libobjc_pic.a				comp-objc-piclib	compatfile,picinstall,gcccmds
-./usr/lib/libopcodes.so.6			comp-c-shlib		compatfile,binutils=223
-./usr/lib/libopcodes.so.6.0			comp-c-shlib		compatfile,binutils=223
 ./usr/lib/libopcodes.so.7			comp-c-shlib		compatfile,binutils=226
 ./usr/lib/libopcodes.so.7.0			comp-c-shlib		compatfile,binutils=226
+./usr/lib/libopcodes.so.8			comp-c-shlib		compatfile,binutils=227
+./usr/lib/libopcodes.so.8.0			comp-c-shlib		compatfile,binutils=227
 ./usr/lib/libopenpgpsdk_pic.a			comp-obsolete		obsolete
 ./usr/lib/libossaudio_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libp2k_pic.a				comp-puffs-piclib	compatfile,picinstall,rump
@@ -132,7 +133,7 @@
 ./usr/lib/libproc.so.0				comp-c-shlib		compatfile,dtrace
 ./usr/lib/libproc_pic.a				comp-c-piclib		compatfile,dtrace,picinstall
 ./usr/lib/libprop_pic.a				comp-c-piclib		compatfile,picinstall
-./usr/lib/libpthread_dbg_pic.a			comp-c-piclib		compatfile,picinstall
+./usr/lib/libpthread_dbg_pic.a			comp-obsolete		obsolete
 ./usr/lib/libpthread_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libpuffs_pic.a			comp-puffs-piclib	compatfile,picinstall
 ./usr/lib/libquota_pic.a			comp-c-piclib		compatfile,picinstall
@@ -217,6 +218,7 @@
 ./usr/lib/librumpnet_bpfjit_pic.a		comp-c-piclib		picinstall,rump,sljit
 ./usr/lib/librumpnet_bridge_pic.a		comp-c-piclib		picinstall,rump
 ./usr/lib/librumpnet_gif_pic.a			comp-c-piclib		picinstall,rump
+./usr/lib/librumpnet_l2tp_pic.a			comp-c-piclib		picinstall,rump
 ./usr/lib/librumpnet_local_pic.a		comp-c-piclib		picinstall,rump
 ./usr/lib/librumpnet_net80211_pic.a		comp-c-piclib		picinstall,rump
 ./usr/lib/librumpnet_net_pic.a			comp-c-piclib		picinstall,rump
@@ -230,7 +232,9 @@
 ./usr/lib/librumpnet_shmif_pic.a		comp-c-piclib		picinstall,rump
 ./usr/lib/librumpnet_sockin_pic.a		comp-c-piclib		picinstall,rump
 ./usr/lib/librumpnet_tap_pic.a			comp-c-piclib		picinstall,rump
+./usr/lib/librumpnet_tun_pic.a			comp-c-piclib		picinstall,rump
 ./usr/lib/librumpnet_virtif_pic.a		comp-c-piclib		picinstall,rump
+./usr/lib/librumpnet_vlan_pic.a			comp-c-piclib		picinstall,rump
 ./usr/lib/librumpuser_pic.a			comp-c-piclib		compatfile,picinstall,rump
 ./usr/lib/librumpvfs_aio_pic.a			comp-c-piclib		picinstall,rump
 ./usr/lib/librumpvfs_fifofs_pic.a		comp-c-piclib		picinstall,rump
@@ -254,8 +258,10 @@
 ./usr/lib/libtpm_unseal_pic.a			comp-tpm-lib		compatfile,picinstall,tpm
 ./usr/lib/libtre_pic.a				comp-c-piclib		compatfile,picinstall
 ./usr/lib/libtspi_pic.a				comp-c-piclib		compatfile,picinstall,tpm
+./usr/lib/libubsan_pic.a			comp-c-piclib		compatfile,picinstall,gcc=53
 ./usr/lib/libukfs_pic.a				comp-c-piclib		compatfile,picinstall,rump
 ./usr/lib/libumem_pic.a				comp-zfs-piclib		compatfile,picinstall,zfs
+./usr/lib/libunbound_pic.a			comp-c-piclib		compatfile,picinstall,crypto,unbound
 ./usr/lib/libusb_pic.a				comp-obsolete		obsolete
 ./usr/lib/libusbhid_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libutil_pic.a				comp-c-piclib		compatfile,picinstall

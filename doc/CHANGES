@@ -1,4 +1,4 @@
-# LIST OF CHANGES FROM LAST RELEASE:			<$Revision: 1.2159 $>
+# LIST OF CHANGES FROM LAST RELEASE:			<$Revision: 1.2260 $>
 #
 #
 # [Note: This file does not mention every change made to the NetBSD source tree.
@@ -133,6 +133,7 @@ Changes from NetBSD 7.0 to NetBSD 8.0:
 	dhcpcd(8): Import dhcpcd-6.7.1. [roy 20150130]
 	zoneinfo: Import tzdata2015a. [apb 20150131]
 	libc: Import tzcode2015a. [christos 20150131]
+	tetris(6): Add down key support, as 'n'.  [mrg 20150218]
 	bind: patch to version 9.10.1-P2. [spz 20150221]
 	network: introduce RTF_LOCAL for local address routes. [roy 20150226]
 	evbarm: Add support for RPI2. [skrll 20150304]
@@ -154,11 +155,17 @@ Changes from NetBSD 7.0 to NetBSD 8.0:
 		Add DMA support to the sdhc controllers on AM335x SoC.
 		Enable DMA for sdhc0 and sdhc1 on BEAGLEBONE [bouyer 20150414]
 	xz(1): Import of XZ 5.2.1. [christos 20150417]
+	x86: Support MSI/MSI-X. [knakahara 20150427]
 	libc: Update to tzcode2015d. [christos 20150428]
 	openresolv(8): Import openresolv-3.7.0 [roy 20150501]
 	netinet: Added IN_IFF_TENTATIVE, IN_IFF_DUPLICATED and IN_IFF_DETACHED.
-	         IPV4 addresses now perform DAD using ARP as described in
-		 RFC 5227. [roy 20150502]
+		IPV4 addresses now perform DAD using ARP as described in
+		RFC 5227. [roy 20150502]
+	amd64: Bump CHILD_MAX and OPEN_MAX.  [mrg 20150507]
+	i386: Bump CHILD_MAX and OPEN_MAX.  [mrg 20150507]
+	aarch64: Bump CHILD_MAX and OPEN_MAX.  [mrg 20150507]
+	evbarm: Bump CHILD_MAX and OPEN_MAX.  [mrg 20150507]
+	sparc64: Bump CHILD_MAX and OPEN_MAX.  [mrg 20150507]
 	dhcpcd(8): Import dhcpcd-6.9.0. [roy 20150517]
 	FFS: General improvements in the superblock parser. [maxv 20150523]
 	openssl: Import openssl 1.0.1n [christos 20150612]
@@ -173,6 +180,7 @@ Changes from NetBSD 7.0 to NetBSD 8.0:
 	iostat(8): Support fnmatch(3) patterns for disknames.  [mrg 20150709]
 	openssl: Import openssl 1.0.1p [christos 20150709]
 	ntp: Import ntp 4.2.8p3. [christos 20150710]
+	X11: Delete XFree86 sources.  [mrg 20150723]
 	arm: Add support for NVIDIA Tegra K1 SoC. [jmcneill 20150725]
 	evbarm: Add support for NVIDIA Jetson TK1. [jmcneill 20150725]
 	bind: Import version 9.10.2-P3. [christos 20150728]
@@ -187,6 +195,8 @@ Changes from NetBSD 7.0 to NetBSD 8.0:
 	zoneinfo: Import tzdata2015f. [apb 20150811]
 	OpenSSH: Imported 7.0. [christos 20150813]
 	libc: Update to tzcode2015f. [christos 20150813]
+	intrctl(8): Add interrupt distribution control utility.
+		[knakahara 20150817]
 	gdb(1): Updated to 7.9.1.  [christos 20150818]
 	acpi(4): Updated ACPICA to 20150717. [christos 20150818]
 	mcp3kadc(4): Driver for Microchip 3x0x SAR ADC chips. [phx 20150818]
@@ -200,6 +210,7 @@ Changes from NetBSD 7.0 to NetBSD 8.0:
 	dhcpcd: Import dhcpcd 6.9.3. [roy 20150904]
 	ftp(1): SNI support for https.  [wiz 20150912]
 	netstat(1): Now knows how tall the display is.  [mrg 20150919]
+	atactl(8): Add smart codes 210, 246, 247 and 248.  [mrg 20150920]
 	libproc, librtld_db: Added from FreeBSD [christos 20150924]
 	dtrace: Updated from FreeBSD [christos 20150924]
 	resolvconf: Import openresolv-3.7.1 [roy 20150929]
@@ -208,7 +219,10 @@ Changes from NetBSD 7.0 to NetBSD 8.0:
 		[nonaka 20151002]
 	lua: Updated to Lua 5.3.1 [mbalmer 20151008]
 	libc: Update to tzcode2015g. [christos 20151009]
+	wm(4): Support RX multiqueue. [knakahara,msaitoh 20151013]
 	ntp: Import ntp 4.2.8p4. [christos 20151023]
+	scdebug: Add a way to have system call debug logs go to a kernel
+		history.  [mrg 20151028]
 	vioscsi(4): Add driver for virtio SCSI devices [christos 20151030]
 	omapgpio(4): Add support for TI AM335x GPIO. [jmcneill 20151101]
 	libc/ti-rpc: Remove FD_SETSIZE limit; provide MT support for svc_run()
@@ -233,6 +247,7 @@ Changes from NetBSD 7.0 to NetBSD 8.0:
 	bind: Import version 9.10.3-P2. [christos 20151216]
 	mdocml: Import 1.13.3. [christos 20151217]
 	sortinfo(1): Add utility to sort texinfo dir files [christos 20151218]
+	x86: Add support for SMEP on amd64 and i386. [maxv 20151219]
 	raidframe: Now built as a kernel module; it can be built-in at
 		kernel build time, or (for MODULAR kernels) loaded as
 		needed. [pgoyette 20151226]
@@ -250,8 +265,12 @@ Changes from NetBSD 7.0 to NetBSD 8.0:
 	gettext: Upgrade to 0.16.1 [christos 20160112]
 	bind: Import version 9.10.3-P3. [christos 20160119]
 	dhcpcd: Import dhcpcd 6.10.1. [roy 20160120]
+	gcc: Import GCC 5.3.0.  [mrg 20160123]
+	lua: Updated to 5.3.2 [lneto 20160128]
 	openssl: Import openssl 1.0.1r [christos 20160130]
 	gdb(1): Updated to 7.10.1.  [christos 20160202]
+	network: Packet input processing (except for bpf) never runs in
+		hardware interrupt. [ozaki-r 20160209]
 	elftoolchain: Import FreeBSD-2016-02-19. [christos 20160219]
 	openresolv: Import openresolv-3.7.3. [roy 20160222]
 	mv(1): Add SIGINFO support. [mrg 20160228]
@@ -264,6 +283,7 @@ Changes from NetBSD 7.0 to NetBSD 8.0:
 	wpa_supplicant(8): Added interface matching rules [roy 20160323]
 	lua: Applied second and third patch from http://lua.org/bugs.html
 		[mbalmer 20160325]
+	i366: Add a GENERIC_PAE kernel that supports >4GB systems.  [mrg 20160326]
 	network: Drop the concept of cloning/cloned routes [ozaki-r 20160404]
 	network: Remove RTF_CLONING, RTF_XRESOLVE, RTF_LLINFO, RTF_CLONED and
 		RTM_RESOLVE [ozaki-r 20160404]
@@ -277,14 +297,189 @@ Changes from NetBSD 7.0 to NetBSD 8.0:
 		[ozaki-r 20160404]
 	route(8): route show doesn't contain nexthop caches [ozaki-r 20160404]
 	netstat(1): netstat -r doesn't contain nexthop caches [ozaki-r 20160404]
+	network: Separate nexthop caches from routing table. [ozaki-r 20160404]
 	libutil: added pidfile_lock, pidfile_read, pidfile_read [roy 20160410]
 	dhcpcd(8): Import dhcpcd-6.10.2 [roy 20160410]
 	openresolv(8): Import openresolv-3.8.0 [roy 20160411]
 	ddb(4): rename show arptab to show routes [ozaki-r 20160413]
+	bridge(4): Device is now MP-safe. [ozaki-r 20160108]
 	dhcpcd(8): Import dhcpcd-6.10.3 [roy 20160420]
+	usb(4) subsystem: Merge nick-nhusb [skrll 20160423]
+		- API / infra changes to support memory management changes.
+		- Memory management improvements and bug fixes.
+		- HCDs should now be MP safe
+		- conversion to KERNHIST based debug
+		- FS/LS isoc support on ehci(4).
+		- conversion to kmem(9)
+		- Some USB 3 support - mostly from Takahiro HAYASHI (t-hash).
+		- interrupt transfers now get proper DMA operations
+		- general bug fixes
+		    - kern/48308
+		    - uhub status notification improvements
+		    - umass(4) probe fix (applied to HEAD already)
+		    - ohci(4) short transfer fix
 	nvme(4): Add a driver for Non-Volatile Memory Host Controller Interface
 		devices, ported from OpenBSD. [nonaka 20160501]
 	ntp: Import ntp 4.2.8p7. [christos 20160501]
 	openssl: Import openssl 1.0.1t - security fixes [christos 20160503]
 	acpi(4): Updated ACPICA to 20160422. [christos 20160504]
 	dhcpcd(8): Import dhcpcd-6.11.0 [roy 20160509]
+	x86: Map the kernel image segments independently with fine-grained
+		permissions on amd64 and i386 (W^X). [maxv 20160514]
+	x86: Use processor-specific features to optimize memory access time to
+		the kernel image on amd64 and i386. [maxv 20160515]
+	arm: Add support for i.MX7 SoC. [ryo 20160517]
+	wm(4): Support TX multiqueue. [knakahara 20160519]
+	bind: Import version 9.10.4-P1. [christos 20160526]
+	network: Change hostzerobroadcast default to "no". This has has been
+		the default for many years (broadcast to all ones instead to
+		all zeroes), but might affect some really old machines out
+		there [christos 20160527]
+	zoneinfo: Import tzdata2016d. [agc 20160531]
+	ntp: Import ntp 4.2.8p8. [christos 20160603]
+	ext2fs: Add ext4 extent support from FreeBSD, ported and contributed by
+		Hrishikesh Goyal (GSoc 2016) [christos 20160603]
+	sys_info: Import a script to return version information for system
+		libraries and utilities [agc 20160604]
+	nvmectl(8): Added NVM Express control utility. [nonaka 20160604]
+	gcc: Import GCC 5.4.0.  [mrg 20160606]
+	dhcpcd(8): Import dhcpcd-6.11.1. [roy 20160617]
+	nfs: Support NFS server with COMAPT_NETBSD32.  [mrg 20160622]
+	ext2fs: Add ext4 htree index support from FreeBSD, ported and
+		contributed by Hrishikesh Goyal (GSoc 2016). [christos 20160624]
+	mdocml: Import 1.13.4. [christos 20160715]
+	acpi(4): Updated ACPICA to 20160527. [christos 20160718]
+	kernel: Use fine-grained permissions for kernel modules segments
+		(W^X). [maxv 20160720]
+	amd64: Prevent NULL from being mappable in kernel mode. [maxv 20160722]
+	amd64: Use fine-grained permissions for architecture-specific memory
+		areas (W^X). [maxv 20160725]
+	sdtemp(4): Add support for Atmel AT30TS00, AT30TSE004, Giantec
+		GT30TS00, GT34TS02, Microchip MCP9804, MCP98244, IDT
+		TS3000GB[02], TS3001GB2, TSE200[24]GB2 and On Semiconductor
+		CAT34TS04. [msaitoh 20160726]
+	sdtemp(4): Add JEDEC TSE2004av support. [msaitoh 20160728]
+	xorg-server: Import xorg-server 1.18.4.  [mrg 20160801]
+	OpenSSH: Imported 7.3. [christos 20160802]
+	xen: Map the kernel image segments independently with fine-grained
+		permissions (W^X). [maxv 20160802]
+	ext2fs: Add ext4 extra_inode support. [jdolecek 20160803]
+	kernel: Provide an efficient way to prevent NULL from being mappable
+		in userland processes. [maxv 20160806]
+	ext2fs: Actually fill file type for readdir(4) and friends.
+		[jdolecek 20160615]
+	zoneinfo: Import tzdata2016f. [kre 20160807]
+	tcu(4): Add support for flxd TC-USB TURBOchannel USB and GPIO option.
+		[flxd 20160811]
+	ext2fs: Add read-only ext4 extended attribute support.
+		[jdolecek 20160612]
+	dhcpcd(8): Import dhcpcd-6.11.3. [roy 20160815]
+	ext2fs: Add ext4 dir_nlink support, supporting up to 64000 file hard
+		links, and unlimited directory links. [jdolecek 20160815]
+	ext2fs: Add ext4 gdt_csum/uninit_bg support. [jdolecek 20160815]
+	unbound: Import 1.5.9. [christos 20160820]
+	tmux(1): Import of tmux 2.2 [christos 20160831]
+	lua: updated to 5.3.3 and applied all three patches from 
+		http://lua.org/bugs.html [salazar 20160908]
+	libc: Update to tzcode2016f. [christos 20160916]
+	nvme(4): NVMe driver is now MPSAFE. [jdolecek 20160918]
+	pci(4): Introduce a better drvname method. [mrg 20160924]
+	zoneinfo: Import tzdata2016g.  [kre 20160929]
+	libc: Add <stdalign.h> and <stdnoreturn.h>. [kamil 20161002]
+	c11: Import cc(1) wrapper for C11. [kamil 20161003]
+	libc: Add the C11 static_assert macro in <assert.h>. [kamil 20161003]
+	mntva(4): Add driver for MNTMN VA2000 FPGA-based graphics card for
+		Amiga computers with Zorro slot. Supports accelerated wsdisplay
+		console and wsfb-based X11. [rkujawa 20161003]
+	libc: Add the timespec_get function and TIME_UTC definition in the
+		<time.h> header. Enable unconditionally the timespec struct
+		definition in <time.h>. Changes conform to the C11 standard.
+		[kamil 20161004]
+	bind: Import version 9.10.4-P3. [christos 20161004]
+	atactl(8): Add smart code 249.  [mrg 20161004]
+	mips: Add support for MediaTek MT7628 SoC [ryo 20161006]
+	libc: Update to tzcode2016g. [christos 20161007]
+	dhcpcd(8): Import dhcpcd-6.11.4 [roy 20161009]
+	urtwn(4): Add support for Realtek 8192EU [nat 20161012]
+	gdb(1): Updated to 7.12.  [christos 20161012]
+	libc: Add the wcsnlen(3) function in <wchar.h>. [kamil 20161015]
+	libc: Update to tzcode2016h. [christos 20161020]
+	zoneinfo: Import tzdata2016h.  [kre 20161020]
+	binutils: Updated to FSF binutils 2.27.  [christos 20161026]
+	wapbl(4): Improved truncate performance, and stability [jdolecek 20161028]
+	bind: Import version 9.10.4-P4. [christos 20161101]
+	zoneinfo: Import tzdata2016i.  [kre 20161103]
+	libc: Update to tzcode2016i. [christos 20161104]
+	acpi(4): Updated ACPICA to 20160930. [christos 20161111]
+	scsictl(8): Add "getrealloc" and "setrealloc" commands to get/set
+		automatic reallocation parameters/enables for error recovery.
+		[flxd 20161119]
+	scsipi(9): Make scsipi framework MPSAFE. [mlelstv 20161120]
+	umass(4): mark MPSAFE. [skrll 20161121]
+	wpa: Import wpa_supplicant and hostapd 2.6. [christos 20161121]
+	ntp: Import ntp 4.2.8p9. [christos 20161121]
+	zoneinfo: Import tzdata2016j.  [kre 20161124]
+	systat(1): Add -b option to dump once and exit.  [mrg 20161202]
+	luna68k: Preliminary support for LUNA's HD647180X I/O processor
+		(a.k.a. XP). [tsutsui 20161203]
+	axe(4): added support for AX88772A and AX88772B chipsets (from
+		FreeBSD) [skrll 20161204]
+	ixg(4): Add X55x support [msaitoh 20161205]
+	audio(4): Audio sub-system changes - in kernel mixing [nat 20161208]
+	speaker(4):Synthesized beep for platforms with audio [nat 20161208]
+	crash(8): Add sparc support.  [mrg 20161210]
+	cgd(4): Add aes-xts. [alnsn 20161211]
+	options(4): Remove KSTACK_CHECK_DR0. [kamil 20161213]
+	ptrace(2): Add hardware assisted breakpoint/watchpoint API:
+		PT_READ_WATCHPOINT, PT_WRITE_WATCHPOINT and
+		PT_COUNT_WATCHPOINTS [kamil 20161215]
+	rtadvd(8): Support -p <pidfile> option. [ozaki-r 20161216]
+	xen: Add support for kernel modules. [maxv 20161216]
+	mips64: Use N64 binaries where kvm is required, fixing fstat, netstat,
+		systat, crash, pstat and kgmon.  [mrg 20161222]
+	OpenSSH: Imported 7.4. [christos 20161224]
+	dreamcast: Add preliminary "G1-ATA" IDE HDD support. [tsutsui 20161229]
+	resolvconf(8): Import openresolv-3.9.0 [roy 20161230]
+	flex(1): Import flex-2.6.3 [christos 20170102]
+	ptrace(2): Add new si_code value of SIGTRAP: TRAP_EXEC [kamil 20170107]
+	ptrace(2): Add signal information accessors API:
+		PT_GET_SIGINFO and PT_SET_SIGINFO [kamil 20170107]
+	nsd(8): Add the NSD Authoritative DNS server [christos 20170107]
+	zlib(3): Import 1.2.10 [christos 20170109]
+	ptrace(2): Add new si_code value of SIGTRAP: TRAP_CHLD [kamil 20170110]
+	ptrace(2): Add new options in EVENT_MASK: PTRACE_VFORK and
+		PTRACE_VFORK_DONE [kamil 20170113]
+	ptrace(2): Add new options in EVENT_MASK: PTRACE_LWP_CREATE and
+		PTRACE_LWP_EXIT [kamil 20170114]
+	siginfo(2): Add new si_code for SIGTRAP: TRAP_LWP [kamil 20170114]
+	libpcap: Import 1.8.1. [christos 20170124]
+	tcpdump(8): Import 4.8.1. [christos 20170124]
+	acpi(4): Updated ACPICA to 20170119. [christos 20170125]
+	bta2dpd(8): Add new bluetooth A2DP daemon. [nat 20170129]
+	kerberos(8): Update to latest Heimdal-HEAD [christos 20170128]
+	libevent: Import libevent 2.1.18 [christos 20170131]
+	nc(1): Add a netcat utility from OpenBSD [christos 20170206]
+	pthread_dbg(3): Removed from the base distribution. [kamil 20170208]
+	ixg(4): Support TX/RX multiqueue [msaitoh 20170208]
+	ixv(4): Add Intel 10G Ethernet virtual function driver.
+		[msaitoh 20170208]
+	bind: Import version 9.10.4-P6. [christos 20170208]
+	openldap: Import 2.4.44. [christos 20170208]
+	libc: Add accept4 function for compatibility [maya 20170208]
+	file(1): Upgraded to 5.30. [christos 20170210]
+	byacc: update to 20170201 [christos 20170211]
+	ptrace(2): Add signal mask information accessors API:
+		PT_GET_SIGMASK and PT_SET_SIGMASK [kamil 20170212]
+	postfix(1): Import version 3.1.4. [christos 20170213]
+	l2tp(4): Add L2TPv3 interface. [knakahara 20170216]
+	siginfo(2): Add new si_code for SIGTRAP: TRAP_DBREG [kamil 20170217]
+	disklabel(5): Add DISKLABEL_EI (``Endian-Independent'' disklabel)
+		kernel option to machines that support Master Boot Record
+		(MBR). [rin 20170219]
+	ptrace(2): Add new API replacing PT_WATCHPOINT for Debug Registers:
+		PT_GETDBREGS and PT_SETDBREGS [kamil 20170223]
+	dk(4): Add DKWEDGE_METHOD_RDB option to enable Amiga Rigid Disk Block
+		(RDB) partitioning detection method. [rin 20170226]
+	siginfo(2): Add new si_code values for SIGTRAP: TRAP_SCE and TRAP_SCX
+		[kamil 20170228]
+	zoneinfo: Import tzdata2017a.  [kre 20170301]

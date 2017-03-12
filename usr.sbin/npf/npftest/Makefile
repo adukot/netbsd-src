@@ -5,6 +5,7 @@
 
 PROG=		npftest
 NOMAN=		# no man page
+PAXCTL_FLAGS.npftest += +m
 
 WARNS=		5
 NOLINT=		# disabled (note: deliberately)
@@ -18,6 +19,7 @@ LDADD+=		-L${LIBNPFTEST} -lnpftest
 
 LDADD+=		-lrump -lrumpvfs -lrumpuser -lrumpnet -lrumpnet_net
 LDADD+=		-lrumpdev_bpf
+LDADD+=		-lrumpdev
 
 .include <bsd.own.mk>
 

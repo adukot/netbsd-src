@@ -1,4 +1,4 @@
-/*	$NetBSD: booke_machdep.c,v 1.23 2015/01/23 07:27:05 nonaka Exp $	*/
+/*	$NetBSD: booke_machdep.c,v 1.25 2016/12/06 07:34:22 rin Exp $	*/
 /*-
  * Copyright (c) 2010, 2011 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -38,7 +38,7 @@
 #define	_POWERPC_BUS_DMA_PRIVATE
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: booke_machdep.c,v 1.23 2015/01/23 07:27:05 nonaka Exp $");
+__KERNEL_RCSID(0, "$NetBSD: booke_machdep.c,v 1.25 2016/12/06 07:34:22 rin Exp $");
 
 #include "opt_modular.h"
 
@@ -54,6 +54,8 @@ __KERNEL_RCSID(0, "$NetBSD: booke_machdep.c,v 1.23 2015/01/23 07:27:05 nonaka Ex
 #include <sys/cpu.h>
 
 #include <uvm/uvm_extern.h>
+
+#include <dev/cons.h>
 
 #include <powerpc/pcb.h>
 #include <powerpc/spr.h>
@@ -130,6 +132,7 @@ struct cpu_info cpu_info[] = {
 		.ci_softc = &cpu_softc[0],
 		.ci_cpl = IPL_HIGH,
 		.ci_idepth = -1,
+		.ci_pmap_kern_segtab = &pmap_kern_segtab,
 	},
 #ifdef MULTIPROCESSOR
 	[CPU_MAXNUM-1] = {
@@ -138,6 +141,7 @@ struct cpu_info cpu_info[] = {
 		.ci_softc = &cpu_softc[CPU_MAXNUM-1],
 		.ci_cpl = IPL_HIGH,
 		.ci_idepth = -1,
+		.ci_pmap_kern_segtab = &pmap_kern_segtab,
 	},
 #endif
 };
@@ -273,8 +277,13 @@ cpu_reboot(int howto, char *what)
 	}
 
 	if (howto & RB_HALT) {
-		printf("halted\n\n");
+		printf("The operating system has halted.\n"
+		    "Press any key to reboot.\n\n");
+		cnpollc(1);	/* For proper keyboard command handling */
+		cngetc();
+		cnpollc(0);
 
+		printf("rebooting...\n\n");
 		goto reboot;	/* XXX for now... */
 
 #ifdef DDB

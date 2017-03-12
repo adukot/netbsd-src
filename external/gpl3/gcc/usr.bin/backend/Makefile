@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.31 2016/05/04 00:28:23 mrg Exp $
+#	$NetBSD: Makefile,v 1.36 2017/02/14 00:20:20 rin Exp $
 
 LIBISPRIVATE=	yes
 
@@ -211,7 +211,7 @@ auto-build.h: gmp.h Makefile
 	(cd .ab && \
 		AWK=${TOOL_AWK:Q} \
 		CC=${ORIGHOST_CC:Q} CFLAGS=${HOST_CFLAGS:Q} \
-		MAKE=${MAKE:Q} \
+		MAKE=${TOOL_GMAKE:Q} \
 		CONFIG_SHELL=${HOST_SH:Q} \
 		gcc_cv_ld=${LD:Q} \
 		gcc_cv_as=${AS:Q} \
@@ -449,6 +449,7 @@ alpha.d alpha.o: tm-constrs.h tm_p.h insn-opinit.h target-hooks-def.h
 
 .if ${MACHINE_CPU} == "arm"
 arm.d arm.o: insn-constants.h tm_p.h insn-opinit.h target-hooks-def.h
+arm-builtins.d arm-builtins.o: insn-opinit.h
 .endif
 
 .if ${GCC_MACHINE_ARCH} == "i386" || ${GCC_MACHINE_ARCH} == "x86_64"
@@ -460,6 +461,7 @@ CPPFLAGS+=-I${.CURDIR}/../../lib/libgcc/libgcov/arch/${GCC_MACHINE_ARCH}
 COPTS.builtins.c+=-O0
 COPTS.convert.c+=-O0
 COPTS.dwarf2out.c+=-O0
+COPTS.dse.c+=-O0					# XXX port-vax/51967
 COPTS.expmed.c+=-O0
 COPTS.expr.c+=-O0
 COPTS.fixed-value.c+=-O0
@@ -510,7 +512,9 @@ CFLAGS+=	-Wno-stack-protector
 
 .if ${GCC_MACHINE_ARCH} == "m68000" || ${GCC_MACHINE_ARCH} == "m68k" || \
 	${GCC_MACHINE_ARCH} == "coldfire"
-COPTS.tree-loop-distribution.c=	-O2
+COPTS.tree-loop-distribution.c+=-O2
+COPTS.generic-match.c+=-fno-jump-tables
+COPTS.gimple-match.c+=-fno-jump-tables
 .endif
 
 

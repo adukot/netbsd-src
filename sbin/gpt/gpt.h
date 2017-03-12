@@ -74,12 +74,13 @@ struct gpt_cmd {
 uint32_t crc32(const void *, size_t);
 void	gpt_close(gpt_t);
 int	gpt_gpt(gpt_t, off_t, int);
-gpt_t	gpt_open(const char *, int, int, off_t, u_int);
+gpt_t	gpt_open(const char *, int, int, off_t, u_int, time_t);
 #define GPT_READONLY	0x01
 #define GPT_MODIFIED	0x02
 #define GPT_QUIET	0x04
 #define GPT_NOSYNC	0x08
 #define GPT_FILE	0x10
+#define GPT_TIMESTAMP	0x20
 
 void*	gpt_read(gpt_t, off_t, size_t);
 off_t	gpt_last(gpt_t);
@@ -92,7 +93,7 @@ struct gpt_hdr *gpt_hdr(gpt_t);
 void	gpt_msg(gpt_t, const char *, ...) __printflike(2, 3);
 void	gpt_warn(gpt_t, const char *, ...) __printflike(2, 3);
 void	gpt_warnx(gpt_t, const char *, ...) __printflike(2, 3);
-void	gpt_create_pmbr_part(struct mbr_part *, off_t);
+void	gpt_create_pmbr_part(struct mbr_part *, off_t, int);
 struct gpt_ent *gpt_ent(map_t, map_t, unsigned int);
 struct gpt_ent *gpt_ent_primary(gpt_t, unsigned int);
 struct gpt_ent *gpt_ent_backup(gpt_t, unsigned int);

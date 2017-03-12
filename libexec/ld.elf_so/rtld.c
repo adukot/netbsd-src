@@ -1,4 +1,4 @@
-/*	$NetBSD: rtld.c,v 1.177 2015/04/06 09:34:15 yamt Exp $	 */
+/*	$NetBSD: rtld.c,v 1.183 2017/02/27 20:25:26 chs Exp $	 */
 
 /*
  * Copyright 1996 John D. Polstra.
@@ -40,7 +40,7 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: rtld.c,v 1.177 2015/04/06 09:34:15 yamt Exp $");
+__RCSID("$NetBSD: rtld.c,v 1.183 2017/02/27 20:25:26 chs Exp $");
 #endif /* not lint */
 
 #include <sys/param.h>
@@ -654,6 +654,7 @@ _rtld(Elf_Addr *sp, Elf_Addr relocbase)
 	_rtld_objloads++;
 
 	_rtld_linkmap_add(_rtld_objmain);
+	_rtld_objself.path = xstrdup(_rtld_objself.path);
 	_rtld_linkmap_add(&_rtld_objself);
 
 	++_rtld_objmain->refcount;
@@ -1070,7 +1071,7 @@ _rtld_objmain_sym(const char *name)
 }
 
 #ifdef __powerpc__
-static void *
+static __noinline void *
 hackish_return_address(void)
 {
 	return __builtin_return_address(1);
@@ -1131,6 +1132,20 @@ do_dlsym(void *handle, const char *name, const Ver_Entry *ventry, void *retaddr)
 				    flags, ventry)) != NULL) {
 					defobj = obj;
 					break;
+				}
+			}
+			/*
+			 * Search the dynamic linker itself, and possibly
+			 * resolve the symbol from there if it is not defined
+			 * already or weak. This is how the application links
+			 * to dynamic linker services such as dlopen.
+			 */
+			if (!def || ELF_ST_BIND(def->st_info) == STB_WEAK) {
+				const Elf_Sym *symp = _rtld_symlook_obj(name,
+				    hash, &_rtld_objself, flags, ventry);
+				if (symp != NULL) {
+					def = symp;
+					defobj = &_rtld_objself;
 				}
 			}
 			break;
@@ -1387,8 +1402,7 @@ dl_iterate_phdr(int (*callback)(struct dl_phdr_info *, size_t, void *), void *pa
 	for (obj = _rtld_objlist;  obj != NULL;  obj = obj->next) {
 		phdr_info.dlpi_addr = (Elf_Addr)obj->relocbase;
 		/* XXX: wrong but not fixing it yet */
-		phdr_info.dlpi_name = SIMPLEQ_FIRST(&obj->names) ?
-		    SIMPLEQ_FIRST(&obj->names)->name : obj->path;
+		phdr_info.dlpi_name = obj->path;
 		phdr_info.dlpi_phdr = obj->phdr;
 		phdr_info.dlpi_phnum = obj->phsize / sizeof(obj->phdr[0]);
 #if defined(__HAVE_TLS_VARIANT_I) || defined(__HAVE_TLS_VARIANT_II)

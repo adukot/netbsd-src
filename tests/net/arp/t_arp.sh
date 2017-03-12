@@ -1,4 +1,4 @@
-#	$NetBSD: t_arp.sh,v 1.15 2016/04/18 02:27:34 ozaki-r Exp $
+#	$NetBSD: t_arp.sh,v 1.22 2016/11/25 08:51:16 ozaki-r Exp $
 #
 # Copyright (c) 2015 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -25,10 +25,6 @@
 # POSSIBILITY OF SUCH DAMAGE.
 #
 
-inetserver="rump_server -lrumpnet -lrumpnet_net -lrumpnet_netinet -lrumpnet_shmif"
-inetserver="$inetserver -lrumpdev -lrumpnet_tap"
-HIJACKING="env LD_PRELOAD=/usr/lib/librumphijack.so RUMPHIJACK=sysctl=yes"
-
 SOCKSRC=unix://commsock1
 SOCKDST=unix://commsock2
 IP4SRC=10.0.1.1
@@ -36,68 +32,68 @@ IP4DST=10.0.1.2
 IP4DST_PROXYARP1=10.0.1.3
 IP4DST_PROXYARP2=10.0.1.4
 
-DEBUG=false
+DEBUG=${DEBUG:-false}
 TIMEOUT=1
 
-atf_test_case cache_expiration_5s cleanup
-atf_test_case cache_expiration_10s cleanup
-atf_test_case command cleanup
-atf_test_case garp cleanup
-atf_test_case cache_overwriting cleanup
-atf_test_case proxy_arp_pub cleanup
-atf_test_case proxy_arp_pubproxy cleanup
-atf_test_case link_activation cleanup
-atf_test_case static_arp cleanup
+atf_test_case arp_cache_expiration_5s cleanup
+atf_test_case arp_cache_expiration_10s cleanup
+atf_test_case arp_command cleanup
+atf_test_case arp_garp cleanup
+atf_test_case arp_cache_overwriting cleanup
+atf_test_case arp_proxy_arp_pub cleanup
+atf_test_case arp_proxy_arp_pubproxy cleanup
+atf_test_case arp_link_activation cleanup
+atf_test_case arp_static cleanup
 
-cache_expiration_5s_head()
+arp_cache_expiration_5s_head()
 {
 	atf_set "descr" "Tests for ARP cache expiration (5s)"
 	atf_set "require.progs" "rump_server"
 }
 
-cache_expiration_10s_head()
+arp_cache_expiration_10s_head()
 {
 	atf_set "descr" "Tests for ARP cache expiration (10s)"
 	atf_set "require.progs" "rump_server"
 }
 
-command_head()
+arp_command_head()
 {
-	atf_set "descr" "Tests for commands of arp(8)"
+	atf_set "descr" "Tests for arp_commands of arp(8)"
 	atf_set "require.progs" "rump_server"
 }
 
-garp_head()
+arp_garp_head()
 {
 	atf_set "descr" "Tests for GARP"
 	atf_set "require.progs" "rump_server"
 }
 
-cache_overwriting_head()
+arp_cache_overwriting_head()
 {
 	atf_set "descr" "Tests for behavior of overwriting ARP caches"
 	atf_set "require.progs" "rump_server"
 }
 
-proxy_arp_pub_head()
+arp_proxy_arp_pub_head()
 {
 	atf_set "descr" "Tests for Proxy ARP (pub)"
 	atf_set "require.progs" "rump_server"
 }
 
-proxy_arp_pubproxy_head()
+arp_proxy_arp_pubproxy_head()
 {
 	atf_set "descr" "Tests for Proxy ARP (pub proxy)"
 	atf_set "require.progs" "rump_server"
 }
 
-link_activation_head()
+arp_link_activation_head()
 {
 	atf_set "descr" "Tests for activating a new MAC address"
 	atf_set "require.progs" "rump_server"
 }
 
-static_arp_head()
+arp_static_head()
 {
 
 	atf_set "descr" "Tests for static ARP entries"
@@ -106,9 +102,9 @@ static_arp_head()
 
 setup_dst_server()
 {
+
+	rump_server_add_iface $SOCKDST shmif0 bus1
 	export RUMP_SERVER=$SOCKDST
-	atf_check -s exit:0 rump.ifconfig shmif0 create
-	atf_check -s exit:0 rump.ifconfig shmif0 linkstr bus1
 	atf_check -s exit:0 rump.ifconfig shmif0 inet $IP4DST/24
 	atf_check -s exit:0 rump.ifconfig shmif0 up
 	atf_check -s exit:0 rump.ifconfig -w 10
@@ -127,8 +123,7 @@ setup_src_server()
 	atf_check -s exit:0 -o ignore rump.sysctl -w net.inet.arp.keep=$keep
 
 	# Setup an interface
-	atf_check -s exit:0 rump.ifconfig shmif0 create
-	atf_check -s exit:0 rump.ifconfig shmif0 linkstr bus1
+	rump_server_add_iface $SOCKSRC shmif0 bus1
 	atf_check -s exit:0 rump.ifconfig shmif0 inet $IP4SRC/24
 	atf_check -s exit:0 rump.ifconfig shmif0 up
 	atf_check -s exit:0 rump.ifconfig -w 10
@@ -145,8 +140,8 @@ test_cache_expiration()
 	local arp_keep=$1
 	local bonus=2
 
-	atf_check -s exit:0 ${inetserver} $SOCKSRC
-	atf_check -s exit:0 ${inetserver} $SOCKDST
+	rump_server_start $SOCKSRC
+	rump_server_start $SOCKDST
 
 	setup_dst_server
 	setup_src_server $arp_keep
@@ -170,23 +165,27 @@ test_cache_expiration()
 	atf_check -s not-exit:0 -e ignore rump.arp -n $IP4DST
 }
 
-cache_expiration_5s_body()
+arp_cache_expiration_5s_body()
 {
+
 	test_cache_expiration 5
+	rump_server_destroy_ifaces
 }
 
-cache_expiration_10s_body()
+arp_cache_expiration_10s_body()
 {
+
 	test_cache_expiration 10
+	rump_server_destroy_ifaces
 }
 
-command_body()
+arp_command_body()
 {
 	local arp_keep=5
 	local bonus=2
 
-	atf_check -s exit:0 ${inetserver} $SOCKSRC
-	atf_check -s exit:0 ${inetserver} $SOCKDST
+	rump_server_start $SOCKSRC
+	rump_server_start $SOCKDST
 
 	setup_dst_server
 	setup_src_server $arp_keep
@@ -257,7 +256,7 @@ command_body()
 	$DEBUG && rump.arp -n -a
 	#atf_check -s not-exit:0 -e ignore rump.arp -n 10.0.1.10
 
-	return 0
+	rump_server_destroy_ifaces
 }
 
 make_pkt_str_arpreq()
@@ -269,16 +268,16 @@ make_pkt_str_arpreq()
 	echo $pkt
 }
 
-garp_body()
+arp_garp_body()
 {
 	local pkt=
 
-	atf_check -s exit:0 ${inetserver} $SOCKSRC
+	rump_server_start $SOCKSRC
+
 	export RUMP_SERVER=$SOCKSRC
 
 	# Setup an interface
-	atf_check -s exit:0 rump.ifconfig shmif0 create
-	atf_check -s exit:0 rump.ifconfig shmif0 linkstr bus1
+	rump_server_add_iface $SOCKSRC shmif0 bus1
 	atf_check -s exit:0 rump.ifconfig shmif0 inet 10.0.0.1/24
 	atf_check -s exit:0 rump.ifconfig shmif0 inet 10.0.0.2/24 alias
 	atf_check -s exit:0 rump.ifconfig shmif0 up
@@ -304,15 +303,17 @@ garp_body()
 	atf_check -s not-exit:0 -x "cat ./out |grep -q '$pkt'"
 	pkt=$(make_pkt_str_arpreq 10.0.0.4 10.0.0.4)
 	atf_check -s not-exit:0 -x "cat ./out |grep -q '$pkt'"
+
+	rump_server_destroy_ifaces
 }
 
-cache_overwriting_body()
+arp_cache_overwriting_body()
 {
 	local arp_keep=5
 	local bonus=2
 
-	atf_check -s exit:0 ${inetserver} $SOCKSRC
-	atf_check -s exit:0 ${inetserver} $SOCKDST
+	rump_server_start $SOCKSRC
+	rump_server_start $SOCKDST
 
 	setup_dst_server
 	setup_src_server $arp_keep
@@ -341,7 +342,7 @@ cache_overwriting_body()
 	atf_check -s exit:0 -o match:'b2:a0:20:00:00:ff' rump.arp -n 10.0.1.10
 	$DEBUG && rump.arp -n -a
 
-	return 0
+	rump_server_destroy_ifaces
 }
 
 make_pkt_str_arprep()
@@ -363,36 +364,21 @@ make_pkt_str_garp()
 	echo $pkt
 }
 
-extract_new_packets()
-{
-	local old=./old
-
-	if [ ! -f $old ]; then
-		old=/dev/null
-	fi
-
-	shmif_dumpbus -p - bus1 2>/dev/null| \
-	    tcpdump -n -e -r - 2>/dev/null > ./new
-	diff -u $old ./new |grep '^+' |cut -d '+' -f 2 > ./diff
-	mv -f ./new ./old
-	cat ./diff
-}
-
 test_proxy_arp()
 {
 	local arp_keep=5
 	local opts= title= flags=
 	local type=$1
 
-	atf_check -s exit:0 ${inetserver} $SOCKSRC
-	atf_check -s exit:0 ${inetserver} $SOCKDST
+	rump_server_start $SOCKSRC
+	rump_server_start $SOCKDST tap
 
 	setup_dst_server
 	setup_src_server $arp_keep
 
 	export RUMP_SERVER=$SOCKDST
 	atf_check -s exit:0 -o ignore rump.sysctl -w net.inet.ip.forwarding=1
-	macaddr_dst=$(rump.ifconfig shmif0 |awk '/address/ {print $2;}')
+	macaddr_dst=$(get_macaddr $SOCKDST shmif0)
 
 	if [ "$type" = "pub" ]; then
 		opts="pub"
@@ -416,7 +402,7 @@ test_proxy_arp()
 	    rump.ping -n -w 1 -c 1 $IP4DST_PROXYARP1
 
 	# Flushing
-	extract_new_packets > ./out
+	extract_new_packets bus1 > ./out
 
 	# Set up proxy ARP entry
 	export RUMP_SERVER=$SOCKDST
@@ -435,7 +421,7 @@ test_proxy_arp()
 		    rump.ping -n -w 1 -c 1 $IP4DST_PROXYARP1
 	fi
 
-	extract_new_packets > ./out
+	extract_new_packets bus1 > ./out
 	$DEBUG && cat ./out
 
 	pkt1=$(make_pkt_str_arprep $IP4DST_PROXYARP1 $macaddr_dst)
@@ -461,7 +447,7 @@ test_proxy_arp()
 	atf_check -s not-exit:0 -o ignore -e ignore \
 	    rump.ping -n -w 1 -c 1 $IP4DST_PROXYARP2
 
-	extract_new_packets > ./out
+	extract_new_packets bus1 > ./out
 	$DEBUG && cat ./out
 
 	# ARP reply should be sent
@@ -478,31 +464,33 @@ test_proxy_arp()
 	atf_check -s exit:0 -o ignore rump.ping -n -w 1 -c 1 $IP4DST_PROXYARP2
 }
 
-proxy_arp_pub_body()
+arp_proxy_arp_pub_body()
 {
 
 	test_proxy_arp pub
+	rump_server_destroy_ifaces
 }
 
-proxy_arp_pubproxy_body()
+arp_proxy_arp_pubproxy_body()
 {
 
 	test_proxy_arp pubproxy
+	rump_server_destroy_ifaces
 }
 
-link_activation_body()
+arp_link_activation_body()
 {
 	local arp_keep=5
 	local bonus=2
 
-	atf_check -s exit:0 ${inetserver} $SOCKSRC
-	atf_check -s exit:0 ${inetserver} $SOCKDST
+	rump_server_start $SOCKSRC
+	rump_server_start $SOCKDST
 
 	setup_dst_server
 	setup_src_server $arp_keep
 
 	# flush old packets
-	extract_new_packets > ./out
+	extract_new_packets bus1 > ./out
 
 	export RUMP_SERVER=$SOCKSRC
 
@@ -510,7 +498,7 @@ link_activation_body()
 	    b2:a1:00:00:00:01
 
 	atf_check -s exit:0 sleep 1
-	extract_new_packets > ./out
+	extract_new_packets bus1 > ./out
 	$DEBUG && cat ./out
 
 	pkt=$(make_pkt_str_arpreq $IP4SRC $IP4SRC)
@@ -520,27 +508,28 @@ link_activation_body()
 	    b2:a1:00:00:00:02 active
 
 	atf_check -s exit:0 sleep 1
-	extract_new_packets > ./out
+	extract_new_packets bus1 > ./out
 	$DEBUG && cat ./out
 
 	pkt=$(make_pkt_str_arpreq $IP4SRC $IP4SRC)
 	atf_check -s exit:0 -x \
 	    "cat ./out |grep '$pkt' |grep -q 'b2:a1:00:00:00:02'"
+
+	rump_server_destroy_ifaces
 }
 
-static_arp_body()
+arp_static_body()
 {
 	local arp_keep=5
 	local macaddr_src=
 
-	atf_check -s exit:0 ${inetserver} $SOCKSRC
-	atf_check -s exit:0 ${inetserver} $SOCKDST
+	rump_server_start $SOCKSRC
+	rump_server_start $SOCKDST
 
 	setup_dst_server
 	setup_src_server $arp_keep
 
-	export RUMP_SERVER=$SOCKSRC
-	macaddr_src=$(rump.ifconfig shmif0 |awk '/address/ {print $2;}')
+	macaddr_src=$(get_macaddr $SOCKSRC shmif0)
 
 	# Set a (valid) static ARP entry for the src server
 	export RUMP_SERVER=$SOCKDST
@@ -551,89 +540,59 @@ static_arp_body()
 	# Test receiving an ARP request with the static ARP entry (as spa/sha)
 	export RUMP_SERVER=$SOCKSRC
 	atf_check -s exit:0 -o ignore rump.ping -n -w 1 -c 1 $IP4DST
+
+	rump_server_destroy_ifaces
 }
 
-cleanup()
-{
-	env RUMP_SERVER=$SOCKSRC rump.halt
-	env RUMP_SERVER=$SOCKDST rump.halt
-}
-
-dump_src()
-{
-	export RUMP_SERVER=$SOCKSRC
-	rump.netstat -nr
-	rump.arp -n -a
-	rump.ifconfig
-	$HIJACKING dmesg
-}
-
-dump_dst()
-{
-	export RUMP_SERVER=$SOCKDST
-	rump.netstat -nr
-	rump.arp -n -a
-	rump.ifconfig
-	$HIJACKING dmesg
-}
-
-dump()
-{
-	dump_src
-	dump_dst
-	shmif_dumpbus -p - bus1 2>/dev/null| tcpdump -n -e -r -
-}
-
-cache_expiration_5s_cleanup()
+arp_cache_expiration_5s_cleanup()
 {
 	$DEBUG && dump
 	cleanup
 }
 
-cache_expiration_10s_cleanup()
+arp_cache_expiration_10s_cleanup()
 {
 	$DEBUG && dump
 	cleanup
 }
 
-command_cleanup()
+arp_command_cleanup()
 {
 	$DEBUG && dump
 	cleanup
 }
 
-garp_cleanup()
-{
-	$DEBUG && dump_src
-	$DEBUG && shmif_dumpbus -p - bus1 2>/dev/null| tcpdump -n -e -r -
-	env RUMP_SERVER=$SOCKSRC rump.halt
-}
-
-cache_overwriting_cleanup()
+arp_garp_cleanup()
 {
 	$DEBUG && dump
 	cleanup
 }
 
-proxy_arp_pub_cleanup()
+arp_cache_overwriting_cleanup()
 {
 	$DEBUG && dump
 	cleanup
 }
 
-proxy_arp_pubproxy_cleanup()
+arp_proxy_arp_pub_cleanup()
 {
 	$DEBUG && dump
 	cleanup
 }
 
-link_activation_cleanup()
+arp_proxy_arp_pubproxy_cleanup()
 {
 	$DEBUG && dump
 	cleanup
 }
 
-static_arp_cleanup()
+arp_link_activation_cleanup()
+{
+	$DEBUG && dump
+	cleanup
+}
+
+arp_static_cleanup()
 {
 	$DEBUG && dump
 	cleanup
@@ -641,13 +600,13 @@ static_arp_cleanup()
 
 atf_init_test_cases()
 {
-	atf_add_test_case cache_expiration_5s
-	atf_add_test_case cache_expiration_10s
-	atf_add_test_case command
-	atf_add_test_case garp
-	atf_add_test_case cache_overwriting
-	atf_add_test_case proxy_arp_pub
-	atf_add_test_case proxy_arp_pubproxy
-	atf_add_test_case link_activation
-	atf_add_test_case static_arp
+	atf_add_test_case arp_cache_expiration_5s
+	atf_add_test_case arp_cache_expiration_10s
+	atf_add_test_case arp_command
+	atf_add_test_case arp_garp
+	atf_add_test_case arp_cache_overwriting
+	atf_add_test_case arp_proxy_arp_pub
+	atf_add_test_case arp_proxy_arp_pubproxy
+	atf_add_test_case arp_link_activation
+	atf_add_test_case arp_static
 }

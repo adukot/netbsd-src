@@ -1,4 +1,4 @@
-/*	$NetBSD: if_sn.c,v 1.35 2016/02/09 08:32:09 ozaki-r Exp $	*/
+/*	$NetBSD: if_sn.c,v 1.38 2017/02/22 09:45:16 nonaka Exp $	*/
 
 /*
  * National Semiconductor  DP8393X SONIC Driver
@@ -16,7 +16,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_sn.c,v 1.35 2016/02/09 08:32:09 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_sn.c,v 1.38 2017/02/22 09:45:16 nonaka Exp $");
 
 #include "opt_inet.h"
 
@@ -216,6 +216,7 @@ snsetup(struct sn_softc	*sc, uint8_t *lladdr)
 	    IFF_BROADCAST | IFF_SIMPLEX | IFF_NOTRAILERS | IFF_MULTICAST;
 	ifp->if_watchdog = snwatchdog;
 	if_attach(ifp);
+	if_deferred_start_init(ifp, NULL);
 	ether_ifattach(ifp, lladdr);
 
 	return 0;
@@ -858,7 +859,7 @@ snintr(void *arg)
 				sc->sc_mptally++;
 #endif
 		}
-		snstart(&sc->sc_if);
+		if_schedule_deferred_start(&sc->sc_if);
 	}
 	return handled;
 }
@@ -963,9 +964,7 @@ sonicrxint(struct sn_softc *sc)
 			void *pkt =
 			    (char *)sc->rbuf[orra & RBAMASK] +
 				 (rxpkt_ptr & PGOFSET);
-			if (sonic_read(sc, pkt, len))
-				sc->sc_if.if_ipackets++;
-			else
+			if (sonic_read(sc, pkt, len) == 0)
 				sc->sc_if.if_ierrors++;
 		} else
 			sc->sc_if.if_ierrors++;
@@ -1057,8 +1056,6 @@ sonic_read(struct sn_softc *sc, void *pkt, int len)
 	m = sonic_get(sc, pkt, len);
 	if (m == NULL)
 		return 0;
-	/* Pass the packet to any BPF listeners. */
-	bpf_mtap(ifp, m);
 	if_percpuq_enqueue(ifp->if_percpuq, m);
 	return 1;
 }
@@ -1075,7 +1072,7 @@ sonic_get(struct sn_softc *sc, void *pkt, int datalen)
 	MGETHDR(m, M_DONTWAIT, MT_DATA);
 	if (m == 0)
 		return 0;
-	m->m_pkthdr.rcvif = &sc->sc_if;
+	m_set_rcvif(m, &sc->sc_if);
 	m->m_pkthdr.len = datalen;
 	len = MHLEN;
 	top = 0;

@@ -1,4 +1,4 @@
-/*	$NetBSD: intrctl.c,v 1.1 2015/08/17 06:42:46 knakahara Exp $	*/
+/*	$NetBSD: intrctl.c,v 1.7 2016/11/02 11:03:33 ryo Exp $	*/
 
 /*
  * Copyright (c) 2015 Internet Initiative Japan Inc.
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: intrctl.c,v 1.1 2015/08/17 06:42:46 knakahara Exp $");
+__RCSID("$NetBSD: intrctl.c,v 1.7 2016/11/02 11:03:33 ryo Exp $");
 
 #include <sys/param.h>
 #include <sys/sysctl.h>
@@ -99,7 +99,7 @@ usage(void)
 {
 	const char *progname = getprogname();
 
-	fprintf(stderr, "usage: %s list\n", progname);
+	fprintf(stderr, "usage: %s list [-c]\n", progname);
 	fprintf(stderr, "       %s affinity -i interrupt_name -c cpu_index\n", progname);
 	fprintf(stderr, "       %s intr -c cpu_index\n", progname);
 	fprintf(stderr, "       %s nointr -c cpu_index\n", progname);
@@ -112,35 +112,106 @@ static int intrctl_io_alloc_retry_count = 4;
 static void
 intrctl_list(int argc, char **argv)
 {
+	char buf[64];
 	struct intrio_list_line *illine;
-	int i, ncpus;
+	int i, ncpus, *cpucol;
 	void *handle;
+	size_t intridlen;
+	int compact = 0;
+	int ch;
+
+	while ((ch = getopt(argc, argv, "c")) != -1) {
+		switch (ch) {
+		case 'c':
+			compact = 1;
+			break;
+		default:
+			usage();
+		}
+	}
 
 	handle = intrctl_io_alloc(intrctl_io_alloc_retry_count);
 	if (handle == NULL)
 		err(EXIT_FAILURE, "intrctl_io_alloc");
 
-	/* header */
+	/* calc columns */
 	ncpus = intrctl_io_ncpus(handle);
-	printf("interrupt id\t");
+	intridlen = strlen("interrupt id");
+	for (illine = intrctl_io_firstline(handle); illine != NULL;
+	    illine = intrctl_io_nextline(handle, illine)) {
+		size_t len = strlen(illine->ill_intrid);
+		if (intridlen < len)
+			intridlen = len;
+	}
+
+	cpucol = malloc(sizeof(*cpucol) * (size_t)ncpus);
+	if (cpucol == NULL)
+		err(EXIT_FAILURE, "malloc");
 	for (i = 0; i < ncpus; i++) {
-		printf("  CPU#%02u\t", i);
+		snprintf(buf, sizeof(buf), "CPU%u", i);
+		cpucol[i] = strlen(buf);
+	}
+	for (illine = intrctl_io_firstline(handle); illine != NULL;
+	    illine = intrctl_io_nextline(handle, illine)) {
+		for (i = 0; i < ncpus; i++) {
+			int len;
+			snprintf(buf, sizeof(buf), "%" PRIu64,
+			    illine->ill_cpu[i].illc_count);
+			len = (int)strlen(buf);
+			if (cpucol[i] < len)
+				cpucol[i] = len;
+		}
+	}
+
+	/* header */
+	printf("%-*s ", (int)intridlen, "interrupt id");
+	if (compact) {
+		printf("%20s ", "total");
+		printf("%5s ", "aff");
+	} else {
+		for (i = 0; i < ncpus; i++) {
+			snprintf(buf, sizeof(buf), "CPU%u", i);
+			printf("%*s  ", cpucol[i], buf);
+		}
 	}
 	printf("device name(s)\n");
 
 	/* body */
-	illine = intrctl_io_firstline(handle);
-	for (; illine != NULL; illine = intrctl_io_nextline(handle, illine)) {
-		printf("%s\t", illine->ill_intrid);
-		for (i = 0; i < ncpus; i++) {
-			struct intrio_list_line_cpu *illc = &illine->ill_cpu[i];
-			printf("%8" PRIu64 "%c\t", illc->illc_count,
-			    illc->illc_assigned ? '*' : ' ');
-		}
+	for (illine = intrctl_io_firstline(handle); illine != NULL;
+	    illine = intrctl_io_nextline(handle, illine)) {
+		struct intrio_list_line_cpu *illc;
 
+		printf("%-*s ", (int)intridlen, illine->ill_intrid);
+		if (compact) {
+			uint64_t total = 0;
+			char *affinity, *oaffinity = NULL;
+			for (i = 0; i < ncpus; i++) {
+				illc = &illine->ill_cpu[i];
+				total += illc->illc_count;
+				if (illc->illc_assigned) {
+					asprintf(&affinity, "%s%s%d",
+					    oaffinity ? oaffinity : "",
+					    oaffinity ? ", " : "",
+					    i);
+					if (oaffinity)
+						free(oaffinity);
+					oaffinity = affinity;
+				}
+			}
+			printf("%20" PRIu64 " ", total);
+			printf("%5s ", affinity ? affinity : "none");
+			free(affinity);
+		} else {
+			for (i = 0; i < ncpus; i++) {
+				illc = &illine->ill_cpu[i];
+				printf("%*" PRIu64 "%c ", cpucol[i], illc->illc_count,
+				    illc->illc_assigned ? '*' : ' ');
+			}
+		}
 		printf("%s\n", illine->ill_xname);
 	}
 
+	free(cpucol);
 	intrctl_io_free(handle);
 }
 

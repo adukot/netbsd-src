@@ -1,4 +1,4 @@
-# $NetBSD: mi,v 1.1524 2016/05/01 10:21:01 nonaka Exp $
+# $NetBSD: mi,v 1.1551 2017/03/06 13:14:25 maya Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 #
@@ -55,7 +55,7 @@
 ./usr/share/man/cat1/atf-compile.0		man-obsolete		obsolete
 ./usr/share/man/cat1/atf-config.0		man-atf-catman		.cat,atf,!kyua
 ./usr/share/man/cat1/atf-config.0		man-obsolete		.cat,kyua,obsolete
-./usr/share/man/cat1/atf-exec.0			man-atf-catman		obsolete
+./usr/share/man/cat1/atf-exec.0			man-obsolete		obsolete
 ./usr/share/man/cat1/atf-format.0		man-obsolete		obsolete
 ./usr/share/man/cat1/atf-killpg.0		man-obsolete		obsolete
 ./usr/share/man/cat1/atf-report.0		man-atf-catman		.cat,atf
@@ -82,7 +82,7 @@
 ./usr/share/man/cat1/bdes.0			man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/bg.0			man-util-catman		.cat
 ./usr/share/man/cat1/biff.0			man-mail-catman		.cat
-./usr/share/man/cat1/bpm.0			man-pkgutil-catman	crypto,.cat
+./usr/share/man/cat1/bpm.0			man-obsolete		crypto,.cat,obsolete
 ./usr/share/man/cat1/bthset.0			man-util-catman		.cat
 ./usr/share/man/cat1/btkey.0			man-util-catman		.cat
 ./usr/share/man/cat1/btpin.0			man-util-catman		.cat
@@ -350,6 +350,7 @@
 ./usr/share/man/cat1/mt.0			man-util-catman		.cat
 ./usr/share/man/cat1/mv.0			man-util-catman		.cat
 ./usr/share/man/cat1/nbsvtool.0			man-crypto-catman	crypto,.cat
+./usr/share/man/cat1/nc.0			man-netutil-catman	.cat
 ./usr/share/man/cat1/netgroup.0			man-nis-catman		.cat
 ./usr/share/man/cat1/netpgp.0			man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/netpgpkeys.0		man-crypto-catman	crypto,.cat
@@ -371,8 +372,10 @@
 ./usr/share/man/cat1/openssl.0			man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_CA.pl.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_asn1parse.0	man-crypto-catman	crypto,.cat
+./usr/share/man/cat1/openssl_c_rehash.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_ca.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_ciphers.0		man-crypto-catman	crypto,.cat
+./usr/share/man/cat1/openssl_cms.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_crl.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_crl2pkcs7.0	man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_dgst.0		man-crypto-catman	crypto,.cat
@@ -384,12 +387,16 @@
 ./usr/share/man/cat1/openssl_enc.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_errstr.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_gendsa.0		man-crypto-catman	crypto,.cat
+./usr/share/man/cat1/openssl_genpkey.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_genrsa.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_nseq.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_passwd.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_pkcs12.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_pkcs7.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_pkcs8.0		man-crypto-catman	crypto,.cat
+./usr/share/man/cat1/openssl_pkey.0		man-crypto-catman	crypto,.cat
+./usr/share/man/cat1/openssl_pkeyparam.0	man-crypto-catman	crypto,.cat
+./usr/share/man/cat1/openssl_pkeyutl.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_rand.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_req.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_rsa.0		man-crypto-catman	crypto,.cat
@@ -401,6 +408,8 @@
 ./usr/share/man/cat1/openssl_smime.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_speed.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_spkac.0		man-crypto-catman	crypto,.cat
+./usr/share/man/cat1/openssl_ts.0		man-crypto-catman	crypto,.cat
+./usr/share/man/cat1/openssl_tsget.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_verify.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_version.0		man-crypto-catman	crypto,.cat
 ./usr/share/man/cat1/openssl_x509.0		man-crypto-catman	crypto,.cat
@@ -522,8 +531,8 @@
 ./usr/share/man/cat1/smbutil.0			man-util-catman		.cat
 ./usr/share/man/cat1/sntp.0			man-ntp-catman		.cat
 ./usr/share/man/cat1/sockstat.0			man-util-catman		.cat
-./usr/share/man/cat1/sortinfo.0			man-texinfo-catman	.cat
 ./usr/share/man/cat1/sort.0			man-util-catman		.cat
+./usr/share/man/cat1/sortinfo.0			man-texinfo-catman	.cat
 ./usr/share/man/cat1/source.0			man-util-catman		.cat
 ./usr/share/man/cat1/spell.0			man-util-catman		.cat
 ./usr/share/man/cat1/split.0			man-util-catman		.cat
@@ -541,6 +550,7 @@
 ./usr/share/man/cat1/sum.0			man-util-catman		.cat
 ./usr/share/man/cat1/sup.0			man-sup-catman		.cat
 ./usr/share/man/cat1/suspend.0			man-util-catman		.cat
+./usr/share/man/cat1/sys_info.0			man-util-catman		.cat
 ./usr/share/man/cat1/sysstat.0			man-util-catman		.cat
 ./usr/share/man/cat1/systat.0			man-util-catman		.cat
 ./usr/share/man/cat1/systrace.0			man-obsolete		obsolete
@@ -574,6 +584,7 @@
 ./usr/share/man/cat1/ttyflags.0			man-obsolete		obsolete
 ./usr/share/man/cat1/ul.0			man-util-catman		.cat
 ./usr/share/man/cat1/uname.0			man-util-catman		.cat
+./usr/share/man/cat1/unbound-host.0		man-netutil-catman	.cat,crypto,unbound
 ./usr/share/man/cat1/uncompress.0		man-util-catman		.cat
 ./usr/share/man/cat1/unexpand.0			man-util-catman		.cat
 ./usr/share/man/cat1/uniq.0			man-util-catman		.cat
@@ -648,6 +659,7 @@
 ./usr/share/man/cat3/atari/ahdi_writelabel.0	man-obsolete		obsolete
 ./usr/share/man/cat3/i386			man-obsolete		obsolete
 ./usr/share/man/cat3/i386/keycap.0		man-obsolete		obsolete
+./usr/share/man/cat3/libunbound.0		man-netutil-catman	.cat,crypto,unbound
 ./usr/share/man/cat3lua/gpio.0			man-sys-catman		.cat
 ./usr/share/man/cat3lua/gpio.attach.0		man-sys-catman		.cat
 ./usr/share/man/cat3lua/gpio.close.0		man-sys-catman		.cat
@@ -741,6 +753,7 @@
 ./usr/share/man/cat4/aha.0			man-sys-catman		.cat
 ./usr/share/man/cat4/ahb.0			man-sys-catman		.cat
 ./usr/share/man/cat4/ahc.0			man-sys-catman		.cat
+./usr/share/man/cat4/ahci.0			man-sys-catman		.cat
 ./usr/share/man/cat4/ahcisata.0			man-sys-catman		.cat
 ./usr/share/man/cat4/ahd.0			man-sys-catman		.cat
 ./usr/share/man/cat4/ai.0			man-sys-catman		.cat
@@ -813,6 +826,7 @@
 ./usr/share/man/cat4/amiga/mem.0		man-sys-catman		.cat
 ./usr/share/man/cat4/amiga/mfcs.0		man-sys-catman		.cat
 ./usr/share/man/cat4/amiga/mgnsc.0		man-sys-catman		.cat
+./usr/share/man/cat4/amiga/mntva.0		man-sys-catman		.cat
 ./usr/share/man/cat4/amiga/mppb.0		man-sys-catman		.cat
 ./usr/share/man/cat4/amiga/p5membar.0		man-sys-catman		.cat
 ./usr/share/man/cat4/amiga/p5pb.0		man-sys-catman		.cat
@@ -1237,7 +1251,7 @@
 ./usr/share/man/cat4/i386/mem.0			man-obsolete		obsolete
 ./usr/share/man/cat4/i386/mms.0			man-sys-catman		.cat
 ./usr/share/man/cat4/i386/ndis.0		man-sys-catman		.cat
-./usr/share/man/cat4/i386/npx.0			man-sys-catman		.cat
+./usr/share/man/cat4/i386/npx.0			man-obsolete		obsolete
 ./usr/share/man/cat4/i386/olms.0		man-obsolete		obsolete
 ./usr/share/man/cat4/i386/omms.0		man-obsolete		obsolete
 ./usr/share/man/cat4/i386/opms.0		man-obsolete		obsolete
@@ -1346,6 +1360,7 @@
 ./usr/share/man/cat4/ksyms.0			man-sys-catman		.cat
 ./usr/share/man/cat4/kttcp.0			man-sys-catman		.cat
 ./usr/share/man/cat4/kue.0			man-sys-catman		.cat
+./usr/share/man/cat4/l2tp.0			man-sys-catman		.cat
 ./usr/share/man/cat4/lc.0			man-sys-catman		.cat
 ./usr/share/man/cat4/ld.0			man-sys-catman		.cat
 ./usr/share/man/cat4/le.0			man-sys-catman		.cat
@@ -1385,6 +1400,7 @@
 ./usr/share/man/cat4/macppc/mesh.0		man-sys-catman		.cat
 ./usr/share/man/cat4/macppc/obio.0		man-sys-catman		.cat
 ./usr/share/man/cat4/macppc/pbms.0		man-sys-catman		.cat
+./usr/share/man/cat4/macppc/platinumfb.0	man-sys-catman		.cat
 ./usr/share/man/cat4/macppc/snapper.0		man-sys-catman		.cat
 ./usr/share/man/cat4/mainbus.0			man-sys-catman		.cat
 ./usr/share/man/cat4/makphy.0			man-sys-catman		.cat
@@ -1517,6 +1533,7 @@
 ./usr/share/man/cat4/piixpm.0			man-sys-catman		.cat
 ./usr/share/man/cat4/pim.0			man-sys-catman		.cat
 ./usr/share/man/cat4/plip.0			man-sys-catman		.cat
+./usr/share/man/cat4/pm3fb.0			man-sys-catman		.cat
 ./usr/share/man/cat4/pmax/asc.0			man-sys-catman		.cat
 ./usr/share/man/cat4/pmax/autoconf.0		man-sys-catman		.cat
 ./usr/share/man/cat4/pmax/dc.0			man-obsolete		obsolete
@@ -1559,6 +1576,7 @@
 ./usr/share/man/cat4/puffs.0			man-puffs-catman	.cat
 ./usr/share/man/cat4/pwdog.0			man-sys-catman		.cat
 ./usr/share/man/cat4/px.0			man-sys-catman		.cat
+./usr/share/man/cat4/pxaip.0			man-sys-catman		.cat
 ./usr/share/man/cat4/pxg.0			man-sys-catman		.cat
 ./usr/share/man/cat4/qe.0			man-sys-catman		.cat
 ./usr/share/man/cat4/qec.0			man-sys-catman		.cat
@@ -1763,6 +1781,7 @@
 ./usr/share/man/cat4/tcic.0			man-sys-catman		.cat
 ./usr/share/man/cat4/tcom.0			man-sys-catman		.cat
 ./usr/share/man/cat4/tcp.0			man-sys-catman		.cat
+./usr/share/man/cat4/tcu.0			man-sys-catman		.cat
 ./usr/share/man/cat4/tdfxdrm.0			man-sys-catman		.cat
 ./usr/share/man/cat4/tdvfb.0			man-sys-catman		.cat
 ./usr/share/man/cat4/termios.0			man-sys-catman		.cat
@@ -2000,6 +2019,7 @@
 ./usr/share/man/cat4/xenbus.0			man-sys-catman		.cat
 ./usr/share/man/cat4/xennet.0			man-sys-catman		.cat
 ./usr/share/man/cat4/xge.0			man-sys-catman		.cat
+./usr/share/man/cat4/xhci.0			man-sys-catman		.cat
 ./usr/share/man/cat4/xi.0			man-sys-catman		.cat
 ./usr/share/man/cat4/xirc.0			man-sys-catman		.cat
 ./usr/share/man/cat4/xpci.0			man-sys-catman		.cat
@@ -2120,8 +2140,8 @@
 ./usr/share/man/cat5/lvm.conf.0			man-lvm-catman		lvm,.cat
 ./usr/share/man/cat5/magic.0			man-util-catman		.cat
 ./usr/share/man/cat5/mailer.conf.0		man-mailwrapper-catman	.cat
-./usr/share/man/cat5/man.conf.0			man-man-catman		.cat
 ./usr/share/man/cat5/malloc.conf.0		man-sys-catman		.cat
+./usr/share/man/cat5/man.conf.0			man-man-catman		.cat
 ./usr/share/man/cat5/map3270.0			man-obsolete		obsolete
 ./usr/share/man/cat5/master.0			man-postfix-catman	postfix,.cat
 ./usr/share/man/cat5/master.passwd.0		man-sys-catman		.cat
@@ -2142,6 +2162,7 @@
 ./usr/share/man/cat5/nisplus_table.0		man-postfix-catman	postfix,.cat
 ./usr/share/man/cat5/nologin.0			man-sysutil-catman	.cat
 ./usr/share/man/cat5/npf.conf.0			man-npf-catman		.cat,npf
+./usr/share/man/cat5/nsd.conf.0			man-nsd-catman		.cat,nsd
 ./usr/share/man/cat5/nsswitch.conf.0		man-net-catman		.cat
 ./usr/share/man/cat5/ntp.conf.0			man-ntp-catman		.cat
 ./usr/share/man/cat5/ntp.keys.0			man-ntp-catman		.cat
@@ -2203,6 +2224,7 @@
 ./usr/share/man/cat5/types.0			man-obsolete		obsolete
 ./usr/share/man/cat5/tzfile.0			man-sys-catman		.cat
 ./usr/share/man/cat5/ucontext.0			man-obsolete		obsolete
+./usr/share/man/cat5/unbound.conf.0		man-netutil-catman	.cat,crypto,unbound
 ./usr/share/man/cat5/usermgmt.conf.0		man-sys-catman		.cat
 ./usr/share/man/cat5/utmp.0			man-sys-catman		.cat
 ./usr/share/man/cat5/utmpx.0			man-sys-catman		.cat
@@ -2347,6 +2369,7 @@
 ./usr/share/man/cat8/bounce.0			man-postfix-catman	postfix,.cat
 ./usr/share/man/cat8/bozohttpd.0		man-netutil-catman	.cat
 ./usr/share/man/cat8/brconfig.0			man-netutil-catman	.cat
+./usr/share/man/cat8/bta2dpd.0			man-sysutil-catman	.cat
 ./usr/share/man/cat8/btattach.0			man-sysutil-catman	.cat
 ./usr/share/man/cat8/btconfig.0			man-sysutil-catman	.cat
 ./usr/share/man/cat8/btcontrol.0		man-obsolete		obsolete
@@ -2360,7 +2383,7 @@
 ./usr/share/man/cat8/ccdconfig.0		man-sysutil-catman	.cat
 ./usr/share/man/cat8/cesfic/MAKEDEV.0		man-obsolete		obsolete
 ./usr/share/man/cat8/cesfic/makedev.0		man-obsolete		obsolete
-./usr/share/man/cat8/cgdconfig.0		man-sysutil-catman	crypto,.cat
+./usr/share/man/cat8/cgdconfig.0		man-sysutil-catman	.cat
 ./usr/share/man/cat8/chat.0			man-ppp-catman		.cat
 ./usr/share/man/cat8/chown.0			man-sysutil-catman	.cat
 ./usr/share/man/cat8/chroot.0			man-sysutil-catman	.cat
@@ -2501,7 +2524,7 @@
 ./usr/share/man/cat8/hostapd_cli.0		man-sysutil-catman	.cat
 ./usr/share/man/cat8/hp300/MAKEDEV.0		man-obsolete		obsolete
 ./usr/share/man/cat8/hp300/boot.0		man-sys-catman		.cat
-./usr/share/man/cat8/hp300/crash.0		man-sys-catman		.cat
+./usr/share/man/cat8/hp300/crash.0		man-obsolete		obsolete
 ./usr/share/man/cat8/hp300/format.0		man-sys-catman		.cat
 ./usr/share/man/cat8/hp300/makedev.0		man-obsolete		obsolete
 ./usr/share/man/cat8/hp700/MAKEDEV.0		man-obsolete		obsolete
@@ -2766,18 +2789,24 @@
 ./usr/share/man/cat8/nologin.0			man-sysutil-catman	.cat
 ./usr/share/man/cat8/npf.conf.0			man-obsolete		obsolete
 ./usr/share/man/cat8/npfctl.0			man-npf-catman		.cat,npf
+./usr/share/man/cat8/npfd.0			man-npf-catman		.cat,npf
 ./usr/share/man/cat8/nqmgr.0			man-obsolete		obsolete
+./usr/share/man/cat8/nsd.0 			man-nsd-catman		.cat,nsd
+./usr/share/man/cat8/nsd-checkconf.0		man-nsd-catman		.cat,nsd
+./usr/share/man/cat8/nsd-checkzone.0		man-nsd-catman		.cat,nsd
+./usr/share/man/cat8/nsd-control.0		man-nsd-catman		.cat,nsd
 ./usr/share/man/cat8/nsec3hash.0		man-bind-catman		.cat
 ./usr/share/man/cat8/nslookup.0			man-netutil-catman	.cat
 ./usr/share/man/cat8/nsupdate.0			man-obsolete		obsolete
 ./usr/share/man/cat8/ntalkd.0			man-netutil-catman	.cat
-./usr/share/man/cat8/ntp-keygen.0		man-ntp-catman		crypto,.cat
+./usr/share/man/cat8/ntp-keygen.0		man-ntp-catman		.cat
 ./usr/share/man/cat8/ntpd.0			man-ntp-catman		.cat
 ./usr/share/man/cat8/ntpdate.0			man-ntp-catman		.cat
 ./usr/share/man/cat8/ntpdc.0			man-ntp-catman		.cat
 ./usr/share/man/cat8/ntpq.0			man-ntp-catman		.cat
 ./usr/share/man/cat8/ntptime.0			man-ntp-catman		.cat
 ./usr/share/man/cat8/ntptrace.0			man-ntp-catman		.cat
+./usr/share/man/cat8/nvmectl.0			man-sysutil-catman	.cat
 ./usr/share/man/cat8/ofctl.0			man-sysutil-catman	.cat
 ./usr/share/man/cat8/ofppc/MAKEDEV.0		man-obsolete		obsolete
 ./usr/share/man/cat8/ofppc/makedev.0		man-obsolete		obsolete
@@ -3086,6 +3115,10 @@
 ./usr/share/man/cat8/ttyflags.0			man-sysutil-catman	.cat
 ./usr/share/man/cat8/tunefs.0			man-sysutil-catman	.cat
 ./usr/share/man/cat8/umount.0			man-sysutil-catman	.cat
+./usr/share/man/cat8/unbound-anchor.0		man-netutil-catman	.cat,crypto,unbound
+./usr/share/man/cat8/unbound-checkconf.0	man-netutil-catman	.cat,crypto,unbound
+./usr/share/man/cat8/unbound-control.0		man-netutil-catman	.cat,crypto,unbound
+./usr/share/man/cat8/unbound.0			man-netutil-catman	.cat,crypto,unbound
 ./usr/share/man/cat8/unlink.0			man-sysutil-catman	.cat
 ./usr/share/man/cat8/update.0			man-obsolete		obsolete
 ./usr/share/man/cat8/usbd.0			man-obsolete		obsolete
@@ -3212,7 +3245,7 @@
 ./usr/share/man/html1/atf-compile.html		man-obsolete		obsolete
 ./usr/share/man/html1/atf-config.html		man-atf-htmlman		html,atf,!kyua
 ./usr/share/man/html1/atf-config.html		man-obsolete		html,kyua,obsolete
-./usr/share/man/html1/atf-exec.html		man-atf-htmlman		obsolete
+./usr/share/man/html1/atf-exec.html		man-obsolete		obsolete
 ./usr/share/man/html1/atf-format.html		man-obsolete		obsolete
 ./usr/share/man/html1/atf-killpg.html		man-obsolete		obsolete
 ./usr/share/man/html1/atf-report.html		man-atf-htmlman		html,atf
@@ -3239,7 +3272,7 @@
 ./usr/share/man/html1/bdes.html			man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/bg.html			man-util-htmlman	html
 ./usr/share/man/html1/biff.html			man-mail-htmlman	html
-./usr/share/man/html1/bpm.html			man-pkgutil-htmlman	crypto,html
+./usr/share/man/html1/bpm.html			man-obsolete		crypto,html,obsolete
 ./usr/share/man/html1/bthset.html		man-util-htmlman	html
 ./usr/share/man/html1/btkey.html		man-util-htmlman	html
 ./usr/share/man/html1/btpin.html		man-util-htmlman	html
@@ -3491,6 +3524,7 @@
 ./usr/share/man/html1/mt.html			man-util-htmlman	html
 ./usr/share/man/html1/mv.html			man-util-htmlman	html
 ./usr/share/man/html1/nbsvtool.html		man-crypto-htmlman	crypto,html
+./usr/share/man/html1/nc.html			man-netutil-htmlman	html
 ./usr/share/man/html1/netgroup.html		man-nis-htmlman		html
 ./usr/share/man/html1/netpgp.html		man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/netpgpkeys.html		man-crypto-htmlman	crypto,html
@@ -3512,8 +3546,10 @@
 ./usr/share/man/html1/openssl.html		man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_CA.pl.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_asn1parse.html	man-crypto-htmlman	crypto,html
+./usr/share/man/html1/openssl_c_rehash.html		man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_ca.html		man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_ciphers.html	man-crypto-htmlman	crypto,html
+./usr/share/man/html1/openssl_cms.html		man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_crl.html		man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_crl2pkcs7.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_dgst.html		man-crypto-htmlman	crypto,html
@@ -3525,12 +3561,16 @@
 ./usr/share/man/html1/openssl_enc.html		man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_errstr.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_gendsa.html	man-crypto-htmlman	crypto,html
+./usr/share/man/html1/openssl_genpkey.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_genrsa.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_nseq.html		man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_passwd.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_pkcs12.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_pkcs7.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_pkcs8.html	man-crypto-htmlman	crypto,html
+./usr/share/man/html1/openssl_pkey.html		man-crypto-htmlman	crypto,html
+./usr/share/man/html1/openssl_pkeyparam.html	man-crypto-htmlman	crypto,html
+./usr/share/man/html1/openssl_pkeyutl.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_rand.html		man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_req.html		man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_rsa.html		man-crypto-htmlman	crypto,html
@@ -3542,6 +3582,8 @@
 ./usr/share/man/html1/openssl_smime.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_speed.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_spkac.html	man-crypto-htmlman	crypto,html
+./usr/share/man/html1/openssl_ts.html		man-crypto-htmlman	crypto,html
+./usr/share/man/html1/openssl_tsget.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_verify.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_version.html	man-crypto-htmlman	crypto,html
 ./usr/share/man/html1/openssl_x509.html		man-crypto-htmlman	crypto,html
@@ -3658,8 +3700,8 @@
 ./usr/share/man/html1/smbutil.html		man-util-htmlman	html
 ./usr/share/man/html1/sntp.html			man-ntp-htmlman		html
 ./usr/share/man/html1/sockstat.html		man-util-htmlman	html
-./usr/share/man/html1/sortinfo.html		man-texinfo-htmlman	html
 ./usr/share/man/html1/sort.html			man-util-htmlman	html
+./usr/share/man/html1/sortinfo.html		man-texinfo-htmlman	html
 ./usr/share/man/html1/source.html		man-util-htmlman	html
 ./usr/share/man/html1/spell.html		man-util-htmlman	html
 ./usr/share/man/html1/split.html		man-util-htmlman	html
@@ -3677,6 +3719,7 @@
 ./usr/share/man/html1/sum.html			man-util-htmlman	html
 ./usr/share/man/html1/sup.html			man-sup-htmlman		html
 ./usr/share/man/html1/suspend.html		man-util-htmlman	html
+./usr/share/man/html1/sys_info.html		man-util-htmlman	html
 ./usr/share/man/html1/sysstat.html		man-util-htmlman	html
 ./usr/share/man/html1/systat.html		man-util-htmlman	html
 ./usr/share/man/html1/tabs.html			man-util-htmlman	html
@@ -3708,6 +3751,7 @@
 ./usr/share/man/html1/tty.html			man-util-htmlman	html
 ./usr/share/man/html1/ul.html			man-util-htmlman	html
 ./usr/share/man/html1/uname.html		man-util-htmlman	html
+./usr/share/man/html1/unbound-host.html		man-netutil-htmlman	html,crypto,unbound
 ./usr/share/man/html1/uncompress.html		man-util-htmlman	html
 ./usr/share/man/html1/unexpand.html		man-util-htmlman	html
 ./usr/share/man/html1/uniq.html			man-util-htmlman	html
@@ -3772,6 +3816,7 @@
 ./usr/share/man/html1/zless.html		man-util-htmlman	html
 ./usr/share/man/html1/zmore.html		man-util-htmlman	html
 ./usr/share/man/html1/znew.html			man-util-htmlman	html
+./usr/share/man/html3/libunbound.html		man-netutil-htmlman	html,crypto,unbound
 ./usr/share/man/html3lua/gpio.attach.html	man-sys-htmlman		html
 ./usr/share/man/html3lua/gpio.close.html	man-sys-htmlman		html
 ./usr/share/man/html3lua/gpio.html		man-sys-htmlman		html
@@ -3856,6 +3901,7 @@
 ./usr/share/man/html4/aha.html			man-sys-htmlman		html
 ./usr/share/man/html4/ahb.html			man-sys-htmlman		html
 ./usr/share/man/html4/ahc.html			man-sys-htmlman		html
+./usr/share/man/html4/ahci.html			man-sys-htmlman		html
 ./usr/share/man/html4/ahcisata.html		man-sys-htmlman		html
 ./usr/share/man/html4/ahd.html			man-sys-htmlman		html
 ./usr/share/man/html4/ai.html			man-sys-htmlman		html
@@ -3865,7 +3911,7 @@
 ./usr/share/man/html4/akbd.html			man-sys-htmlman		html
 ./usr/share/man/html4/alc.html			man-sys-htmlman		html
 ./usr/share/man/html4/ale.html			man-sys-htmlman		html
-./usr/share/man/html4/alipm.html			man-sys-htmlman		html
+./usr/share/man/html4/alipm.html		man-sys-htmlman		html
 ./usr/share/man/html4/alpha/apecs.html		man-sys-htmlman		html
 ./usr/share/man/html4/alpha/asc.html		man-sys-htmlman		html
 ./usr/share/man/html4/alpha/autoconf.html	man-sys-htmlman		html
@@ -3927,6 +3973,7 @@
 ./usr/share/man/html4/amiga/mem.html		man-sys-htmlman		html
 ./usr/share/man/html4/amiga/mfcs.html		man-sys-htmlman		html
 ./usr/share/man/html4/amiga/mgnsc.html		man-sys-htmlman		html
+./usr/share/man/html4/amiga/mntva.html		man-sys-htmlman		html
 ./usr/share/man/html4/amiga/mppb.html		man-sys-htmlman		html
 ./usr/share/man/html4/amiga/p5membar.html	man-sys-htmlman		html
 ./usr/share/man/html4/amiga/p5pb.html		man-sys-htmlman		html
@@ -4298,7 +4345,7 @@
 ./usr/share/man/html4/i386/mem.html		man-obsolete		obsolete
 ./usr/share/man/html4/i386/mms.html		man-sys-htmlman		html
 ./usr/share/man/html4/i386/ndis.html		man-sys-htmlman		html
-./usr/share/man/html4/i386/npx.html		man-sys-htmlman		html
+./usr/share/man/html4/i386/npx.html		man-obsolete		obsolete
 ./usr/share/man/html4/i386/pcibios.html		man-sys-htmlman		html
 ./usr/share/man/html4/i386/pnpbios.html		man-sys-htmlman		html
 ./usr/share/man/html4/i386/rdcide.html		man-sys-htmlman		html
@@ -4388,6 +4435,7 @@
 ./usr/share/man/html4/ksyms.html		man-sys-htmlman		html
 ./usr/share/man/html4/kttcp.html		man-sys-htmlman		html
 ./usr/share/man/html4/kue.html			man-sys-htmlman		html
+./usr/share/man/html4/l2tp.html			man-sys-htmlman		html
 ./usr/share/man/html4/lc.html			man-sys-htmlman		html
 ./usr/share/man/html4/ld.html			man-sys-htmlman		html
 ./usr/share/man/html4/le.html			man-sys-htmlman		html
@@ -4422,6 +4470,7 @@
 ./usr/share/man/html4/macppc/mesh.html		man-sys-htmlman		html
 ./usr/share/man/html4/macppc/obio.html		man-sys-htmlman		html
 ./usr/share/man/html4/macppc/pbms.html		man-sys-htmlman		html
+./usr/share/man/html4/macppc/platinumfb.html	man-sys-htmlman		html
 ./usr/share/man/html4/macppc/snapper.html	man-sys-htmlman		html
 ./usr/share/man/html4/mainbus.html		man-sys-htmlman		html
 ./usr/share/man/html4/makphy.html		man-sys-htmlman		html
@@ -4543,6 +4592,7 @@
 ./usr/share/man/html4/piixpm.html		man-sys-htmlman		html
 ./usr/share/man/html4/pim.html			man-sys-htmlman		html
 ./usr/share/man/html4/plip.html			man-sys-htmlman		html
+./usr/share/man/html4/pm3fb.html		man-sys-htmlman		html
 ./usr/share/man/html4/pmax/asc.html		man-sys-htmlman		html
 ./usr/share/man/html4/pmax/autoconf.html	man-sys-htmlman		html
 ./usr/share/man/html4/pmax/ibus.html		man-sys-htmlman		html
@@ -4570,6 +4620,7 @@
 ./usr/share/man/html4/puffs.html		man-sys-htmlman		html
 ./usr/share/man/html4/pwdog.html		man-sys-htmlman		html
 ./usr/share/man/html4/px.html			man-sys-htmlman		html
+./usr/share/man/html4/pxaip.html		man-sys-htmlman		html
 ./usr/share/man/html4/pxg.html			man-sys-htmlman		html
 ./usr/share/man/html4/qe.html			man-sys-htmlman		html
 ./usr/share/man/html4/qec.html			man-sys-htmlman		html
@@ -4765,6 +4816,7 @@
 ./usr/share/man/html4/tcic.html			man-sys-htmlman		html
 ./usr/share/man/html4/tcom.html			man-sys-htmlman		html
 ./usr/share/man/html4/tcp.html			man-sys-htmlman		html
+./usr/share/man/html4/tcu.html			man-sys-htmlman		html
 ./usr/share/man/html4/tdfxdrm.html		man-sys-htmlman		html
 ./usr/share/man/html4/tdvfb.html		man-sys-htmlman		html
 ./usr/share/man/html4/termios.html		man-sys-htmlman		html
@@ -4996,6 +5048,7 @@
 ./usr/share/man/html4/xenbus.html		man-sys-htmlman		html
 ./usr/share/man/html4/xennet.html		man-sys-htmlman		html
 ./usr/share/man/html4/xge.html			man-sys-htmlman		html
+./usr/share/man/html4/xhci.html			man-sys-htmlman		html
 ./usr/share/man/html4/xi.html			man-sys-htmlman		html
 ./usr/share/man/html4/xirc.html			man-sys-htmlman		html
 ./usr/share/man/html4/xpci.html			man-sys-htmlman		html
@@ -5130,6 +5183,7 @@
 ./usr/share/man/html5/nisplus_table.html	man-postfix-htmlman	postfix,html
 ./usr/share/man/html5/nologin.html		man-sysutil-htmlman	html
 ./usr/share/man/html5/npf.conf.html		man-npf-htmlman		html,npf
+./usr/share/man/html5/nsd.conf.html		man-nsd-htmlman		html,nsd
 ./usr/share/man/html5/nsswitch.conf.html	man-net-htmlman		html
 ./usr/share/man/html5/ntp.conf.html		man-ntp-htmlman		html
 ./usr/share/man/html5/ntp.keys.html		man-ntp-htmlman		html
@@ -5182,6 +5236,7 @@
 ./usr/share/man/html5/ttys.html			man-sys-htmlman		html
 ./usr/share/man/html5/types.html		man-obsolete		obsolete
 ./usr/share/man/html5/tzfile.html		man-sys-htmlman		html
+./usr/share/man/html5/unbound.conf.html		man-netutil-htmlman	html,crypto,unbound
 ./usr/share/man/html5/usermgmt.conf.html	man-sys-htmlman		html
 ./usr/share/man/html5/utmp.html			man-sys-htmlman		html
 ./usr/share/man/html5/utmpx.html		man-sys-htmlman		html
@@ -5291,6 +5346,7 @@
 ./usr/share/man/html8/bounce.html		man-postfix-htmlman	postfix,html
 ./usr/share/man/html8/bozohttpd.html		man-netutil-htmlman	html
 ./usr/share/man/html8/brconfig.html		man-netutil-htmlman	html
+./usr/share/man/html8/bta2dpd.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/btattach.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/btconfig.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/btdevctl.html		man-sysutil-htmlman	html
@@ -5298,7 +5354,7 @@
 ./usr/share/man/html8/btpand.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/catman.html		man-man-htmlman		html
 ./usr/share/man/html8/ccdconfig.html		man-sysutil-htmlman	html
-./usr/share/man/html8/cgdconfig.html		man-sysutil-htmlman	crypto,html
+./usr/share/man/html8/cgdconfig.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/chat.html			man-ppp-htmlman		html
 ./usr/share/man/html8/chown.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/chroot.html		man-sysutil-htmlman	html
@@ -5413,7 +5469,7 @@
 ./usr/share/man/html8/hostapd.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/hostapd_cli.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/hp300/boot.html		man-sys-htmlman		html
-./usr/share/man/html8/hp300/crash.html		man-sys-htmlman		html
+./usr/share/man/html8/hp300/crash.html		man-obsolete 		obsolete
 ./usr/share/man/html8/hp300/format.html		man-sys-htmlman		html
 ./usr/share/man/html8/hp700/boot.html		man-obsolete		obsolete
 ./usr/share/man/html8/hp700/mkboot.html		man-obsolete		obsolete
@@ -5617,17 +5673,23 @@
 ./usr/share/man/html8/nologin.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/npf.conf.html		man-obsolete		obsolete
 ./usr/share/man/html8/npfctl.html		man-npf-htmlman		html,npf
+./usr/share/man/html8/npfd.html			man-npf-htmlman		html,npf
+./usr/share/man/html8/nsd.html			man-nsd-htmlman		html,nsd
+./usr/share/man/html8/nsd-checkconf.html	man-nsd-htmlman		html,nsd
+./usr/share/man/html8/nsd-checkzone.html	man-nsd-htmlman		html,nsd
+./usr/share/man/html8/nsd-control.html		man-nsd-htmlman		html,nsd
 ./usr/share/man/html8/nsec3hash.html		man-bind-htmlman	html
 ./usr/share/man/html8/nslookup.html		man-netutil-htmlman	html
 ./usr/share/man/html8/nsupdate.html		man-obsolete		obsolete
 ./usr/share/man/html8/ntalkd.html		man-netutil-htmlman	html
-./usr/share/man/html8/ntp-keygen.html		man-ntp-htmlman		crypto,html
+./usr/share/man/html8/ntp-keygen.html		man-ntp-htmlman		html
 ./usr/share/man/html8/ntpd.html			man-ntp-htmlman		html
 ./usr/share/man/html8/ntpdate.html		man-ntp-htmlman		html
 ./usr/share/man/html8/ntpdc.html		man-ntp-htmlman		html
 ./usr/share/man/html8/ntpq.html			man-ntp-htmlman		html
 ./usr/share/man/html8/ntptime.html		man-ntp-htmlman		html
 ./usr/share/man/html8/ntptrace.html		man-ntp-htmlman		html
+./usr/share/man/html8/nvmectl.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/ofctl.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/oqmgr.html		man-postfix-htmlman	postfix,html
 ./usr/share/man/html8/pac.html			man-sysutil-htmlman	html
@@ -5873,6 +5935,10 @@
 ./usr/share/man/html8/ttyflags.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/tunefs.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/umount.html		man-sysutil-htmlman	html
+./usr/share/man/html8/unbound-anchor.html	man-netutil-htmlman	html,crypto,unbound
+./usr/share/man/html8/unbound-checkconf.html	man-netutil-htmlman	html,crypto,unbound
+./usr/share/man/html8/unbound-control.html	man-netutil-htmlman	html,crypto,unbound
+./usr/share/man/html8/unbound.html		man-netutil-htmlman	html,crypto,unbound
 ./usr/share/man/html8/unlink.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/usbdevs.html		man-sysutil-htmlman	html
 ./usr/share/man/html8/user.html			man-sysutil-htmlman	html
@@ -5979,7 +6045,7 @@
 ./usr/share/man/man1/atf-compile.1		man-obsolete		obsolete
 ./usr/share/man/man1/atf-config.1		man-atf-man		.man,atf,!kyua
 ./usr/share/man/man1/atf-config.1		man-obsolete		.man,kyua,obsolete
-./usr/share/man/man1/atf-exec.1			man-atf-man		obsolete
+./usr/share/man/man1/atf-exec.1			man-obsolete		obsolete
 ./usr/share/man/man1/atf-format.1		man-obsolete		obsolete
 ./usr/share/man/man1/atf-killpg.1		man-obsolete		obsolete
 ./usr/share/man/man1/atf-report.1		man-atf-man		.man,atf
@@ -6006,7 +6072,7 @@
 ./usr/share/man/man1/bdes.1			man-crypto-man		crypto,.man
 ./usr/share/man/man1/bg.1			man-util-man		.man
 ./usr/share/man/man1/biff.1			man-mail-man		.man
-./usr/share/man/man1/bpm.1			man-pkgutil-man		crypto,.man
+./usr/share/man/man1/bpm.1			man-obsolete		crypto,.man,obsolete
 ./usr/share/man/man1/bthset.1			man-util-man		.man
 ./usr/share/man/man1/btkey.1			man-util-man		.man
 ./usr/share/man/man1/btpin.1			man-util-man		.man
@@ -6274,6 +6340,7 @@
 ./usr/share/man/man1/mt.1			man-util-man		.man
 ./usr/share/man/man1/mv.1			man-util-man		.man
 ./usr/share/man/man1/nbsvtool.1			man-crypto-man		crypto,.man
+./usr/share/man/man1/nc.1			man-netutil-man		.man
 ./usr/share/man/man1/netgroup.1			man-nis-man		.man
 ./usr/share/man/man1/netpgp.1			man-crypto-man		crypto,.man
 ./usr/share/man/man1/netpgpkeys.1		man-crypto-man		crypto,.man
@@ -6295,8 +6362,10 @@
 ./usr/share/man/man1/openssl.1			man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_CA.pl.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_asn1parse.1	man-crypto-man		crypto,.man
+./usr/share/man/man1/openssl_c_rehash.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_ca.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_ciphers.1		man-crypto-man		crypto,.man
+./usr/share/man/man1/openssl_cms.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_crl.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_crl2pkcs7.1	man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_dgst.1		man-crypto-man		crypto,.man
@@ -6308,12 +6377,16 @@
 ./usr/share/man/man1/openssl_enc.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_errstr.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_gendsa.1		man-crypto-man		crypto,.man
+./usr/share/man/man1/openssl_genpkey.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_genrsa.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_nseq.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_passwd.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_pkcs12.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_pkcs7.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_pkcs8.1		man-crypto-man		crypto,.man
+./usr/share/man/man1/openssl_pkey.1		man-crypto-man		crypto,.man
+./usr/share/man/man1/openssl_pkeyparam.1	man-crypto-man		crypto,.man
+./usr/share/man/man1/openssl_pkeyutl.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_rand.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_req.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_rsa.1		man-crypto-man		crypto,.man
@@ -6325,6 +6398,8 @@
 ./usr/share/man/man1/openssl_smime.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_speed.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_spkac.1		man-crypto-man		crypto,.man
+./usr/share/man/man1/openssl_ts.1		man-crypto-man		crypto,.man
+./usr/share/man/man1/openssl_tsget.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_verify.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_version.1		man-crypto-man		crypto,.man
 ./usr/share/man/man1/openssl_x509.1		man-crypto-man		crypto,.man
@@ -6446,8 +6521,8 @@
 ./usr/share/man/man1/smbutil.1			man-util-man		.man
 ./usr/share/man/man1/sntp.1			man-ntp-man		.man
 ./usr/share/man/man1/sockstat.1			man-util-man		.man
-./usr/share/man/man1/sortinfo.1			man-texinfo-man		.man
 ./usr/share/man/man1/sort.1			man-util-man		.man
+./usr/share/man/man1/sortinfo.1			man-texinfo-man		.man
 ./usr/share/man/man1/source.1			man-util-man		.man
 ./usr/share/man/man1/spell.1			man-util-man		.man
 ./usr/share/man/man1/split.1			man-util-man		.man
@@ -6465,6 +6540,7 @@
 ./usr/share/man/man1/sum.1			man-util-man		.man
 ./usr/share/man/man1/sup.1			man-sup-man		.man
 ./usr/share/man/man1/suspend.1			man-util-man		.man
+./usr/share/man/man1/sys_info.1			man-util-man		.man
 ./usr/share/man/man1/sysstat.1			man-util-man		.man
 ./usr/share/man/man1/systat.1			man-util-man		.man
 ./usr/share/man/man1/systrace.1			man-obsolete		obsolete
@@ -6498,6 +6574,7 @@
 ./usr/share/man/man1/ttyflags.1			man-obsolete		obsolete
 ./usr/share/man/man1/ul.1			man-util-man		.man
 ./usr/share/man/man1/uname.1			man-util-man		.man
+./usr/share/man/man1/unbound-host.1		man-netutil-man		.man,crypto,unbound
 ./usr/share/man/man1/uncompress.1		man-util-man		.man
 ./usr/share/man/man1/unexpand.1			man-util-man		.man
 ./usr/share/man/man1/uniq.1			man-util-man		.man
@@ -6572,6 +6649,7 @@
 ./usr/share/man/man3/atari/ahdi_writelabel.3	man-obsolete		obsolete
 ./usr/share/man/man3/i386			man-obsolete		obsolete
 ./usr/share/man/man3/i386/keycap.3		man-obsolete		obsolete
+./usr/share/man/man3/libunbound.3		man-netutil-man		.man,crypto,unbound
 ./usr/share/man/man3lua/gpio.3lua		man-sys-man		.man
 ./usr/share/man/man3lua/gpio.attach.3lua	man-sys-man		.man
 ./usr/share/man/man3lua/gpio.close.3lua		man-sys-man		.man
@@ -6665,6 +6743,7 @@
 ./usr/share/man/man4/aha.4			man-sys-man		.man
 ./usr/share/man/man4/ahb.4			man-sys-man		.man
 ./usr/share/man/man4/ahc.4			man-sys-man		.man
+./usr/share/man/man4/ahci.4			man-sys-man		.man
 ./usr/share/man/man4/ahcisata.4			man-sys-man		.man
 ./usr/share/man/man4/ahd.4			man-sys-man		.man
 ./usr/share/man/man4/ai.4			man-sys-man		.man
@@ -6737,6 +6816,7 @@
 ./usr/share/man/man4/amiga/mem.4		man-sys-man		.man
 ./usr/share/man/man4/amiga/mfcs.4		man-sys-man		.man
 ./usr/share/man/man4/amiga/mgnsc.4		man-sys-man		.man
+./usr/share/man/man4/amiga/mntva.4		man-sys-man		.man
 ./usr/share/man/man4/amiga/mppb.4		man-sys-man		.man
 ./usr/share/man/man4/amiga/p5membar.4		man-sys-man		.man
 ./usr/share/man/man4/amiga/p5pb.4		man-sys-man		.man
@@ -7161,7 +7241,7 @@
 ./usr/share/man/man4/i386/mem.4			man-obsolete		obsolete
 ./usr/share/man/man4/i386/mms.4			man-sys-man		.man
 ./usr/share/man/man4/i386/ndis.4		man-sys-man		.man
-./usr/share/man/man4/i386/npx.4			man-sys-man		.man
+./usr/share/man/man4/i386/npx.4			man-obsolete		obsolete
 ./usr/share/man/man4/i386/olms.4		man-obsolete		obsolete
 ./usr/share/man/man4/i386/omms.4		man-obsolete		obsolete
 ./usr/share/man/man4/i386/opms.4		man-obsolete		obsolete
@@ -7270,6 +7350,7 @@
 ./usr/share/man/man4/ksyms.4			man-sys-man		.man
 ./usr/share/man/man4/kttcp.4			man-sys-man		.man
 ./usr/share/man/man4/kue.4			man-sys-man		.man
+./usr/share/man/man4/l2tp.4			man-sys-man		.man
 ./usr/share/man/man4/lc.4			man-sys-man		.man
 ./usr/share/man/man4/ld.4			man-sys-man		.man
 ./usr/share/man/man4/le.4			man-sys-man		.man
@@ -7309,6 +7390,7 @@
 ./usr/share/man/man4/macppc/mesh.4		man-sys-man		.man
 ./usr/share/man/man4/macppc/obio.4		man-sys-man		.man
 ./usr/share/man/man4/macppc/pbms.4		man-sys-man		.man
+./usr/share/man/man4/macppc/platinumfb.4	man-sys-man		.man
 ./usr/share/man/man4/macppc/snapper.4		man-sys-man		.man
 ./usr/share/man/man4/mainbus.4			man-sys-man		.man
 ./usr/share/man/man4/makphy.4			man-sys-man		.man
@@ -7441,6 +7523,7 @@
 ./usr/share/man/man4/piixpm.4			man-sys-man		.man
 ./usr/share/man/man4/pim.4			man-sys-man		.man
 ./usr/share/man/man4/plip.4			man-sys-man		.man
+./usr/share/man/man4/pm3fb.4			man-sys-man		.man
 ./usr/share/man/man4/pmax/asc.4			man-sys-man		.man
 ./usr/share/man/man4/pmax/autoconf.4		man-sys-man		.man
 ./usr/share/man/man4/pmax/dc.4			man-obsolete		obsolete
@@ -7483,6 +7566,7 @@
 ./usr/share/man/man4/puffs.4			man-sys-man		.man
 ./usr/share/man/man4/pwdog.4			man-sys-man		.man
 ./usr/share/man/man4/px.4			man-sys-man		.man
+./usr/share/man/man4/pxaip.4			man-sys-man		.man
 ./usr/share/man/man4/pxg.4			man-sys-man		.man
 ./usr/share/man/man4/qe.4			man-sys-man		.man
 ./usr/share/man/man4/qec.4			man-sys-man		.man
@@ -7687,6 +7771,7 @@
 ./usr/share/man/man4/tcic.4			man-sys-man		.man
 ./usr/share/man/man4/tcom.4			man-sys-man		.man
 ./usr/share/man/man4/tcp.4			man-sys-man		.man
+./usr/share/man/man4/tcu.4			man-sys-man		.man
 ./usr/share/man/man4/tdfxdrm.4			man-sys-man		.man
 ./usr/share/man/man4/tdvfb.4			man-sys-man		.man
 ./usr/share/man/man4/termios.4			man-sys-man		.man
@@ -7923,6 +8008,7 @@
 ./usr/share/man/man4/xc5k.4			man-sys-man		.man
 ./usr/share/man/man4/xenbus.4			man-sys-man		.man
 ./usr/share/man/man4/xennet.4			man-sys-man		.man
+./usr/share/man/man4/xhci.4			man-sys-man		.man
 ./usr/share/man/man4/xge.4			man-sys-man		.man
 ./usr/share/man/man4/xi.4			man-sys-man		.man
 ./usr/share/man/man4/xirc.4			man-sys-man		.man
@@ -8066,6 +8152,7 @@
 ./usr/share/man/man5/nisplus_table.5		man-postfix-man		postfix,.man
 ./usr/share/man/man5/nologin.5			man-sysutil-man		.man
 ./usr/share/man/man5/npf.conf.5			man-npf-man		.man,npf
+./usr/share/man/man5/nsd.conf.5			man-nsd-man		.man,nsd
 ./usr/share/man/man5/nsswitch.conf.5		man-net-man		.man
 ./usr/share/man/man5/ntp.conf.5			man-ntp-man		.man
 ./usr/share/man/man5/ntp.keys.5			man-ntp-man		.man
@@ -8127,6 +8214,7 @@
 ./usr/share/man/man5/types.5			man-obsolete		obsolete
 ./usr/share/man/man5/tzfile.5			man-sys-man		.man
 ./usr/share/man/man5/ucontext.5			man-obsolete		obsolete
+./usr/share/man/man5/unbound.conf.5		man-netutil-man		.man,crypto,unbound
 ./usr/share/man/man5/usermgmt.conf.5		man-sys-man		.man
 ./usr/share/man/man5/utmp.5			man-sys-man		.man
 ./usr/share/man/man5/utmpx.5			man-sys-man		.man
@@ -8270,6 +8358,7 @@
 ./usr/share/man/man8/bounce.8			man-postfix-man		postfix,.man
 ./usr/share/man/man8/bozohttpd.8		man-netutil-man		.man
 ./usr/share/man/man8/brconfig.8			man-netutil-man		.man
+./usr/share/man/man8/bta2dpd.8			man-sysutil-man		.man
 ./usr/share/man/man8/btattach.8			man-sysutil-man		.man
 ./usr/share/man/man8/btconfig.8			man-sysutil-man		.man
 ./usr/share/man/man8/btcontrol.8		man-obsolete		obsolete
@@ -8283,7 +8372,7 @@
 ./usr/share/man/man8/ccdconfig.8		man-sysutil-man		.man
 ./usr/share/man/man8/cesfic/MAKEDEV.8		man-obsolete		obsolete
 ./usr/share/man/man8/cesfic/makedev.8		man-obsolete		obsolete
-./usr/share/man/man8/cgdconfig.8		man-sysutil-man		crypto,.man
+./usr/share/man/man8/cgdconfig.8		man-sysutil-man		.man
 ./usr/share/man/man8/chat.8			man-ppp-man		.man
 ./usr/share/man/man8/chown.8			man-sysutil-man		.man
 ./usr/share/man/man8/chroot.8			man-sysutil-man		.man
@@ -8424,7 +8513,7 @@
 ./usr/share/man/man8/hostapd_cli.8		man-sysutil-man		.man
 ./usr/share/man/man8/hp300/MAKEDEV.8		man-obsolete		obsolete
 ./usr/share/man/man8/hp300/boot.8		man-sys-man		.man
-./usr/share/man/man8/hp300/crash.8		man-sys-man		.man
+./usr/share/man/man8/hp300/crash.8		man-obsolete 	obsolete
 ./usr/share/man/man8/hp300/format.8		man-sys-man		.man
 ./usr/share/man/man8/hp300/makedev.8		man-obsolete		obsolete
 ./usr/share/man/man8/hp700/MAKEDEV.8		man-obsolete		obsolete
@@ -8690,18 +8779,24 @@
 ./usr/share/man/man8/nologin.8			man-sysutil-man		.man
 ./usr/share/man/man8/npf.conf.8			man-obsolete		obsolete
 ./usr/share/man/man8/npfctl.8			man-npf-man		.man,npf
+./usr/share/man/man8/npfd.8			man-npf-man		.man,npf
 ./usr/share/man/man8/nqmgr.8			man-obsolete		obsolete
+./usr/share/man/man8/nsd.8 			man-nsd-man		.man,nsd
+./usr/share/man/man8/nsd-checkconf.8		man-nsd-man		.man,nsd
+./usr/share/man/man8/nsd-checkzone.8		man-nsd-man		.man,nsd
+./usr/share/man/man8/nsd-control.8		man-nsd-man		.man,nsd
 ./usr/share/man/man8/nsec3hash.8		man-bind-man		.man
 ./usr/share/man/man8/nslookup.8			man-netutil-man		.man
 ./usr/share/man/man8/nsupdate.8			man-obsolete		obsolete
 ./usr/share/man/man8/ntalkd.8			man-netutil-man		.man
-./usr/share/man/man8/ntp-keygen.8		man-ntp-man		crypto,.man
+./usr/share/man/man8/ntp-keygen.8		man-ntp-man		.man
 ./usr/share/man/man8/ntpd.8			man-ntp-man		.man
 ./usr/share/man/man8/ntpdate.8			man-ntp-man		.man
 ./usr/share/man/man8/ntpdc.8			man-ntp-man		.man
 ./usr/share/man/man8/ntpq.8			man-ntp-man		.man
 ./usr/share/man/man8/ntptime.8			man-ntp-man		.man
 ./usr/share/man/man8/ntptrace.8			man-ntp-man		.man
+./usr/share/man/man8/nvmectl.8			man-sysutil-man		.man
 ./usr/share/man/man8/ofctl.8			man-sysutil-man		.man
 ./usr/share/man/man8/ofppc/MAKEDEV.8		man-obsolete		obsolete
 ./usr/share/man/man8/ofppc/makedev.8		man-obsolete		obsolete
@@ -9007,6 +9102,10 @@
 ./usr/share/man/man8/ttyflags.8			man-sysutil-man		.man
 ./usr/share/man/man8/tunefs.8			man-sysutil-man		.man
 ./usr/share/man/man8/umount.8			man-sysutil-man		.man
+./usr/share/man/man8/unbound-anchor.8		man-netutil-man		.man,crypto,unbound
+./usr/share/man/man8/unbound-checkconf.8	man-netutil-man		.man,crypto,unbound
+./usr/share/man/man8/unbound-control.8		man-netutil-man		.man,crypto,unbound
+./usr/share/man/man8/unbound.8				man-netutil-man		.man,crypto,unbound
 ./usr/share/man/man8/unlink.8			man-sysutil-man		.man
 ./usr/share/man/man8/update.8			man-obsolete		obsolete
 ./usr/share/man/man8/usbd.8			man-obsolete		obsolete

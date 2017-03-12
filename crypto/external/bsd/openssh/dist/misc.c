@@ -1,5 +1,5 @@
-/*	$NetBSD: misc.c,v 1.12 2016/03/11 01:55:00 christos Exp $	*/
-/* $OpenBSD: misc.c,v 1.101 2016/01/20 09:22:39 dtucker Exp $ */
+/*	$NetBSD: misc.c,v 1.14 2016/12/25 00:07:47 christos Exp $	*/
+/* $OpenBSD: misc.c,v 1.107 2016/11/30 00:28:31 dtucker Exp $ */
 
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
@@ -27,7 +27,7 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: misc.c,v 1.12 2016/03/11 01:55:00 christos Exp $");
+__RCSID("$NetBSD: misc.c,v 1.14 2016/12/25 00:07:47 christos Exp $");
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -80,9 +80,9 @@ set_nonblock(int fd)
 {
 	int val;
 
-	val = fcntl(fd, F_GETFL, 0);
+	val = fcntl(fd, F_GETFL);
 	if (val < 0) {
-		error("fcntl(%d, F_GETFL, 0): %s", fd, strerror(errno));
+		error("fcntl(%d, F_GETFL): %s", fd, strerror(errno));
 		return (-1);
 	}
 	if (val & O_NONBLOCK) {
@@ -104,9 +104,9 @@ unset_nonblock(int fd)
 {
 	int val;
 
-	val = fcntl(fd, F_GETFL, 0);
+	val = fcntl(fd, F_GETFL);
 	if (val < 0) {
-		error("fcntl(%d, F_GETFL, 0): %s", fd, strerror(errno));
+		error("fcntl(%d, F_GETFL): %s", fd, strerror(errno));
 		return (-1);
 	}
 	if (!(val & O_NONBLOCK)) {
@@ -439,6 +439,67 @@ colon(char *cp)
 	return NULL;
 }
 
+/*
+ * Parse a [user@]host[:port] string.
+ * Caller must free returned user and host.
+ * Any of the pointer return arguments may be NULL (useful for syntax checking).
+ * If user was not specified then *userp will be set to NULL.
+ * If port was not specified then *portp will be -1.
+ * Returns 0 on success, -1 on failure.
+ */
+int
+parse_user_host_port(const char *s, char **userp, char **hostp, int *portp)
+{
+	char *sdup, *cp, *tmp;
+	char *user = NULL, *host = NULL;
+	int port = -1, ret = -1;
+
+	if (userp != NULL)
+		*userp = NULL;
+	if (hostp != NULL)
+		*hostp = NULL;
+	if (portp != NULL)
+		*portp = -1;
+
+	if ((sdup = tmp = strdup(s)) == NULL)
+		return -1;
+	/* Extract optional username */
+	if ((cp = strchr(tmp, '@')) != NULL) {
+		*cp = '\0';
+		if (*tmp == '\0')
+			goto out;
+		if ((user = strdup(tmp)) == NULL)
+			goto out;
+		tmp = cp + 1;
+	}
+	/* Extract mandatory hostname */
+	if ((cp = hpdelim(&tmp)) == NULL || *cp == '\0')
+		goto out;
+	host = xstrdup(cleanhostname(cp));
+	/* Convert and verify optional port */
+	if (tmp != NULL && *tmp != '\0') {
+		if ((port = a2port(tmp)) <= 0)
+			goto out;
+	}
+	/* Success */
+	if (userp != NULL) {
+		*userp = user;
+		user = NULL;
+	}
+	if (hostp != NULL) {
+		*hostp = host;
+		host = NULL;
+	}
+	if (portp != NULL)
+		*portp = port;
+	ret = 0;
+ out:
+	free(sdup);
+	free(user);
+	free(host);
+	return ret;
+}
+
 /* function to assist building execv() arguments */
 void
 addargs(arglist *args, const char *fmt, ...)
@@ -729,16 +790,16 @@ sanitise_stdfd(void)
 		    strerror(errno));
 		exit(1);
 	}
-	while (++dupfd <= 2) {
-		/* Only clobber closed fds */
-		if (fcntl(dupfd, F_GETFL, 0) >= 0)
-			continue;
-		if (dup2(nullfd, dupfd) == -1) {
-			fprintf(stderr, "dup2: %s\n", strerror(errno));
-			exit(1);
+	while (++dupfd <= STDERR_FILENO) {
+		/* Only populate closed fds. */
+		if (fcntl(dupfd, F_GETFL) == -1 && errno == EBADF) {
+			if (dup2(nullfd, dupfd) == -1) {
+				fprintf(stderr, "dup2: %s\n", strerror(errno));
+				exit(1);
+			}
 		}
 	}
-	if (nullfd > 2)
+	if (nullfd > STDERR_FILENO)
 		close(nullfd);
 }
 
@@ -893,6 +954,17 @@ monotime(void)
 		fatal("clock_gettime: %s", strerror(errno));
 
 	return (ts.tv_sec);
+}
+
+double
+monotime_double(void)
+{
+	struct timespec ts;
+
+	if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+		fatal("clock_gettime: %s", strerror(errno));
+
+	return (ts.tv_sec + (double)ts.tv_nsec / 1000000000);
 }
 
 void
@@ -1092,4 +1164,68 @@ unix_listener(const char *path, int backlog, int unlink_first)
 		return -1;
 	}
 	return sock;
+}
+
+/*
+ * Compares two strings that maybe be NULL. Returns non-zero if strings
+ * are both NULL or are identical, returns zero otherwise.
+ */
+static int
+strcmp_maybe_null(const char *a, const char *b)
+{
+	if ((a == NULL && b != NULL) || (a != NULL && b == NULL))
+		return 0;
+	if (a != NULL && strcmp(a, b) != 0)
+		return 0;
+	return 1;
+}
+
+/*
+ * Compare two forwards, returning non-zero if they are identical or
+ * zero otherwise.
+ */
+int
+forward_equals(const struct Forward *a, const struct Forward *b)
+{
+	if (strcmp_maybe_null(a->listen_host, b->listen_host) == 0)
+		return 0;
+	if (a->listen_port != b->listen_port)
+		return 0;
+	if (strcmp_maybe_null(a->listen_path, b->listen_path) == 0)
+		return 0;
+	if (strcmp_maybe_null(a->connect_host, b->connect_host) == 0)
+		return 0;
+	if (a->connect_port != b->connect_port)
+		return 0;
+	if (strcmp_maybe_null(a->connect_path, b->connect_path) == 0)
+		return 0;
+	/* allocated_port and handle are not checked */
+	return 1;
+}
+
+/* returns 1 if bind to specified port by specified user is permitted */
+int
+bind_permitted(int port, uid_t uid)
+{
+	if (port < IPPORT_RESERVED && uid != 0)
+		return 0;
+	return 1;
+}
+
+/* returns 1 if process is already daemonized, 0 otherwise */
+int
+daemonized(void)
+{
+	int fd;
+
+	if ((fd = open(_PATH_TTY, O_RDONLY | O_NOCTTY)) >= 0) {
+		close(fd);
+		return 0;	/* have controlling terminal */
+	}
+	if (getppid() != 1)
+		return 0;	/* parent is not init */
+	if (getsid(0) != getpid())
+		return 0;	/* not session leader */
+	debug3("already daemonized");
+	return 1;
 }

@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap.c,v 1.302 2016/04/17 14:32:03 martin Exp $	*/
+/*	$NetBSD: pmap.c,v 1.307 2017/02/10 23:26:23 palle Exp $	*/
 /*
  *
  * Copyright (C) 1996-1999 Eduardo Horvath.
@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.302 2016/04/17 14:32:03 martin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.307 2017/02/10 23:26:23 palle Exp $");
 
 #undef	NO_VCACHE /* Don't forget the locked TLB in dostart */
 #define	HWREF
@@ -191,7 +191,7 @@ pmap_has_ctx(struct pmap *p)
 		if (p->pm_ctx[i] > 0)
 			return true;
 
-	return false;	
+	return false;
 }
 
 #ifdef MULTIPROCESSOR
@@ -560,7 +560,8 @@ pmap_mp_init(void)
 				1, /* cache */
 				1, /* aliased */
 				1, /* valid */
-				0 /* ie */);
+				0, /* ie */
+				0  /* wc */);
 		tp[i].data |= TLB_L | TLB_CV;
 
 		if (i >= kernel_itlb_slots) {
@@ -575,7 +576,7 @@ pmap_mp_init(void)
 	}
 
 	for (i = 0; i < PAGE_SIZE; i += sizeof(long))
-		flush(v + i);
+		sparc_flush_icache(v + i);
 
 	cpu_spinup_trampoline = (vaddr_t)v;
 }
@@ -777,7 +778,7 @@ pmap_bootstrap(u_long kernelstart, u_long kernelend)
 	 */
 	uvmexp.pagesize = NBPG;
 	uvmexp.ncolors = pmap_calculate_colors();
-	uvm_setpagesize();
+	uvm_md_init();
 
 	/*
 	 * Get hold or the message buffer.
@@ -1076,7 +1077,8 @@ pmap_bootstrap(u_long kernelstart, u_long kernelend)
 			1 /* Cacheable */,
 			FORCE_ALIAS /* ALIAS -- Disable D$ */,
 			1 /* valid */,
-			0 /* IE */);
+			0 /* IE */,
+			0 /* wc */);
 		pmap_enter_kpage(va, data);
 		va += PAGE_SIZE;
 		msgbufsiz -= PAGE_SIZE;
@@ -1137,7 +1139,8 @@ pmap_bootstrap(u_long kernelstart, u_long kernelend)
 				1 /* Cacheable */,
 				FORCE_ALIAS /* ALIAS -- Disable D$ */,
 				1 /* valid */,
-				0 /* IE */);
+				0 /* ei */,
+				0 /* WC */);
 			pmap_enter_kpage(vmmap, data1);
 			vmmap += PAGE_SIZE;
 		}
@@ -1179,7 +1182,8 @@ pmap_bootstrap(u_long kernelstart, u_long kernelend)
 				1 /* Cacheable */,
 				FORCE_ALIAS /* ALIAS -- Disable D$ */,
 				1 /* valid */,
-				0 /* IE */);
+				0 /* IE */,
+				0 /* wc */);
 			pmap_enter_kpage(vmmap, data1);
 			vmmap += PAGE_SIZE;
 			pa += PAGE_SIZE;
@@ -1198,7 +1202,7 @@ pmap_bootstrap(u_long kernelstart, u_long kernelend)
 		cpus->ci_spinup = main; /* Call main when we're running. */
 		cpus->ci_paddr = cpu0paddr;
 		if (CPU_ISSUN4V) {
-			cpus->ci_mmfsa = cpu0paddr;
+			cpus->ci_mmufsa = cpu0paddr;
 			cpus->ci_tsb_desc = NULL;
 		}
 		cpus->ci_cpcb = (struct pcb *)u0va;
@@ -1319,7 +1323,7 @@ cpu_pmap_init(struct cpu_info *ci)
 	 */
 	ci->ci_pmap_next_ctx = 1;
 	/* all SUN4U use 13 bit contexts - SUN4V use at least 13 bit contexts */
-	ci->ci_numctx = 0x2000; 
+	ci->ci_numctx = 0x2000;
 	ctxsize = sizeof(paddr_t)*ci->ci_numctx;
 	ci->ci_ctxbusy = (paddr_t *)kdata_alloc(ctxsize, sizeof(uint64_t));
 	memset(ci->ci_ctxbusy, 0, ctxsize);
@@ -1366,7 +1370,8 @@ pmap_init(void)
 			1 /* Cacheable */,
 			FORCE_ALIAS /* ALIAS -- Disable D$ */,
 			1 /* valid */,
-			0 /* IE */);
+			0 /* IE */,
+			0 /* wc */);
 		pmap_enter_kpage(va, data);
 		va += PAGE_SIZE;
 	}
@@ -1656,7 +1661,8 @@ pmap_kenter_pa(vaddr_t va, paddr_t pa, vm_prot_t prot, u_int flags)
 
 	tte.data = TSB_DATA(0, PGSZ_8K, pa, 1 /* Privileged */,
 			    (VM_PROT_WRITE & prot),
-			    !(pa & PMAP_NC), pa & (PMAP_NVC), 1, 0);
+			    !(pa & PMAP_NC), pa & (PMAP_NVC), 1,
+			    pa & (PMAP_LITTLE), pa & PMAP_WC);
 	/* We don't track mod/ref here. */
 	if (prot & VM_PROT_WRITE)
 		tte.data |= TLB_REAL_W|TLB_W;
@@ -1879,7 +1885,7 @@ pmap_enter(struct pmap *pm, vaddr_t va, paddr_t pa, vm_prot_t prot, u_int flags)
 	}
 	tte.data = TSB_DATA(0, size, pa, pm == pmap_kernel(),
 		flags & VM_PROT_WRITE, !(pa & PMAP_NC),
-		uncached, 1, pa & PMAP_LITTLE);
+		uncached, 1, pa & PMAP_LITTLE, pa & PMAP_WC);
 #ifdef HWREF
 	if (prot & VM_PROT_WRITE)
 		tte.data |= TLB_REAL_W;
@@ -3837,7 +3843,8 @@ pmap_setup_intstack_sun4v(paddr_t pa)
 	    1 /* Cacheable */,
 	    FORCE_ALIAS /* ALIAS -- Disable D$ */,
 	    1 /* valid */,
-	    0 /* IE */);
+	    0 /* IE */,
+	    0 /* wc */);
 	hv_rc = hv_mmu_map_perm_addr(INTSTACK, data, MAP_DTLB);
 	if ( hv_rc != H_EOK ) {
 		panic("hv_mmu_map_perm_addr() failed - rc = %" PRId64 "\n",

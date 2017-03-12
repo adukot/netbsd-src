@@ -1,4 +1,4 @@
-/* $NetBSD: awin_reg.h,v 1.88 2016/04/25 20:15:46 bouyer Exp $ */
+/* $NetBSD: awin_reg.h,v 1.90 2016/12/26 16:20:17 rjs Exp $ */
 
 /*-
  * Copyright (c) 2013 The NetBSD Foundation, Inc.
@@ -1293,10 +1293,11 @@ struct awin_mmc_idma_descriptor {
 #define AWIN_PIO_INT_DEB_REG		0x0218
 #define AWIN_PIO_SDR_PAD_DEV_REG	0x0220
 #define AWIN_PIO_SDR_PAD_PUL_REG	0x0224
+#define AWIN_PIO_INT_SIZE		0x0028
 
 #define AWIN_PIO_CFG_PINMASK(pin)	(7 << (4*((pin) & 7)))
-#define AWIN_PIO_DRV_MASK(pin)		((x) << (2*((pin) & 15))) 
-#define AWIN_PIO_PULn(v, pin)		((v) << (2*((pin) & 15))) 
+#define AWIN_PIO_DRV_MASK(pin)		((x) << (2*((pin) & 15)))
+#define AWIN_PIO_PULn(v, pin)		((v) << (2*((pin) & 15)))
 
 #define AWIN_PIO_FUNC_INPUT		0x0
 #define AWIN_PIO_FUNC_OUTPUT		0x1

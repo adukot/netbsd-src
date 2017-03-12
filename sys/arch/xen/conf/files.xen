@@ -1,4 +1,4 @@
-#	$NetBSD: files.xen,v 1.140 2016/02/27 15:42:20 mlelstv Exp $
+#	$NetBSD: files.xen,v 1.145 2017/03/10 14:40:56 maxv Exp $
 #	NetBSD: files.x86,v 1.10 2003/10/08 17:30:00 bouyer Exp 
 #	NetBSD: files.i386,v 1.254 2004/03/25 23:32:10 jmc Exp 
 
@@ -39,7 +39,6 @@ file	arch/i386/i386/aout_machdep.c	exec_aout
 file	arch/i386/i386/busfunc.S
 file	arch/i386/i386/cpufunc.S
 file	arch/i386/i386/cpu_in_cksum.S   (inet | inet6) & cpu_in_cksum
-file	arch/i386/i386/db_dbgreg.S	ddb | kstack_check_dr0
 file	arch/i386/i386/db_disasm.c	ddb
 file	arch/i386/i386/db_interface.c	ddb
 file	arch/i386/i386/db_machdep.c	ddb
@@ -54,8 +53,6 @@ file	arch/i386/i386/mtrr_k6.c	mtrr
 file	arch/i386/i386/process_machdep.c
 file	arch/i386/i386/trap.c
 file	arch/i386/i386/lock_stubs.S
-
-file	arch/i386/i386/pmc.c			perfctrs
 
 file	crypto/des/arch/i386/des_enc.S		des
 file	crypto/des/arch/i386/des_cbc.S		des
@@ -85,6 +82,7 @@ file	arch/x86/x86/convert_xmm_s87.c
 file	arch/x86/x86/db_memrw.c		ddb | kgdb
 file	arch/x86/x86/db_trace.c		ddb
 file	arch/x86/x86/fpu.c
+file	arch/x86/x86/dbregs.c
 file	arch/xen/x86/hypervisor_machdep.c
 # file 	arch/x86/x86/mtrr_i686.c	mtrr
 file	arch/x86/x86/syscall.c
@@ -93,9 +91,9 @@ file	arch/xen/x86/xen_pmap.c
 file	arch/xen/x86/xen_intr.c
 file	arch/xen/x86/xenfunc.c
 
-file	arch/xen/xen/xen_ucode.c	dom0ops | cpu_ucode needs-flag
-file	arch/x86/x86/cpu_ucode_amd.c	dom0ops | cpu_ucode needs-flag
-file	arch/x86/x86/cpu_ucode_intel.c	dom0ops | cpu_ucode needs-flag
+file	arch/xen/xen/xen_ucode.c	dom0ops & cpu_ucode needs-flag
+file	arch/x86/x86/cpu_ucode_amd.c	dom0ops & cpu_ucode needs-flag
+file	arch/x86/x86/cpu_ucode_intel.c	dom0ops & cpu_ucode needs-flag
 
 file	arch/xen/xen/xen_machdep.c
 file	arch/xen/xen/xen_debug.c
@@ -142,6 +140,7 @@ file	arch/xen/x86/intr.c		machdep
 file	arch/xen/x86/xen_ipi.c		multiprocessor
 file	arch/x86/x86/pmap.c		machdep
 file	arch/x86/x86/pmap_tlb.c		machdep
+file	arch/x86/x86/pmc.c		machdep
 file	arch/x86/x86/procfs_machdep.c	procfs
 file	arch/x86/x86/sys_machdep.c	machdep
 file	arch/x86/x86/tsc.c		machdep

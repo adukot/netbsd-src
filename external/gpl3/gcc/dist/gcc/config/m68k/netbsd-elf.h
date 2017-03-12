@@ -53,11 +53,6 @@ along with GCC; see the file COPYING3.  If not see
       } \
   }
 
-#undef SUBTARGET_EXTRA_SPECS
-#define SUBTARGET_EXTRA_SPECS \
-  { "netbsd_cpp_spec",      NETBSD_CPP_SPEC }, \
-  { "netbsd_entry_point",   NETBSD_ENTRY_POINT },
-
 
 /* Provide a CPP_SPEC appropriate for NetBSD m68k targets.  Currently we
    deal with the GCC option '-posix', as well as an indication as to
@@ -101,7 +96,7 @@ do									\
     if (TARGET_COLDFIRE)						\
       {									\
         asm_fprintf (FILE, "\tmovea.l #%LLP%d-.,%Ra1\n", (LABELNO));	\
-        asm_fprintf (FILE, "\tlea (-6,%Rpc,%Ra1),%Ra1\n", (LABELNO));	\
+        asm_fprintf (FILE, "\tlea (-6,%Rpc,%Ra1),%Ra1\n");	\
       }									\
     else								\
       asm_fprintf (FILE, "\tlea (%LLP%d,%Rpc),%Ra1\n", (LABELNO));	\

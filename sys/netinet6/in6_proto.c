@@ -1,4 +1,4 @@
-/*	$NetBSD: in6_proto.c,v 1.112 2016/04/26 08:44:45 ozaki-r Exp $	*/
+/*	$NetBSD: in6_proto.c,v 1.116 2017/02/16 08:12:44 knakahara Exp $	*/
 /*	$KAME: in6_proto.c,v 1.66 2000/10/10 15:35:47 itojun Exp $	*/
 
 /*
@@ -62,7 +62,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: in6_proto.c,v 1.112 2016/04/26 08:44:45 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: in6_proto.c,v 1.116 2017/02/16 08:12:44 knakahara Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_gateway.h"
@@ -118,8 +118,6 @@ __KERNEL_RCSID(0, "$NetBSD: in6_proto.c,v 1.112 2016/04/26 08:44:45 ozaki-r Exp 
 #endif
 
 #include <netinet6/pim6_var.h>
-
-#include <netinet6/nd6.h>
 
 #ifdef IPSEC
 #include <netipsec/ipsec.h>
@@ -215,6 +213,16 @@ const struct ip6protosw inet6sw[] = {
 	.pr_slowtimo = frag6_slowtimo,
 	.pr_drain = frag6_drainstub,
 },
+{	.pr_type = SOCK_RAW,
+	.pr_domain = &inet6domain,
+	.pr_protocol = IPPROTO_ICMPV6,
+	.pr_flags = PR_ATOMIC|PR_ADDR|PR_LASTHDR,
+	.pr_input = icmp6_input,
+	.pr_ctlinput = rip6_ctlinput,
+	.pr_ctloutput = icmp6_ctloutput,
+	.pr_usrreqs = &rip6_usrreqs,
+	.pr_init = icmp6_init,
+},
 {	.pr_type = SOCK_DGRAM,
 	.pr_domain = &inet6domain,
 	.pr_protocol = IPPROTO_UDP,
@@ -297,16 +305,6 @@ const struct ip6protosw inet6sw[] = {
 	.pr_init = ip6flow_poolinit,
 },
 #endif /* GATEWAY */
-{	.pr_type = SOCK_RAW,
-	.pr_domain = &inet6domain,
-	.pr_protocol = IPPROTO_ICMPV6,
-	.pr_flags = PR_ATOMIC|PR_ADDR|PR_LASTHDR,
-	.pr_input = icmp6_input,
-	.pr_ctlinput = rip6_ctlinput,
-	.pr_ctloutput = icmp6_ctloutput,
-	.pr_usrreqs = &rip6_usrreqs,
-	.pr_init = icmp6_init,
-},
 {	.pr_type = SOCK_RAW,
 	.pr_domain = &inet6domain,
 	.pr_protocol = IPPROTO_DSTOPTS,
@@ -392,6 +390,16 @@ const struct ip6protosw inet6sw[] = {
 #endif /* NCARP */
 {	.pr_type = SOCK_RAW,
 	.pr_domain = &inet6domain,
+	.pr_protocol = IPPROTO_L2TP,
+	.pr_flags = PR_ATOMIC|PR_ADDR|PR_LASTHDR,
+	.pr_input = encap6_input,
+	.pr_ctlinput = rip6_ctlinput,
+	.pr_ctloutput = rip6_ctloutput,
+	.pr_usrreqs = &rip6_usrreqs,
+	.pr_init = encap_init,
+},
+{	.pr_type = SOCK_RAW,
+	.pr_domain = &inet6domain,
 	.pr_protocol = IPPROTO_PIM,
 	.pr_flags = PR_ATOMIC|PR_ADDR|PR_LASTHDR,
 	.pr_input = pim6_input,
@@ -421,7 +429,7 @@ static const struct sockaddr_in6 in6_any = {
 
 bool in6_present = false;
 static void
-in6_init(void)
+in6_dom_init(void)
 {
 
 	in6_present = true;
@@ -429,7 +437,7 @@ in6_init(void)
 
 struct domain inet6domain = {
 	.dom_family = AF_INET6, .dom_name = "internet6",
-	.dom_init = in6_init, .dom_externalize = NULL, .dom_dispose = NULL,
+	.dom_init = in6_dom_init, .dom_externalize = NULL, .dom_dispose = NULL,
 	.dom_protosw = (const struct protosw *)inet6sw,
 	.dom_protoswNPROTOSW = (const struct protosw *)&inet6sw[sizeof(inet6sw)/sizeof(inet6sw[0])],
 	.dom_rtattach = rt_inithead,

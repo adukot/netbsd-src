@@ -1,4 +1,4 @@
-/*	$NetBSD: ixp425_if_npe.c,v 1.30 2016/02/09 08:32:08 ozaki-r Exp $ */
+/*	$NetBSD: ixp425_if_npe.c,v 1.33 2017/02/22 09:45:16 nonaka Exp $ */
 
 /*-
  * Copyright (c) 2006 Sam Leffler.  All rights reserved.
@@ -28,7 +28,7 @@
 #if 0
 __FBSDID("$FreeBSD: src/sys/arm/xscale/ixp425/if_npe.c,v 1.1 2006/11/19 23:55:23 sam Exp $");
 #endif
-__KERNEL_RCSID(0, "$NetBSD: ixp425_if_npe.c,v 1.30 2016/02/09 08:32:08 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ixp425_if_npe.c,v 1.33 2017/02/22 09:45:16 nonaka Exp $");
 
 /*
  * Intel XScale NPE Ethernet driver.
@@ -332,6 +332,7 @@ npe_attach(device_t parent, device_t self, void *arg)
 	sc->sc_ethercom.ec_capabilities |= ETHERCAP_VLAN_MTU;
 
 	if_attach(ifp);
+	if_deferred_start_init(ifp, NULL);
 	ether_ifattach(ifp, sc->sc_enaddr);
 	rnd_attach_source(&sc->rnd_source, device_xname(sc->sc_dev),
 	    RND_TYPE_NET, RND_FLAG_DEFAULT);
@@ -811,7 +812,7 @@ npe_txdone_finish(struct npe_softc *sc, const struct txdone *td)
 	ifp->if_opackets += td->count;
 	ifp->if_flags &= ~IFF_OACTIVE;
 	ifp->if_timer = 0;
-	npestart(ifp);
+	if_schedule_deferred_start(ifp);
 }
 
 /*
@@ -953,7 +954,7 @@ npe_rxdone(int qid, void *arg)
 			/* set m_len etc. per rx frame size */
 			mrx->m_len = be32toh(hw->ix_ne[0].len) & 0xffff;
 			mrx->m_pkthdr.len = mrx->m_len;
-			mrx->m_pkthdr.rcvif = ifp;
+			m_set_rcvif(mrx, ifp);
 			/* Don't add M_HASFCS. See below */
 
 #if 1
@@ -1050,11 +1051,10 @@ npe_rxdone(int qid, void *arg)
 			 */
 			m_adj(mrx, -ETHER_CRC_LEN);
 
-			ifp->if_ipackets++;
 			/*
 			 * Tap off here if there is a bpf listener.
 			 */
-			bpf_mtap(ifp, mrx);
+
 			if_percpuq_enqueue(ifp->if_percpuq, mrx);
 		} else {
 fail:

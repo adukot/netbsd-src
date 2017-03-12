@@ -1,4 +1,4 @@
-/*	$NetBSD: qe.c,v 1.64 2016/02/09 08:32:12 ozaki-r Exp $	*/
+/*	$NetBSD: qe.c,v 1.67 2016/12/15 09:28:06 ozaki-r Exp $	*/
 
 /*-
  * Copyright (c) 1999 The NetBSD Foundation, Inc.
@@ -66,7 +66,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: qe.c,v 1.64 2016/02/09 08:32:12 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: qe.c,v 1.67 2016/12/15 09:28:06 ozaki-r Exp $");
 
 #define QEDEBUG
 
@@ -334,7 +334,7 @@ qe_get(struct qe_softc *sc, int idx, int totlen)
 	MGETHDR(m, M_DONTWAIT, MT_DATA);
 	if (m == NULL)
 		return (NULL);
-	m->m_pkthdr.rcvif = ifp;
+	m_set_rcvif(m, ifp);
 	m->m_pkthdr.len = totlen;
 	pad = ALIGN(sizeof(struct ether_header)) - sizeof(struct ether_header);
 	m->m_data += pad;
@@ -383,13 +383,13 @@ qe_put(struct qe_softc *sc, int idx, struct mbuf *m)
 	for (; m; m = n) {
 		len = m->m_len;
 		if (len == 0) {
-			MFREE(m, n);
+			n = m_free(m);
 			continue;
 		}
 		memcpy(bp + boff, mtod(m, void *), len);
 		boff += len;
 		tlen += len;
-		MFREE(m, n);
+		n = m_free(m);
 	}
 	return (tlen);
 }
@@ -421,13 +421,7 @@ qe_read(struct qe_softc *sc, int idx, int len)
 		ifp->if_ierrors++;
 		return;
 	}
-	ifp->if_ipackets++;
 
-	/*
-	 * Check if there's a BPF listener on this interface.
-	 * If so, hand off the raw packet to BPF.
-	 */
-	bpf_mtap(ifp, m);
 	/* Pass the packet up. */
 	if_percpuq_enqueue(ifp->if_percpuq, m);
 }

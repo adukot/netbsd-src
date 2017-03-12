@@ -1,4 +1,4 @@
-/* $NetBSD: sbmac.c,v 1.44 2016/02/09 08:32:09 ozaki-r Exp $ */
+/* $NetBSD: sbmac.c,v 1.48 2017/02/20 08:25:57 ozaki-r Exp $ */
 
 /*
  * Copyright 2000, 2001, 2004
@@ -33,7 +33,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: sbmac.c,v 1.44 2016/02/09 08:32:09 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: sbmac.c,v 1.48 2017/02/20 08:25:57 ozaki-r Exp $");
 
 #include "opt_inet.h"
 #include "opt_ns.h"
@@ -111,8 +111,8 @@ typedef enum { sbmac_state_uninit, sbmac_state_off, sbmac_state_on,
 #define	dprintf(x)
 #endif
 
-#define	SBMAC_READCSR(t) mips3_ld((volatile uint64_t *) (t))
-#define	SBMAC_WRITECSR(t, v) mips3_sd((volatile uint64_t *) (t), (v))
+#define	SBMAC_READCSR(t) mips3_ld((register_t)(t))
+#define	SBMAC_WRITECSR(t, v) mips3_sd((register_t)(t), (v))
 
 #define	PKSEG1(x) ((sbmac_port_t) MIPS_PHYS_TO_KSEG1(x))
 
@@ -917,8 +917,7 @@ sbdma_rx_process(struct sbmac_softc *sc, sbmacdma_t *d)
 			 */
 			m->m_pkthdr.len = m->m_len = len;
 
-			ifp->if_ipackets++;
-			m->m_pkthdr.rcvif = ifp;
+			m_set_rcvif(m, ifp);
 
 
 			/*
@@ -934,7 +933,6 @@ sbdma_rx_process(struct sbmac_softc *sc, sbmacdma_t *d)
 			 * interface is in promiscuous mode.
 			 */
 
-			bpf_mtap(ifp, m);
 			/*
 			 * Pass the buffer to the kernel
 			 */
@@ -1756,7 +1754,7 @@ sbmac_intr(void *xsc, uint32_t status, vaddr_t pc)
 	}
 
 	/* try to get more packets going */
-	sbmac_start(ifp);
+	if_schedule_deferred_start(ifp);
 }
 
 
@@ -2355,5 +2353,6 @@ sbmac_attach(device_t parent, device_t self, void *aux)
 	 * Call MI attach routines.
 	 */
 	if_attach(ifp);
+	if_deferred_start_init(ifp, NULL);
 	ether_ifattach(ifp, eaddr);
 }

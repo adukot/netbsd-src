@@ -111,7 +111,6 @@
 #include <netinet6/ip6_var.h>
 #include <netinet6/in6_var.h>
 #include <netinet/icmp6.h>
-#include <netinet6/nd6.h>
 
 #include <netinet/tcp.h>
 #include <netinet/tcp_fsm.h>
@@ -123,7 +122,7 @@
 
 #include <netinet/tcp_vtw.h>
 
-__KERNEL_RCSID(0, "$NetBSD: tcp_vtw.c,v 1.15 2016/04/26 08:44:45 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: tcp_vtw.c,v 1.17 2016/12/13 08:29:03 ozaki-r Exp $");
 
 #define db_trace(__a, __b)	do { } while (/*CONSTCOND*/0)
 
@@ -1050,7 +1049,7 @@ vtw_next_port_v4(struct tcp_ports_iterator *it)
 			if (!(inuse & (1 << i)))
 				continue;
 
-			inuse &= ~0 << i;
+			inuse &= ~0U << i;
 
 			if (i < it->slot_idx)
 				continue;
@@ -1164,7 +1163,7 @@ vtw_next_port_v6(struct tcp_ports_iterator *it)
 			if (!(inuse & (1 << i)))
 				continue;
 
-			inuse &= ~0 << i;
+			inuse &= ~0U << i;
 
 			if (i < it->slot_idx)
 				continue;

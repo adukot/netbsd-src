@@ -1,4 +1,4 @@
-/*	$NetBSD: uscanner.c,v 1.76 2016/04/23 10:15:32 skrll Exp $	*/
+/*	$NetBSD: uscanner.c,v 1.80 2016/12/04 10:12:35 skrll Exp $	*/
 
 /*
  * Copyright (c) 2000 The NetBSD Foundation, Inc.
@@ -32,7 +32,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: uscanner.c,v 1.76 2016/04/23 10:15:32 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: uscanner.c,v 1.80 2016/12/04 10:12:35 skrll Exp $");
+
+#ifdef _KERNEL_OPT
+#include "opt_usb.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -261,12 +265,13 @@ Static void uscanner_do_close(struct uscanner_softc *);
 
 #define USCANNERUNIT(n) (minor(n))
 
-int             uscanner_match(device_t, cfdata_t, void *);
-void            uscanner_attach(device_t, device_t, void *);
-int             uscanner_detach(device_t, int);
-int             uscanner_activate(device_t, enum devact);
+int	uscanner_match(device_t, cfdata_t, void *);
+void	uscanner_attach(device_t, device_t, void *);
+int	uscanner_detach(device_t, int);
+int	uscanner_activate(device_t, enum devact);
 extern struct cfdriver uscanner_cd;
-CFATTACH_DECL_NEW(uscanner, sizeof(struct uscanner_softc), uscanner_match, uscanner_attach, uscanner_detach, uscanner_activate);
+CFATTACH_DECL_NEW(uscanner, sizeof(struct uscanner_softc), uscanner_match,
+    uscanner_attach, uscanner_detach, uscanner_activate);
 
 int
 uscanner_match(device_t parent, cfdata_t match, void *aux)
@@ -297,14 +302,15 @@ uscanner_attach(device_t parent, device_t self, void *aux)
 	aprint_normal_dev(self, "%s\n", devinfop);
 	usbd_devinfo_free(devinfop);
 
-	sc->sc_dev_flags = uscanner_lookup(uaa->uaa_vendor, uaa->uaa_product)->flags;
+	sc->sc_dev_flags = uscanner_lookup(uaa->uaa_vendor,
+	    uaa->uaa_product)->flags;
 
 	sc->sc_udev = uaa->uaa_device;
 
 	err = usbd_set_config_no(uaa->uaa_device, 1, 1); /* XXX */
 	if (err) {
-		aprint_error_dev(self, "failed to set configuration"
-		    ", err=%s\n", usbd_errstr(err));
+		aprint_error_dev(self, "failed to set configuration, err=%s\n",
+		    usbd_errstr(err));
 		sc->sc_dying = 1;
 		return;
 	}
@@ -355,15 +361,13 @@ uscanner_attach(device_t parent, device_t self, void *aux)
 	sc->sc_bulkout = ed_bulkout->bEndpointAddress;
 
 	selinit(&sc->sc_selq);
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-			   sc->sc_dev);
+	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev, sc->sc_dev);
 
 	return;
 }
 
 int
-uscanneropen(dev_t dev, int flag, int mode,
-    struct lwp *l)
+uscanneropen(dev_t dev, int flag, int mode, struct lwp *l)
 {
 	struct uscanner_softc *sc;
 	int unit = USCANNERUNIT(dev);
@@ -373,7 +377,7 @@ uscanneropen(dev_t dev, int flag, int mode,
 	if (sc == NULL)
 		return ENXIO;
 
- 	DPRINTFN(5, ("uscanneropen: flag=%d, mode=%d, unit=%d\n",
+	DPRINTFN(5, ("uscanneropen: flag=%d, mode=%d, unit=%d\n",
 		     flag, mode, unit));
 
 	if (sc->sc_dying)
@@ -429,8 +433,7 @@ uscanneropen(dev_t dev, int flag, int mode,
 }
 
 int
-uscannerclose(dev_t dev, int flag, int mode,
-    struct lwp *l)
+uscannerclose(dev_t dev, int flag, int mode, struct lwp *l)
 {
 	struct uscanner_softc *sc;
 
@@ -507,8 +510,9 @@ uscanner_do_read(struct uscanner_softc *sc, struct uio *uio, int flag)
 		DPRINTFN(1, ("uscannerread: start transfer %d bytes\n",n));
 		tn = n;
 
-		err = usbd_bulk_transfer(sc->sc_bulkin_xfer, sc->sc_bulkin_pipe,
-		    USBD_SHORT_XFER_OK, USBD_NO_TIMEOUT, sc->sc_bulkin_buffer, &tn);
+		err = usbd_bulk_transfer(sc->sc_bulkin_xfer,
+		    sc->sc_bulkin_pipe, USBD_SHORT_XFER_OK, USBD_NO_TIMEOUT,
+		    sc->sc_bulkin_buffer, &tn);
 		if (err) {
 			if (err == USBD_INTERRUPTED)
 				error = EINTR;
@@ -636,8 +640,7 @@ uscanner_detach(device_t self, int flags)
 	mn = device_unit(self) * USB_MAX_ENDPOINTS;
 	vdevgone(maj, mn, mn + USB_MAX_ENDPOINTS - 1, VCHR);
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   sc->sc_dev);
+	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev, sc->sc_dev);
 	seldestroy(&sc->sc_selq);
 
 	return 0;
@@ -711,8 +714,7 @@ uscannerkqfilter(dev_t dev, struct knote *kn)
 }
 
 int
-uscannerioctl(dev_t dev, u_long cmd, void *addr,
-    int flag, struct lwp *l)
+uscannerioctl(dev_t dev, u_long cmd, void *addr, int flag, struct lwp *l)
 {
 	return EINVAL;
 }

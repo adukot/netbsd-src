@@ -1,5 +1,5 @@
 #
-#	$NetBSD: TEGRA,v 1.6 2015/12/22 22:10:36 jmcneill Exp $
+#	$NetBSD: TEGRA,v 1.10 2016/12/13 20:42:17 christos Exp $
 #
 #	NVIDIA Tegra K1 (T124)
 #
@@ -125,6 +125,8 @@ options 	HDAUDIO_32BIT_ACCESS
 options 	HDAUDIO_ENABLE_HDMI
 options 	HDAUDIO_ENABLE_DISPLAYPORT
 
+spkr*		at audio?		# PC speaker (synthesized)
+
 # HDMI CEC
 tegracec0	at fdt?			# HDMI CEC
 hdmicec*	at hdmicecbus?
@@ -152,6 +154,10 @@ nouveau*	at fdt?			# GPU
 
 # Thermal throttling controller
 tegrasoctherm*	at fdt?			# SOC_THERM
+
+# USB XHCI
+#xhci*		at fdt?			# XUSB
+#usb*		at xhci?
 
 # USB 2.0
 tegrausbphy*	at fdt?			# USB PHY

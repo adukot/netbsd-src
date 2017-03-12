@@ -1,4 +1,4 @@
-/*	$NetBSD: if.c,v 1.83 2016/02/29 18:21:15 christos Exp $	*/
+/*	$NetBSD: if.c,v 1.94 2017/02/23 07:57:10 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 1983, 1988, 1993
@@ -34,7 +34,7 @@
 #if 0
 static char sccsid[] = "from: @(#)if.c	8.2 (Berkeley) 2/21/94";
 #else
-__RCSID("$NetBSD: if.c,v 1.83 2016/02/29 18:21:15 christos Exp $");
+__RCSID("$NetBSD: if.c,v 1.94 2017/02/23 07:57:10 ozaki-r Exp $");
 #endif
 #endif /* not lint */
 
@@ -80,19 +80,19 @@ struct	iftot {
 	u_quad_t ift_ob;		/* output bytes */
 	u_quad_t ift_oe;		/* output errors */
 	u_quad_t ift_co;		/* collisions */
-	int ift_dr;			/* drops */
+	u_quad_t ift_dr;		/* drops */
 };
 
 static void set_lines(void);
-static void print_addr(struct sockaddr *, struct sockaddr **, struct if_data *,
-    struct ifnet *);
+static void print_addr(const int, struct sockaddr *, struct sockaddr **,
+    struct if_data *, struct ifnet *);
 static void sidewaysintpr(u_int, u_long);
 
 static void iftot_banner(struct iftot *);
 static void iftot_print_sum(struct iftot *, struct iftot *);
 static void iftot_print(struct iftot *, struct iftot *);
 
-static void catchalarm __P((int));
+static void catchalarm(int);
 static void get_rtaddrs(int, struct sockaddr *, struct sockaddr **);
 static void fetchifs(void);
 
@@ -100,7 +100,7 @@ static void intpr_sysctl(void);
 static void intpr_kvm(u_long, void (*)(const char *));
 
 struct iftot iftot[MAXIF], ip_cur, ip_old, sum_cur, sum_old;
-bool	signalled;			/* set if alarm goes off "early" */
+static sig_atomic_t signalled;		/* set when alarm goes off */
 
 static unsigned redraw_lines = 21;
 
@@ -169,7 +169,9 @@ intpr_sysctl(void)
 {
 	struct if_msghdr *ifm;
 	int mib[6] = { CTL_NET, AF_ROUTE, 0, 0, NET_RT_IFLIST, 0 };
-	char *buf = NULL, *next, *lim, *cp;
+	static char *buf = NULL;
+	static size_t olen;
+	char *next, *lim, *cp;
 	struct rt_msghdr *rtm;
 	struct ifa_msghdr *ifam;
 	struct if_data *ifd = NULL;
@@ -177,12 +179,18 @@ intpr_sysctl(void)
 	struct sockaddr_dl *sdl;
 	uint64_t total = 0;
 	size_t len;
+	int did = 1, rtax = 0, n;
 	char name[IFNAMSIZ + 1];	/* + 1 for `*' */
+	int ifindex = 0;
 
 	if (prog_sysctl(mib, 6, NULL, &len, NULL, 0) == -1)
 		err(1, "sysctl");
-	if ((buf = malloc(len)) == NULL)
-		err(1, NULL);
+	if (len > olen) {
+		free(buf);
+		if ((buf = malloc(len)) == NULL)
+			err(1, NULL);
+		olen = len;
+	}
 	if (prog_sysctl(mib, 6, buf, &len, NULL, 0) == -1)
 		err(1, "sysctl");
 
@@ -215,6 +223,8 @@ intpr_sysctl(void)
 			if (interface != 0 && strcmp(name, interface) != 0)
 				continue;
 
+			ifindex = sdl->sdl_index;
+
 			/* mark inactive interfaces with a '*' */
 			cp = strchr(name, '\0');
 			if ((ifm->ifm_flags & IFF_UP) == 0)
@@ -226,18 +236,18 @@ intpr_sysctl(void)
 				    ifd->ifi_ipackets + ifd->ifi_ierrors +
 				    ifd->ifi_opackets + ifd->ifi_oerrors +
 				    ifd->ifi_collisions;
-				if (tflag)
-					total += 0; // XXX-elad ifnet.if_timer;
 				if (dflag)
-					total += 0; // XXX-elad ifnet.if_snd.ifq_drops;
+					total += ifd->ifi_iqdrops;
 				if (total == 0)
 					continue;
 			}
-
-			printf("%-5s %-5" PRIu64, name, ifd->ifi_mtu);
-			print_addr(rti_info[RTAX_IFP], rti_info, ifd, NULL);
+			/* Skip the first one */
+			if (did) {
+				did = 0;
+				continue;
+			}
+			rtax = RTAX_IFP;
 			break;
-
 		case RTM_NEWADDR:
 			if (qflag && total == 0)
 				continue;
@@ -251,11 +261,19 @@ intpr_sysctl(void)
 			sa = (struct sockaddr *)(ifam + 1);
 
 			get_rtaddrs(ifam->ifam_addrs, sa, rti_info);
-
-			printf("%-5s %-5" PRIu64, name, ifd->ifi_mtu);
-			print_addr(rti_info[RTAX_IFA], rti_info, ifd, NULL);
+			rtax = RTAX_IFA;
+			did = 1;
 			break;
+		default:
+			continue;
 		}
+		if (vflag)
+			n = strlen(name) < 5 ? 5 : strlen(name);
+		else
+			n = 5;
+
+		printf("%-*.*s %-5" PRIu64 " ", n, n, name, ifd->ifi_mtu);
+		print_addr(ifindex, rti_info[rtax], rti_info, ifd, NULL);
 	}
 }
 
@@ -337,7 +355,8 @@ intpr_kvm(u_long ifnetaddr, void (*pfunc)(const char *))
 			cp = (CP(ifaddr.ifa.ifa_addr) - CP(ifaddraddr)) +
 			    CP(&ifaddr);
 			sa = (struct sockaddr *)cp;
-			print_addr(sa, (void *)&ifaddr, &ifnet.if_data, &ifnet);
+			print_addr(ifnet.if_index, sa, (void *)&ifaddr,
+			    &ifnet.if_data, &ifnet);
 		}
 		ifaddraddr = (u_long)ifaddr.ifa.ifa_list.tqe_next;
 	}
@@ -345,8 +364,97 @@ intpr_kvm(u_long ifnetaddr, void (*pfunc)(const char *))
 }
 
 static void
-print_addr(struct sockaddr *sa, struct sockaddr **rtinfo, struct if_data *ifd,
-    struct ifnet *ifnet)
+mc_print(const int ifindex, const size_t ias, const char *oid, int *mcast_oids,
+    void (*pr)(const void *))
+{
+	uint8_t *mcast_addrs, *p;
+	const size_t incr = 2 * ias + sizeof(uint32_t);
+	size_t len;
+
+	if (mcast_oids[0] == 0) {
+		size_t oidlen = 4;
+		if (sysctlnametomib(oid, mcast_oids, &oidlen) == -1) {
+			warnx("'%s' not found", oid);
+			return;
+		}
+		if (oidlen != 3) {
+			warnx("Wrong OID path for '%s'", oid);
+			return;
+		}
+	}
+
+	if (mcast_oids[3] == ifindex)
+		return;
+	mcast_oids[3] = ifindex;
+
+	mcast_addrs = asysctl(mcast_oids, 4, &len);
+	if (mcast_addrs == NULL && len != 0) {
+		warn("failed to read '%s'", oid);
+		return;
+	}
+	if (len) {
+		p = mcast_addrs;
+		while (len >= incr) {
+			(*pr)((p + ias));
+			p += incr;
+			len -= incr;
+		}
+	}
+	free(mcast_addrs);
+}
+
+#ifdef INET6
+static void
+ia6_print(const struct in6_addr *ia)
+{
+	struct sockaddr_in6 as6;
+	char hbuf[NI_MAXHOST];		/* for getnameinfo() */
+	int n;
+
+	memset(&as6, 0, sizeof(as6));
+	as6.sin6_len = sizeof(struct sockaddr_in6);
+	as6.sin6_family = AF_INET6;
+	as6.sin6_addr = *ia;
+	inet6_getscopeid(&as6, INET6_IS_ADDR_MC_LINKLOCAL);
+	if (getnameinfo((struct sockaddr *)&as6, as6.sin6_len, hbuf,
+	    sizeof(hbuf), NULL, 0, NI_NUMERICHOST) != 0) {
+		strlcpy(hbuf, "??", sizeof(hbuf));
+	}
+	if (vflag)
+		n = strlen(hbuf) < 17 ? 17 : strlen(hbuf);
+	else
+		n = 17;
+	printf("\n%25s %-*.*s ", "", n, n, hbuf);
+}
+
+static void
+mc6_print(const int ifindex)
+{
+	static int mcast_oids[4];
+
+	mc_print(ifindex, sizeof(struct in6_addr), "net.inet6.multicast",
+	    mcast_oids, (void (*)(const void *))ia6_print);
+}
+#endif
+
+static void
+ia4_print(const struct in_addr *ia)
+{
+	printf("\n%25s %-17.17s ", "", routename4(ia->s_addr, nflag));
+}
+
+static void
+mc4_print(const int ifindex)
+{
+	static int mcast_oids[4];
+
+	mc_print(ifindex, sizeof(struct in_addr), "net.inet.multicast",
+	    mcast_oids, (void (*)(const void *))ia4_print);
+}
+
+static void
+print_addr(const int ifindex, struct sockaddr *sa,
+    struct sockaddr **rtinfo, struct if_data *ifd, struct ifnet *ifnet)
 {
 	char hexsep = '.';		/* for hexprint */
 	static const char hexfmt[] = "%02x%c";	/* for hexprint */
@@ -386,22 +494,21 @@ print_addr(struct sockaddr *sa, struct sockaddr **rtinfo, struct if_data *ifd,
 			n = 17;
 		printf("%-*.*s ", n, n, cp);
 
-		if (aflag && ifnet) {
+		if (!aflag)
+			break;
+		if (ifnet) {
 			u_long multiaddr;
 			struct in_multi inm;
 			union ifaddr_u *ifaddr = (union ifaddr_u *)rtinfo;
 
-			multiaddr = (u_long)
-			    ifaddr->in.ia_multiaddrs.lh_first;
+			multiaddr = (u_long)ifaddr->in.ia_multiaddrs.lh_first;
 			while (multiaddr != 0) {
-				kread(multiaddr, (char *)&inm,
-				   sizeof inm);
-				printf("\n%25s %-17.17s ", "",
-				   routename4(
-				      inm.inm_addr.s_addr, nflag));
-				multiaddr =
-				   (u_long)inm.inm_list.le_next;
+				kread(multiaddr, (char *)&inm, sizeof inm);
+				ia4_print(&inm.inm_addr);
+				multiaddr = (u_long)inm.inm_list.le_next;
 			}
+		} else {
+			mc4_print(ifindex);
 		}
 		break;
 #ifdef INET6
@@ -439,41 +546,21 @@ print_addr(struct sockaddr *sa, struct sockaddr **rtinfo, struct if_data *ifd,
 			n = 17;
 		printf("%-*.*s ", n, n, cp);
 
-		if (aflag && ifnet) {
+		if (!aflag) 
+			break;
+		if (ifnet) {
 			u_long multiaddr;
 			struct in6_multi inm;
-			struct sockaddr_in6 as6;
 			union ifaddr_u *ifaddr = (union ifaddr_u *)rtinfo;
 		
-			multiaddr = (u_long)
-			    ifaddr->in6.ia6_multiaddrs.lh_first;
+			multiaddr = (u_long)ifaddr->in6._ia6_multiaddrs.lh_first;
 			while (multiaddr != 0) {
-				kread(multiaddr, (char *)&inm,
-				   sizeof inm);
-				memset(&as6, 0, sizeof(as6));
-				as6.sin6_len = sizeof(struct sockaddr_in6);
-				as6.sin6_family = AF_INET6;
-				as6.sin6_addr = inm.in6m_addr;
-				inet6_getscopeid(&as6,
-				    INET6_IS_ADDR_MC_LINKLOCAL);
-				if (getnameinfo((struct sockaddr *)&as6,
-				    as6.sin6_len, hbuf,
-				    sizeof(hbuf), NULL, 0,
-				    niflag) != 0) {
-					strlcpy(hbuf, "??",
-					    sizeof(hbuf));
-				}
-				cp = hbuf;
-				if (vflag)
-				    n = strlen(cp) < 17
-					? 17 : strlen(cp);
-				else
-				    n = 17;
-				printf("\n%25s %-*.*s ", "",
-				    n, n, cp);
-				multiaddr =
-				   (u_long)inm.in6m_entry.le_next;
+				kread(multiaddr, (char *)&inm, sizeof inm);
+				ia6_print(&inm.in6m_addr);
+				multiaddr = (u_long)inm.in6m_entry.le_next;
 			}
+		} else {
+			mc6_print(ifindex);
 		}
 		break;
 #endif /*INET6*/
@@ -540,7 +627,9 @@ print_addr(struct sockaddr *sa, struct sockaddr **rtinfo, struct if_data *ifd,
 	if (tflag)
 		printf(" %4d", ifnet ? ifnet->if_timer : 0);
 	if (dflag)
-		printf(" %5d", ifnet ? ifnet->if_snd.ifq_drops : 0);
+		printf(" %5lld", ifnet ?
+		    (unsigned long long)ifnet->if_snd.ifq_drops :
+		    ifd->ifi_iqdrops);
 	putchar('\n');
 }
 
@@ -603,9 +692,7 @@ iftot_print(struct iftot *cur, struct iftot *old)
 		    cur->ift_oe - old->ift_oe,
 		    cur->ift_co - old->ift_co);
 	if (dflag)
-		printf(" %5llu",
-		    /* XXX ifnet.if_snd.ifq_drops - ip->ift_dr); */
-		    0LL);
+		printf(" %5" PRIu64, cur->ift_dr - old->ift_dr);
 }
 
 static void
@@ -624,13 +711,15 @@ iftot_print_sum(struct iftot *cur, struct iftot *old)
 		    cur->ift_co - old->ift_co);
 
 	if (dflag)
-		printf(" %5llu", (unsigned long long)(cur->ift_dr - old->ift_dr));
+		printf(" %5" PRIu64, cur->ift_dr - old->ift_dr);
 }
 
 __dead static void
 sidewaysintpr_sysctl(unsigned interval)
 {
+	struct itimerval it;
 	sigset_t emptyset;
+	sigset_t noalrm;
 	unsigned line;
 
 	set_lines();
@@ -642,9 +731,18 @@ sidewaysintpr_sysctl(unsigned interval)
 		exit(1);
 	}
 
-	(void)signal(SIGALRM, catchalarm);
+	sigemptyset(&emptyset);
+	sigemptyset(&noalrm);
+	sigaddset(&noalrm, SIGALRM);
+	sigprocmask(SIG_SETMASK, &noalrm, NULL);
+
 	signalled = 0;
-	(void)alarm(interval);
+	(void)signal(SIGALRM, catchalarm);
+
+	it.it_interval.tv_sec = it.it_value.tv_sec = interval;
+	it.it_interval.tv_usec = it.it_value.tv_usec = 0;
+	setitimer(ITIMER_REAL, &it, NULL);
+
 banner:
 	iftot_banner(&ip_cur);
 
@@ -667,11 +765,10 @@ loop:
 	putchar('\n');
 	fflush(stdout);
 	line++;
-	sigemptyset(&emptyset);
-	if (!signalled)
+	if (signalled == 0) {
 		sigsuspend(&emptyset);
+	}
 	signalled = 0;
-	(void)alarm(interval);
 	if (line == redraw_lines)
 		goto banner;
 	goto loop;
@@ -682,13 +779,14 @@ static void
 sidewaysintpr_kvm(unsigned interval, u_long off)
 {
 	struct itimerval it;
+	sigset_t emptyset;
+	sigset_t noalrm;
 	struct ifnet ifnet;
 	u_long firstifnet;
 	struct iftot *ip, *total;
 	unsigned line;
 	struct iftot *lastif, *sum, *interesting;
 	struct ifnet_head ifhead;	/* TAILQ_HEAD */
-	int oldmask;
 
 	set_lines();
 
@@ -724,8 +822,13 @@ sidewaysintpr_kvm(unsigned interval, u_long off)
 	}
 	lastif = ip;
 
+	sigemptyset(&emptyset);
+	sigemptyset(&noalrm);
+	sigaddset(&noalrm, SIGALRM);
+	sigprocmask(SIG_SETMASK, &noalrm, NULL);
+
+	signalled = 0;
 	(void)signal(SIGALRM, catchalarm);
-	signalled = false;
 
 	it.it_interval.tv_sec = it.it_value.tv_sec = interval;
 	it.it_interval.tv_usec = it.it_value.tv_usec = 0;
@@ -835,9 +938,8 @@ loop:
 					(ifnet.if_collisions - ip->ift_co));
 			}
 			if (dflag)
-				printf(" %5llu",
-				    (unsigned long long)
-					(ifnet.if_snd.ifq_drops - ip->ift_dr));
+				printf(" %5" PRIu64,
+					ifnet.if_snd.ifq_drops - ip->ift_dr);
 		}
 		ip->ift_ip = ifnet.if_ipackets;
 		ip->ift_ib = ifnet.if_ibytes;
@@ -899,12 +1001,10 @@ loop:
 	putchar('\n');
 	fflush(stdout);
 	line++;
-	oldmask = sigblock(sigmask(SIGALRM));
-	if (! signalled) {
-		sigpause(0);
+	if (signalled == 0) {
+		sigsuspend(&emptyset);
 	}
-	sigsetmask(oldmask);
-	signalled = false;
+	signalled = 0;
 	if (line == redraw_lines)
 		goto banner;
 	goto loop;
@@ -963,14 +1063,20 @@ fetchifs(void)
 	struct if_data *ifd = NULL;
 	struct sockaddr *sa, *rti_info[RTAX_MAX];
 	struct sockaddr_dl *sdl;
-	char *buf, *next, *lim;
+	static char *buf = NULL;
+	static size_t olen;
+	char *next, *lim;
 	char name[IFNAMSIZ];
 	size_t len;
 
 	if (prog_sysctl(mib, 6, NULL, &len, NULL, 0) == -1)
 		err(1, "sysctl");
-	if ((buf = malloc(len)) == NULL)
-		err(1, NULL);
+	if (len > olen) {
+		free(buf);
+		if ((buf = malloc(len)) == NULL)
+			err(1, NULL);
+		olen = len;
+	}
 	if (prog_sysctl(mib, 6, buf, &len, NULL, 0) == -1)
 		err(1, "sysctl");
 
@@ -1006,8 +1112,7 @@ fetchifs(void)
 				ip_cur.ift_ob = ifd->ifi_obytes;
 				ip_cur.ift_oe = ifd->ifi_oerrors;
 				ip_cur.ift_co = ifd->ifi_collisions;
-				ip_cur.ift_dr = 0;
-				    /* XXX-elad ifnet.if_snd.ifq_drops */
+				ip_cur.ift_dr = ifd->ifi_iqdrops;
 			}
 
 			sum_cur.ift_ip += ifd->ifi_ipackets;
@@ -1017,7 +1122,7 @@ fetchifs(void)
 			sum_cur.ift_ob += ifd->ifi_obytes;
 			sum_cur.ift_oe += ifd->ifi_oerrors;
 			sum_cur.ift_co += ifd->ifi_collisions;
-			sum_cur.ift_dr += 0; /* XXX-elad ifnet.if_snd.ifq_drops */
+			sum_cur.ift_dr += ifd->ifi_iqdrops;
 			break;
 		}
 	}
@@ -1031,7 +1136,6 @@ fetchifs(void)
 		ip_cur.ift_ob = ifd->ifi_obytes;
 		ip_cur.ift_oe = ifd->ifi_oerrors;
 		ip_cur.ift_co = ifd->ifi_collisions;
-		ip_cur.ift_dr = 0;
-		    /* XXX-elad ifnet.if_snd.ifq_drops */
+		ip_cur.ift_dr = ifd->ifi_iqdrops;
 	}
 }

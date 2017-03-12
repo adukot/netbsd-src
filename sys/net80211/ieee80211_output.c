@@ -1,4 +1,4 @@
-/*	$NetBSD: ieee80211_output.c,v 1.53 2015/08/24 22:21:26 pooka Exp $	*/
+/*	$NetBSD: ieee80211_output.c,v 1.58 2017/01/04 03:05:24 nonaka Exp $	*/
 /*-
  * Copyright (c) 2001 Atsushi Onoe
  * Copyright (c) 2002-2005 Sam Leffler, Errno Consulting
@@ -36,7 +36,7 @@
 __FBSDID("$FreeBSD: src/sys/net80211/ieee80211_output.c,v 1.34 2005/08/10 16:22:29 sam Exp $");
 #endif
 #ifdef __NetBSD__
-__KERNEL_RCSID(0, "$NetBSD: ieee80211_output.c,v 1.53 2015/08/24 22:21:26 pooka Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ieee80211_output.c,v 1.58 2017/01/04 03:05:24 nonaka Exp $");
 #endif
 
 #ifdef _KERNEL_OPT
@@ -184,10 +184,7 @@ ieee80211_mgmt_output(struct ieee80211com *ic, struct ieee80211_node *ni,
 	M_PREPEND(m, sizeof(struct ieee80211_frame), M_DONTWAIT);
 	if (m == NULL)
 		return ENOMEM;
-#ifdef __FreeBSD__
-	KASSERT(m->m_pkthdr.rcvif == NULL, ("rcvif not null"));
-#endif
-	m->m_pkthdr.rcvif = (void *)ni;
+	M_SETCTX(m, ni);
 
 	wh = mtod(m, struct ieee80211_frame *);
 	ieee80211_send_setup(ic, ni, wh, 
@@ -221,7 +218,7 @@ ieee80211_mgmt_output(struct ieee80211com *ic, struct ieee80211_node *ni,
 		ic->ic_mgt_timer = timer;
 		ifp->if_timer = 1;
 	}
-	(*ifp->if_start)(ifp);
+	if_start_lock(ifp);
 	return 0;
 }
 
@@ -247,7 +244,7 @@ ieee80211_send_nulldata(struct ieee80211_node *ni)
 		ieee80211_unref_node(&ni);
 		return ENOMEM;
 	}
-	m->m_pkthdr.rcvif = (void *) ni;
+	M_SETCTX(m, ni);
 
 	wh = mtod(m, struct ieee80211_frame *);
 	ieee80211_send_setup(ic, ni, wh,
@@ -268,7 +265,7 @@ ieee80211_send_nulldata(struct ieee80211_node *ni)
 	    wh->i_fc[1] & IEEE80211_FC1_PWR_MGT ? "ena" : "dis");
 
 	IF_ENQUEUE(&ic->ic_mgtq, m);		/* cheat */
-	(*ifp->if_start)(ifp);
+	if_start_lock(ifp);
 
 	return 0;
 }
@@ -966,7 +963,7 @@ bad:
 /*
  * Add a supported rates element id to a frame.
  */
-static u_int8_t *
+u_int8_t *
 ieee80211_add_rates(u_int8_t *frm, const struct ieee80211_rateset *rs)
 {
 	int nrates;
@@ -983,7 +980,7 @@ ieee80211_add_rates(u_int8_t *frm, const struct ieee80211_rateset *rs)
 /*
  * Add an extended supported rates element id to a frame.
  */
-static u_int8_t *
+u_int8_t *
 ieee80211_add_xrates(u_int8_t *frm, const struct ieee80211_rateset *rs)
 {
 	/*
@@ -1002,7 +999,7 @@ ieee80211_add_xrates(u_int8_t *frm, const struct ieee80211_rateset *rs)
 /* 
  * Add an ssid elemet to a frame.
  */
-static u_int8_t *
+u_int8_t *
 ieee80211_add_ssid(u_int8_t *frm, const u_int8_t *ssid, u_int len)
 {
 	*frm++ = IEEE80211_ELEMID_SSID;
@@ -1204,7 +1201,7 @@ ieee80211_setup_rsn_ie(struct ieee80211com *ic, u_int8_t *ie)
 /*
  * Add a WPA/RSN element to a frame.
  */
-static u_int8_t *
+u_int8_t *
 ieee80211_add_wpa(u_int8_t *frm, struct ieee80211com *ic)
 {
 
@@ -1220,7 +1217,7 @@ ieee80211_add_wpa(u_int8_t *frm, struct ieee80211com *ic)
 /*
  * Add a WME information element to a frame.
  */
-static u_int8_t *
+u_int8_t *
 ieee80211_add_wme_info(u_int8_t *frm, struct ieee80211_wme_state *wme)
 {
 	static const struct ieee80211_wme_info info = {
@@ -1233,7 +1230,7 @@ ieee80211_add_wme_info(u_int8_t *frm, struct ieee80211_wme_state *wme)
 		.wme_info	= 0,
 	};
 	memcpy(frm, &info, sizeof(info));
-	return frm + sizeof(info); 
+	return frm + sizeof(info);
 }
 
 /*
@@ -1344,8 +1341,7 @@ ieee80211_send_probereq(struct ieee80211_node *ni,
 	M_PREPEND(m, sizeof(struct ieee80211_frame), M_DONTWAIT);
 	if (m == NULL)
 		return ENOMEM;
-	IASSERT(m->m_pkthdr.rcvif == NULL, ("rcvif not null"));
-	m->m_pkthdr.rcvif = (void *)ni;
+	M_SETCTX(m, ni);
 
 	wh = mtod(m, struct ieee80211_frame *);
 	ieee80211_send_setup(ic, ni, wh,
@@ -1362,7 +1358,7 @@ ieee80211_send_probereq(struct ieee80211_node *ni,
 	    ieee80211_chan2ieee(ic, ic->ic_curchan));
 
 	IF_ENQUEUE(&ic->ic_mgtq, m);
-	(*ic->ic_ifp->if_start)(ic->ic_ifp);
+	if_start_lock(ic->ic_ifp);
 	return 0;
 }
 

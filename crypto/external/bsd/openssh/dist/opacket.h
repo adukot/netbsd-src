@@ -1,4 +1,4 @@
-/*	$NetBSD: opacket.h,v 1.4 2016/03/11 01:55:00 christos Exp $	*/
+/*	$NetBSD: opacket.h,v 1.6 2016/12/25 00:07:47 christos Exp $	*/
 #ifndef _OPACKET_H
 /* Written by Markus Friedl. Placed in the public domain.  */
 
@@ -136,9 +136,6 @@ void	 packet_read_expect(int expected_type);
 	ssh_packet_get_input(active_state)
 #define packet_get_output() \
 	ssh_packet_get_output(active_state)
-#define packet_set_compress_hooks(ctx, allocfunc, freefunc) \
-	ssh_packet_set_compress_hooks(active_state, ctx, \
-	    allocfunc, freefunc);
 #define packet_check_eom() \
 	ssh_packet_check_eom(active_state)
 #define set_newkeys(mode) \
@@ -147,10 +144,6 @@ void	 packet_read_expect(int expected_type);
 	ssh_packet_get_state(active_state, m)
 #define packet_set_state(m) \
 	ssh_packet_set_state(active_state, m)
-#if 0
-#define get_remote_ipaddr() \
-	ssh_remote_ipaddr(active_state)
-#endif
 #define packet_get_raw(lenp) \
         sshpkt_ptr(active_state, lenp)
 #define packet_get_ecpoint(c,p) \
@@ -163,5 +156,9 @@ void	 packet_read_expect(int expected_type);
 	ssh_packet_set_rekey_limits(active_state, x, y)
 #define packet_get_bytes(x,y) \
 	ssh_packet_get_bytes(active_state, x, y)
+#define packet_set_mux() \
+	ssh_packet_set_mux(active_state)
+#define packet_get_mux() \
+	ssh_packet_get_mux(active_state)
 
 #endif /* _OPACKET_H */

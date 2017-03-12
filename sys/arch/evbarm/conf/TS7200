@@ -1,4 +1,4 @@
-#	$NetBSD: TS7200,v 1.63 2015/09/26 11:16:12 maxv Exp $
+#	$NetBSD: TS7200,v 1.67 2017/02/19 07:47:00 rin Exp $
 #
 #	TS7200 - Kernel for Technologic Systems TS7200 ARM hardware
 #
@@ -54,6 +54,7 @@ file-system	PTYFS		# /dev/pts/N support
 # File system options
 #options 	QUOTA		# legacy UFS quotas
 #options 	QUOTA2		# new, in-filesystem UFS quotas
+#options 	DISKLABEL_EI	# disklabel Endian Independent support
 #options 	FFS_EI		# FFS Endian Independent support
 options 	NFSSERVER
 options 	WAPBL		# File system journaling support
@@ -424,6 +425,8 @@ ugen*	at uhub? port ?
 
 # Audio support
 #audio*	at audiobus?
+
+#spkr*	at audio?			# PC speaker (synthesized)
 
 # MPU 401 UARTs
 #mpu*	at cmpci?

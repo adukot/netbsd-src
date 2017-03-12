@@ -1,4 +1,4 @@
-# $NetBSD: t_arith.sh,v 1.3 2016/03/31 16:19:52 christos Exp $
+# $NetBSD: t_arith.sh,v 1.5 2016/05/12 14:25:11 kre Exp $
 #
 # Copyright (c) 2016 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -834,6 +834,13 @@ make_selection_body()
 
 	atf_check -s exit:0 -o inline:'111\n' -e empty ${TEST_SH} -c \
 		'echo $(( 0x1234 ? 111 : 222 ))'
+
+	atf_check -s exit:0 -o inline:'-1\n' -e empty ${TEST_SH} -c \
+		'echo $(( 1 < 2 ? -1 : 1 > 2 ? 1 : 0 ))'
+	atf_check -s exit:0 -o inline:'0\n' -e empty ${TEST_SH} -c \
+		'echo $(( 1 < 1 ? -1 : 1 > 1 ? 1 : 0 ))'
+	atf_check -s exit:0 -o inline:'1\n' -e empty ${TEST_SH} -c \
+		'echo $(( 2 < 1 ? -1 : 2 > 1 ? 1 : 0 ))'
 }
 
 atf_test_case operator_precedence

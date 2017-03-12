@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.18 2016/01/14 22:30:04 christos Exp $
+#	$NetBSD: Makefile,v 1.21 2017/02/14 09:59:16 rin Exp $
 
 .include <bsd.own.mk>
 
@@ -75,6 +75,7 @@ ttymodes.c \
 uidswap.c \
 umac.c \
 umac128.c \
+utf8.c \
 uuencode.c \
 verify.c \
 xmalloc.c
@@ -113,5 +114,11 @@ COPTS.${f}.c+=	-Wno-pointer-sign
 
 # XXX
 COPTS.channels.c+=	-fno-strict-aliasing
+
+# XXX
+.if ${MACHINE} == "vax"
+COPTS.poly1305.c+=	-O0
+COPTS.umac.c+=		-O0
+.endif
 
 .include <bsd.lib.mk>

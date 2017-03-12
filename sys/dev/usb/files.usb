@@ -1,15 +1,11 @@
-#	$NetBSD: files.usb,v 1.139 2016/04/26 10:38:43 skrll Exp $
+#	$NetBSD: files.usb,v 1.142 2016/11/25 12:45:28 skrll Exp $
 #
 # Config file and device description for machine-independent USB code.
 # Included by ports that need it.  Ports that use it must provide
 # their own "major" declarations for the appropriate devices.
 
 defflag	USBVERBOSE
-defparam opt_usb.h	USBHIST_SIZE
 defflag	opt_usb.h	USB_FRAG_DMA_WORKAROUND
-
-# top level usb debug defines
-defflag	opt_usb.h	USB_DEBUG: KERNHIST
 
 # HC controllers
 defflag	opt_usb.h	EHCI_DEBUG: USB_DEBUG
@@ -88,7 +84,6 @@ defflag opt_usb.h	UVIDEO_DEBUG: USB_DEBUG
 defflag opt_usb.h	UVISOR_DEBUG: USB_DEBUG
 defflag opt_usb.h	UVSCOM_DEBUG: USB_DEBUG
 defflag opt_usb.h	UYUREX_DEBUG: USB_DEBUG
-defflag opt_usb.h	UZCOM_DEBUG: USB_DEBUG
 defflag opt_usb.h	ZYD_DEBUG: USB_DEBUG
 
 define	usbroothubif { }
@@ -540,7 +535,6 @@ file	dev/usb/if_run.c		run
 attach	athn at usbdevif with athn_usb: firmload
 file	dev/usb/if_athn_usb.c		athn_usb		needs-flag
 
-# XXX: ljt
 # Realtek RTL8188SU/RTL8191SU/RTL8192SU
 device	rsu: arp, ether, firmload, ifnet, wlan
 attach	rsu at usbdevif

@@ -1,4 +1,4 @@
-/*	$NetBSD: main.c,v 1.95 2014/11/12 03:34:59 christos Exp $	*/
+/*	$NetBSD: main.c,v 1.99 2016/07/14 20:13:10 christos Exp $	*/
 
 /*
  * Copyright (c) 1983, 1988, 1993
@@ -39,7 +39,7 @@ __COPYRIGHT("@(#) Copyright (c) 1983, 1988, 1993\
 #if 0
 static char sccsid[] = "from: @(#)main.c	8.4 (Berkeley) 3/1/94";
 #else
-__RCSID("$NetBSD: main.c,v 1.95 2014/11/12 03:34:59 christos Exp $");
+__RCSID("$NetBSD: main.c,v 1.99 2016/07/14 20:13:10 christos Exp $");
 #endif
 #endif /* not lint */
 
@@ -146,35 +146,23 @@ struct nlist nl[] = {
 	{ "_rip6stat", 0, 0, 0, 0 },	/* not available via kvm */
 #define	N_ARPINTRQ	38
 	{ "_arpintrq", 0, 0, 0, 0 },
-#define	N_IPINTRQ	39
-	{ "_ipintrq", 0, 0, 0, 0 },
-#define	N_IP6INTRQ	40
-	{ "_ip6intrq", 0, 0, 0, 0 },
-#define	N_ATINTRQ1	41
+#define	N_ATINTRQ1	39
 	{ "_atintrq1", 0, 0, 0, 0 },
-#define	N_ATINTRQ2	42
+#define	N_ATINTRQ2	40
 	{ "_atintrq2", 0, 0, 0, 0 },
-#define	N_NSINTRQ	43
-	{ "_nsintrq", 0, 0, 0, 0 },
-#define	N_LLCINTRQ	44
-	{ "_llcintrq", 0, 0, 0, 0 },
-#define	N_HDINTRQ	45
-	{ "_hdintrq", 0, 0, 0, 0 },
-#define	N_NATMINTRQ	46
+#define	N_NATMINTRQ	41
 	{ "_natmintrq", 0, 0, 0, 0 },
-#define	N_PPPOEDISCINQ	47
+#define	N_PPPOEDISCINQ	42
 	{ "_ppoediscinq", 0, 0, 0, 0 },
-#define	N_PPPOEINQ	48
+#define	N_PPPOEINQ	43
 	{ "_ppoeinq", 0, 0, 0, 0 },
-#define	N_PKINTRQ	49
-	{ "_pkintrq", 0, 0, 0, 0 },
-#define	N_HARDCLOCK_TICKS 50
+#define	N_HARDCLOCK_TICKS 44
 	{ "_hardclock_ticks", 0, 0, 0, 0 },
-#define N_PIMSTAT	51
+#define N_PIMSTAT	45
 	{ "_pimstat", 0, 0, 0, 0 },
-#define N_CARPSTAT	52
+#define N_CARPSTAT	46
 	{ "_carpstats", 0, 0, 0, 0 },	/* not available via kvm */
-#define N_PFSYNCSTAT	53
+#define N_PFSYNCSTAT	47
 	{ "_pfsyncstats", 0, 0, 0, 0},  /* not available via kvm */
 	{ "", 0, 0, 0, 0 },
 };
@@ -184,13 +172,13 @@ struct protox {
 	u_char	pr_sindex;		/* index into nlist of stat block */
 	u_char	pr_wanted;		/* 1 if wanted, 0 otherwise */
 	void	(*pr_cblocks)		/* control blocks printing routine */
-			__P((u_long, const char *));
+			(u_long, const char *);
 	void	(*pr_stats)		/* statistics printing routine */
-			__P((u_long, const char *));
+			(u_long, const char *);
 	void	(*pr_istats)
-			__P((const char *));	/* per/if statistics printing routine */
+			(const char *);	/* per/if statistics printing routine */
 	void	(*pr_dump)		/* PCB state dump routine */
-			__P((u_long, const char *, u_long));
+			(u_long, const char *, u_long);
 	const char *pr_name;		/* well-known name */
 } protox[] = {
 	{ N_TCBTABLE,	N_TCPSTAT,	1,	protopr,
@@ -288,25 +276,19 @@ const struct softintrq {
 	int siq_index;
 } softintrq[] = {
 	{ "arpintrq", N_ARPINTRQ },
-	{ "ipintrq", N_IPINTRQ },
-	{ "ip6intrq", N_IP6INTRQ },
 	{ "atintrq1", N_ATINTRQ1 },
 	{ "atintrq2", N_ATINTRQ2 },
-	{ "llcintrq", N_LLCINTRQ },
-	{ "hdintrq", N_HDINTRQ },
 	{ "natmintrq", N_NATMINTRQ },
 	{ "ppoediscinq", N_PPPOEDISCINQ },
 	{ "ppoeinq", N_PPPOEINQ },
-	{ "pkintrq", N_PKINTRQ },
 	{ NULL, -1 },
 };
 
-int main __P((int, char *[]));
-static void printproto __P((struct protox *, const char *));
-static void print_softintrq __P((void));
+static void printproto(struct protox *, const char *);
+static void print_softintrq(void);
 __dead static void usage(void);
-static struct protox *name2protox __P((const char *));
-static struct protox *knownname __P((const char *));
+static struct protox *name2protox(const char *);
+static struct protox *knownname(const char *);
 static void prepare(const char *, const char *, struct protox *tp);
 static kvm_t *prepare_kvmd(const char *, const char *, char *);
 
@@ -358,7 +340,6 @@ prepare(const char *nf, const char *mf, struct protox *tp)
 		 */
 		use_sysctl = 0;
 	} else if (qflag ||
-		   iflag ||
 #ifndef SMALL
 		   gflag ||
 #endif
@@ -724,7 +705,7 @@ main(int argc, char *argv[])
 static void
 printproto(struct protox *tp, const char *name)
 {
-	void (*pr) __P((u_long, const char *));
+	void (*pr)(u_long, const char *);
 	u_long off;
 
 	if (sflag) {

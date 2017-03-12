@@ -1,4 +1,4 @@
-/*	$NetBSD: if_43.c,v 1.11 2015/07/11 07:43:32 njoly Exp $	*/
+/*	$NetBSD: if_43.c,v 1.13 2016/11/05 23:30:22 pgoyette Exp $	*/
 
 /*
  * Copyright (c) 1982, 1986, 1989, 1990, 1993
@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_43.c,v 1.11 2015/07/11 07:43:32 njoly Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_43.c,v 1.13 2016/11/05 23:30:22 pgoyette Exp $");
 
 #if defined(_KERNEL_OPT)
 #include "opt_compat_netbsd.h"
@@ -73,7 +73,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_43.c,v 1.11 2015/07/11 07:43:32 njoly Exp $");
 #include <compat/sys/sockio.h>
 
 #include <compat/common/compat_util.h>
-
+#include <compat/common/if_43.h>
 #include <uvm/uvm_extern.h>
 
 u_long 
@@ -218,11 +218,16 @@ compat_ifioctl(struct socket *so, u_long ocmd, u_long cmd, void *data,
 	struct ifreq *ifr = (struct ifreq *)data;
 	struct ifreq ifrb;
 	struct oifreq *oifr = NULL;
-	struct ifnet *ifp = ifunit(ifr->ifr_name);
+	struct ifnet *ifp;
 	struct sockaddr *sa;
+	struct psref psref;
+	int bound = curlwp_bind();
 
-	if (ifp == NULL)
+	ifp = if_get(ifr->ifr_name, &psref);
+	if (ifp == NULL) {
+		curlwp_bindx(bound);
 		return ENXIO;
+	}
 
 	/*
 	 * If we have not been converted, make sure that we are.
@@ -257,6 +262,8 @@ compat_ifioctl(struct socket *so, u_long ocmd, u_long cmd, void *data,
 	}
 
 	error = (*so->so_proto->pr_usrreqs->pr_ioctl)(so, cmd, ifr, ifp);
+	if_put(ifp, &psref);
+	curlwp_bindx(bound);
 
 	switch (ocmd) {
 	case OOSIOCGIFADDR:
@@ -273,3 +280,31 @@ compat_ifioctl(struct socket *so, u_long ocmd, u_long cmd, void *data,
 
 	return error;
 }
+
+#if defined(COMPAT_43)
+static u_long (*orig_compat_cvtcmd)(u_long);
+static int (*orig_compat_ifioctl)(struct socket *, u_long, u_long,
+    void *, struct lwp *);
+
+void
+if_43_init(void)
+{
+	extern u_long (*vec_compat_cvtcmd)(u_long);
+	extern int (*vec_compat_ifioctl)(struct socket *, u_long, u_long,
+	    void *, struct lwp *);
+
+	orig_compat_cvtcmd = vec_compat_cvtcmd;
+	vec_compat_cvtcmd = compat_cvtcmd;
+
+	orig_compat_ifioctl = vec_compat_ifioctl;
+	vec_compat_ifioctl =  compat_ifioctl;
+}
+
+void
+if_43_fini(void)
+{
+
+	vec_compat_cvtcmd = orig_compat_cvtcmd;
+	vec_compat_ifioctl = orig_compat_ifioctl;
+}
+#endif /* defined(COMPAT_43) */

@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2016, Intel Corp.
+ * Copyright (C) 2000 - 2017, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -617,6 +617,7 @@ AsRemoveDebugMacros (
 
     AsReplaceString ("return_VOID",         "return", REPLACE_WHOLE_WORD, Buffer);
     AsReplaceString ("return_PTR",          "return", REPLACE_WHOLE_WORD, Buffer);
+    AsReplaceString ("return_STR",          "return", REPLACE_WHOLE_WORD, Buffer);
     AsReplaceString ("return_ACPI_STATUS",  "return", REPLACE_WHOLE_WORD, Buffer);
     AsReplaceString ("return_acpi_status",  "return", REPLACE_WHOLE_WORD, Buffer);
     AsReplaceString ("return_VALUE",        "return", REPLACE_WHOLE_WORD, Buffer);

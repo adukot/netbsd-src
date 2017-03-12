@@ -1,4 +1,4 @@
-/*	$NetBSD: ld_nvme.c,v 1.1 2016/05/01 10:21:02 nonaka Exp $	*/
+/*	$NetBSD: ld_nvme.c,v 1.14 2017/02/28 20:55:09 jdolecek Exp $	*/
 
 /*-
  * Copyright (C) 2016 NONAKA Kimihiro <nonaka@netbsd.org>
@@ -26,25 +26,37 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ld_nvme.c,v 1.1 2016/05/01 10:21:02 nonaka Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ld_nvme.c,v 1.14 2017/02/28 20:55:09 jdolecek Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/device.h>
 #include <sys/buf.h>
+#include <sys/bufq.h>
 #include <sys/disk.h>
 #include <sys/kmem.h>
+#include <sys/module.h>
 
 #include <dev/ldvar.h>
 #include <dev/ic/nvmereg.h>
 #include <dev/ic/nvmevar.h>
+
+#include "ioconf.h"
 
 struct ld_nvme_softc {
 	struct ld_softc		sc_ld;
 	struct nvme_softc	*sc_nvme;
 
 	uint16_t		sc_nsid;
+
+	/* getcache handling */
+	kmutex_t		sc_getcache_lock;
+	kcondvar_t		sc_getcache_cv;
+	kcondvar_t		sc_getcache_ready_cv;
+	bool			sc_getcache_waiting;
+	bool			sc_getcache_ready;
+	int			sc_getcache_result;
 };
 
 static int	ld_nvme_match(device_t, cfdata_t, void *);
@@ -56,13 +68,13 @@ CFATTACH_DECL_NEW(ld_nvme, sizeof(struct ld_nvme_softc),
 
 static int	ld_nvme_start(struct ld_softc *, struct buf *);
 static int	ld_nvme_dump(struct ld_softc *, void *, int, int);
-static int	ld_nvme_flush(struct ld_softc *, int);
+static int	ld_nvme_flush(struct ld_softc *, bool);
+static int	ld_nvme_getcache(struct ld_softc *, int *);
+static int	ld_nvme_ioctl(struct ld_softc *, u_long, void *, int32_t, bool);
 
-static int	ld_nvme_dobio(struct ld_nvme_softc *, void *, int, daddr_t,
-		    int, struct buf *);
-static void	ld_nvme_biodone(struct nvme_ns_context *);
-static void	ld_nvme_syncdone(struct nvme_ns_context *);
-
+static void	ld_nvme_biodone(void *, struct buf *, uint16_t, uint32_t);
+static void	ld_nvme_syncdone(void *, struct buf *, uint16_t, uint32_t);
+static void	ld_nvme_getcache_done(void *, struct buf *, uint16_t, uint32_t);
 
 static int
 ld_nvme_match(device_t parent, cfdata_t match, void *aux)
@@ -91,6 +103,10 @@ ld_nvme_attach(device_t parent, device_t self, void *aux)
 	sc->sc_nvme = nsc;
 	sc->sc_nsid = naa->naa_nsid;
 
+	mutex_init(&sc->sc_getcache_lock, MUTEX_DEFAULT, IPL_SOFTBIO);
+	cv_init(&sc->sc_getcache_cv, "nvmegcq");
+	cv_init(&sc->sc_getcache_ready_cv, "nvmegcr");
+
 	aprint_naive("\n");
 	aprint_normal("\n");
 
@@ -107,13 +123,13 @@ ld_nvme_attach(device_t parent, device_t self, void *aux)
 
 	ld->sc_secsize = 1 << f->lbads;
 	ld->sc_secperunit = nsze;
-	ld->sc_maxxfer = MAXPHYS;
+	ld->sc_maxxfer = naa->naa_maxphys;
 	ld->sc_maxqueuecnt = naa->naa_qentries;
 	ld->sc_start = ld_nvme_start;
 	ld->sc_dump = ld_nvme_dump;
-	ld->sc_flush = ld_nvme_flush;
+	ld->sc_ioctl = ld_nvme_ioctl;
 	ld->sc_flags = LDF_ENABLED;
-	ldattach(ld);
+	ldattach(ld, "fcfs");
 }
 
 static int
@@ -137,8 +153,11 @@ ld_nvme_start(struct ld_softc *ld, struct buf *bp)
 {
 	struct ld_nvme_softc *sc = device_private(ld->sc_dv);
 
-	return ld_nvme_dobio(sc, bp->b_data, bp->b_bcount, bp->b_rawblkno,
-	    BUF_ISWRITE(bp), bp);
+	return nvme_ns_dobio(sc->sc_nvme, sc->sc_nsid, sc,
+	    bp, bp->b_data, bp->b_bcount,
+	    sc->sc_ld.sc_secsize, bp->b_rawblkno,
+	    BUF_ISWRITE(bp) ? 0 : NVME_NS_CTX_F_READ,
+	    ld_nvme_biodone);
 }
 
 static int
@@ -146,45 +165,18 @@ ld_nvme_dump(struct ld_softc *ld, void *data, int blkno, int blkcnt)
 {
 	struct ld_nvme_softc *sc = device_private(ld->sc_dv);
 
-	return ld_nvme_dobio(sc, data, blkcnt * ld->sc_secsize, blkno, 1, NULL);
-}
-
-static int
-ld_nvme_dobio(struct ld_nvme_softc *sc, void *data, int datasize, daddr_t blkno,
-    int dowrite, struct buf *bp)
-{
-	struct nvme_ns_context *ctx;
-	int error;
-	int s;
-
-	ctx = nvme_ns_get_ctx(bp != NULL ? PR_WAITOK : PR_NOWAIT);
-	ctx->nnc_cookie = sc;
-	ctx->nnc_nsid = sc->sc_nsid;
-	ctx->nnc_done = ld_nvme_biodone;
-	ctx->nnc_buf = bp;
-	ctx->nnc_data = data;
-	ctx->nnc_datasize = datasize;
-	ctx->nnc_secsize = sc->sc_ld.sc_secsize;
-	ctx->nnc_blkno = blkno;
-	ctx->nnc_flags = dowrite ? 0 : NVME_NS_CTX_F_READ;
-	if (bp == NULL) {
-		SET(ctx->nnc_flags, NVME_NS_CTX_F_POLL);
-		s = splbio();
-	}
-	error = nvme_ns_dobio(sc->sc_nvme, ctx);
-	if (bp == NULL) {
-		splx(s);
-	}
-
-	return error;
+	return nvme_ns_dobio(sc->sc_nvme, sc->sc_nsid, sc,
+	    NULL, data, blkcnt * ld->sc_secsize,
+	    sc->sc_ld.sc_secsize, blkno,
+	    NVME_NS_CTX_F_POLL,
+	    ld_nvme_biodone);
 }
 
 static void
-ld_nvme_biodone(struct nvme_ns_context *ctx)
+ld_nvme_biodone(void *xc, struct buf *bp, uint16_t cmd_status, uint32_t cdw0)
 {
-	struct ld_nvme_softc *sc = ctx->nnc_cookie;
-	struct buf *bp = ctx->nnc_buf;
-	int status = NVME_CQE_SC(ctx->nnc_status);
+	struct ld_nvme_softc *sc = xc;
+	uint16_t status = NVME_CQE_SC(cmd_status);
 
 	if (bp != NULL) {
 		if (status != NVME_CQE_SC_SUCCESS) {
@@ -200,37 +192,182 @@ ld_nvme_biodone(struct nvme_ns_context *ctx)
 			aprint_error_dev(sc->sc_ld.sc_dv, "I/O error\n");
 		}
 	}
-	nvme_ns_put_ctx(ctx);
 }
 
 static int
-ld_nvme_flush(struct ld_softc *ld, int flags)
+ld_nvme_flush(struct ld_softc *ld, bool poll)
 {
 	struct ld_nvme_softc *sc = device_private(ld->sc_dv);
-	struct nvme_ns_context *ctx;
-	int error;
-	int s;
 
-	ctx = nvme_ns_get_ctx((flags & LDFL_POLL) ? PR_NOWAIT : PR_WAITOK);
-	ctx->nnc_cookie = sc;
-	ctx->nnc_nsid = sc->sc_nsid;
-	ctx->nnc_done = ld_nvme_syncdone;
-	ctx->nnc_flags = 0;
-	if (flags & LDFL_POLL) {
-		SET(ctx->nnc_flags, NVME_NS_CTX_F_POLL);
-		s = splbio();
+	if (!nvme_has_volatile_write_cache(sc->sc_nvme)) {
+		/* cache not present, no value in trying to flush it */
+		return 0;
 	}
-	error = nvme_ns_sync(sc->sc_nvme, ctx);
-	if (flags & LDFL_POLL) {
-		splx(s);
+
+	return nvme_ns_sync(sc->sc_nvme, sc->sc_nsid, sc,
+	    poll ? NVME_NS_CTX_F_POLL : 0,
+	    ld_nvme_syncdone);
+}
+
+static void
+ld_nvme_syncdone(void *xc, struct buf *bp, uint16_t cmd_status, uint32_t cdw0)
+{
+	/* nothing to do */
+}
+
+static int
+ld_nvme_getcache(struct ld_softc *ld, int *addr)
+{
+	int error;
+	struct ld_nvme_softc *sc = device_private(ld->sc_dv);
+
+	*addr = 0;
+
+	if (!nvme_has_volatile_write_cache(sc->sc_nvme)) {
+		/* cache simply not present */
+		return 0;
 	}
+
+	/*
+	 * This is admin queue request. The queue is relatively limited in size,
+	 * and this is not performance critical call, so have at most one pending
+	 * cache request at a time to avoid spurious EWOULDBLOCK failures.
+	 */ 
+	mutex_enter(&sc->sc_getcache_lock);
+	while (sc->sc_getcache_waiting) {
+		error = cv_wait_sig(&sc->sc_getcache_cv, &sc->sc_getcache_lock);
+		if (error)
+			goto out;
+	}
+	sc->sc_getcache_waiting = true;
+	sc->sc_getcache_ready = false;
+	mutex_exit(&sc->sc_getcache_lock);
+
+	error = nvme_admin_getcache(sc->sc_nvme, sc, ld_nvme_getcache_done);
+	if (error) {
+		mutex_enter(&sc->sc_getcache_lock);
+		goto out;
+	}
+
+	mutex_enter(&sc->sc_getcache_lock);
+	while (!sc->sc_getcache_ready) {
+		error = cv_wait_sig(&sc->sc_getcache_ready_cv,
+		    &sc->sc_getcache_lock);
+		if (error)
+			goto out;
+	}
+
+	KDASSERT(sc->sc_getcache_ready);
+
+	if (sc->sc_getcache_result >= 0)
+		*addr |= sc->sc_getcache_result;
+	else
+		error = EINVAL;
+
+    out:
+	sc->sc_getcache_waiting = false;
+
+	/* wake one of eventual waiters */
+	cv_signal(&sc->sc_getcache_cv);
+
+	mutex_exit(&sc->sc_getcache_lock);
 
 	return error;
 }
 
 static void
-ld_nvme_syncdone(struct nvme_ns_context *ctx)
+ld_nvme_getcache_done(void *xc, struct buf *bp, uint16_t cmd_status, uint32_t cdw0)
 {
+	struct ld_nvme_softc *sc = xc;
+	uint16_t status = NVME_CQE_SC(cmd_status);
+	int result;
 
-	nvme_ns_put_ctx(ctx);
+	if (status == NVME_CQE_SC_SUCCESS) {
+		result = 0;
+
+		if (cdw0 & NVME_CQE_CDW0_VWC_WCE)
+			result |= DKCACHE_WRITE;
+
+		/*
+		 * If volatile write cache is present, the flag shall also be
+		 * settable.
+		 */
+		result |= DKCACHE_WCHANGE;
+	} else {
+		result = -1;
+	}
+
+	mutex_enter(&sc->sc_getcache_lock);
+	sc->sc_getcache_result = result;
+	sc->sc_getcache_ready = true;
+
+	/* wake up the waiter */
+	cv_signal(&sc->sc_getcache_ready_cv);
+
+	mutex_exit(&sc->sc_getcache_lock);
+}
+
+static int
+ld_nvme_ioctl(struct ld_softc *ld, u_long cmd, void *addr, int32_t flag, bool poll)
+{
+	int error;
+
+	switch (cmd) {
+	case DIOCCACHESYNC:
+		error = ld_nvme_flush(ld, poll);
+		break;
+
+	case DIOCGCACHE:
+		error = ld_nvme_getcache(ld, (int *)addr);
+		break;
+
+	default:
+		error = EPASSTHROUGH;
+		break;
+	}
+
+	return error;
+}
+
+MODULE(MODULE_CLASS_DRIVER, ld_nvme, "ld,nvme");
+
+#ifdef _MODULE
+/*
+ * XXX Don't allow ioconf.c to redefine the "struct cfdriver ld_cd"
+ * XXX it will be defined in the common-code module
+ */
+#undef	CFDRIVER_DECL
+#define	CFDRIVER_DECL(name, class, attr)
+#include "ioconf.c"
+#endif
+
+static int
+ld_nvme_modcmd(modcmd_t cmd, void *opaque)
+{
+#ifdef _MODULE
+	/*
+	 * We ignore the cfdriver_vec[] that ioconf provides, since
+	 * the cfdrivers are attached already.
+	 */
+	static struct cfdriver * const no_cfdriver_vec[] = { NULL };
+#endif
+	int error = 0;
+
+#ifdef _MODULE
+	switch (cmd) {
+	case MODULE_CMD_INIT:
+		error = config_init_component(no_cfdriver_vec,
+		    cfattach_ioconf_ld_nvme, cfdata_ioconf_ld_nvme);
+		break;
+	case MODULE_CMD_FINI:
+		error = config_fini_component(no_cfdriver_vec,
+		    cfattach_ioconf_ld_nvme, cfdata_ioconf_ld_nvme);
+		break;
+	default:
+		error = ENOTTY;
+		break;
+	}
+#endif
+
+	return error;
 }

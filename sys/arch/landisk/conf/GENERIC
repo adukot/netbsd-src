@@ -1,4 +1,4 @@
-# $NetBSD: GENERIC,v 1.48 2016/03/19 23:21:03 gdt Exp $
+# $NetBSD: GENERIC,v 1.54 2017/02/19 07:47:01 rin Exp $
 #
 # GENERIC machine description file
 #
@@ -22,7 +22,7 @@ include		"arch/landisk/conf/std.landisk"
 
 options         INCLUDE_CONFIG_FILE     # embed config file in kernel binary
 
-#ident          "GENERIC-$Revision: 1.48 $"
+#ident          "GENERIC-$Revision: 1.54 $"
 
 maxusers	16		# estimated number of users
 
@@ -121,6 +121,7 @@ file-system	TMPFS		# Efficient memory file-system
 # File system options
 options 	QUOTA		# legacy UFS quotas
 options 	QUOTA2		# new, in-filesystem UFS quotas
+#options 	DISKLABEL_EI	# disklabel Endian Independent support
 #options 	FFS_EI		# FFS Endian Independent support
 options 	WAPBL		# File system journaling support
 #options 	UFS_DIRHASH	# UFS Large Directory Hashing - Experimental
@@ -395,6 +396,8 @@ ugen*	at uhub? port ?
 # Audio support
 audio*	at audiobus?
 
+spkr*	at audio?		# PC speaker (synthesized)
+
 # MIDI support
 midi*	at midibus?
 
@@ -476,3 +479,26 @@ pseudo-device	nsmb			# experimental - SMB requester
 # wscons pseudo-devices
 pseudo-device	wsmux			# mouse & keyboard multiplexor
 #pseudo-device	wsfont
+
+options 	FILEASSOC		# fileassoc(9) - required for Veriexec
+					# and PAX_SEGVGUARD
+
+# Veriexec
+pseudo-device	veriexec
+#
+# Uncomment the fingerprint methods below that are desired. Note that
+# removing fingerprint methods will have almost no impact on the kernel
+# code size.
+#
+options 	VERIFIED_EXEC_FP_RMD160
+options 	VERIFIED_EXEC_FP_SHA256
+options 	VERIFIED_EXEC_FP_SHA384
+options 	VERIFIED_EXEC_FP_SHA512
+options 	VERIFIED_EXEC_FP_SHA1
+options 	VERIFIED_EXEC_FP_MD5
+
+options 	PAX_ASLR_DEBUG=1	# PaX ASLR debug
+options 	PAX_SEGVGUARD=0		# PaX Segmentation fault guard
+options 	PAX_MPROTECT=1		# PaX mprotect(2) restrictions
+options 	PAX_MPROTECT_DEBUG=1	# PaX mprotect debug
+options 	PAX_ASLR=1		# PaX Address Space Layout Randomization

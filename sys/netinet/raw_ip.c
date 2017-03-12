@@ -1,4 +1,4 @@
-/*	$NetBSD: raw_ip.c,v 1.157 2016/04/26 08:44:44 ozaki-r Exp $	*/
+/*	$NetBSD: raw_ip.c,v 1.163 2017/03/03 07:13:06 ozaki-r Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -65,13 +65,14 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: raw_ip.c,v 1.157 2016/04/26 08:44:44 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: raw_ip.c,v 1.163 2017/03/03 07:13:06 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
 #include "opt_compat_netbsd.h"
 #include "opt_ipsec.h"
 #include "opt_mrouting.h"
+#include "opt_net_mpsafe.h"
 #endif
 
 #include <sys/param.h>
@@ -382,7 +383,7 @@ rip_output(struct mbuf *m, struct inpcb *inp)
 	 * will be stored in inp_errormtu.
 	 */
 	return ip_output(m, opts, &inp->inp_route, flags, inp->inp_moptions,
-	     inp->inp_socket);
+	     inp);
 }
 
 /*
@@ -478,7 +479,7 @@ int
 rip_connect_pcb(struct inpcb *inp, struct sockaddr_in *addr)
 {
 
-	if (IFNET_EMPTY())
+	if (IFNET_READER_EMPTY())
 		return (EADDRNOTAVAIL);
 	if (addr->sin_family != AF_INET)
 		return (EAFNOSUPPORT);
@@ -554,8 +555,8 @@ rip_bind(struct socket *so, struct sockaddr *nam, struct lwp *l)
 	struct inpcb *inp = sotoinpcb(so);
 	struct sockaddr_in *addr = (struct sockaddr_in *)nam;
 	int error = 0;
-	int s;
-	struct ifaddr *ia;
+	int s, ss;
+	struct ifaddr *ifa;
 
 	KASSERT(solocked(so));
 	KASSERT(inp != NULL);
@@ -565,7 +566,7 @@ rip_bind(struct socket *so, struct sockaddr *nam, struct lwp *l)
 		return EINVAL;
 
 	s = splsoftnet();
-	if (IFNET_EMPTY()) {
+	if (IFNET_READER_EMPTY()) {
 		error = EADDRNOTAVAIL;
 		goto release;
 	}
@@ -573,18 +574,20 @@ rip_bind(struct socket *so, struct sockaddr *nam, struct lwp *l)
 		error = EAFNOSUPPORT;
 		goto release;
 	}
-	if ((ia = ifa_ifwithaddr(sintosa(addr))) == 0 &&
+	ss = pserialize_read_enter();
+	if ((ifa = ifa_ifwithaddr(sintosa(addr))) == NULL &&
 	    !in_nullhost(addr->sin_addr))
 	{
+		pserialize_read_exit(ss);
 		error = EADDRNOTAVAIL;
 		goto release;
 	}
-        if (ia && ((struct in_ifaddr *)ia)->ia4_flags &
-	            (IN6_IFF_NOTREADY | IN_IFF_DETACHED))
-	{
+        if (ifa && (ifatoia(ifa))->ia4_flags & IN6_IFF_DUPLICATED) {
+		pserialize_read_exit(ss);
 		error = EADDRNOTAVAIL;
 		goto release;
 	}
+	pserialize_read_exit(ss);
 
 	inp->inp_laddr = addr->sin_addr;
 
@@ -804,7 +807,13 @@ rip_purgeif(struct socket *so, struct ifnet *ifp)
 	s = splsoftnet();
 	mutex_enter(softnet_lock);
 	in_pcbpurgeif0(&rawcbtable, ifp);
+#ifdef NET_MPSAFE
+	mutex_exit(softnet_lock);
+#endif
 	in_purgeif(ifp);
+#ifdef NET_MPSAFE
+	mutex_enter(softnet_lock);
+#endif
 	in_pcbpurgeif(&rawcbtable, ifp);
 	mutex_exit(softnet_lock);
 	splx(s);

@@ -1,4 +1,4 @@
-/*	$NetBSD: cpu_subr.c,v 1.26 2015/06/11 15:50:17 matt Exp $	*/
+/*	$NetBSD: cpu_subr.c,v 1.30 2016/10/31 12:49:04 skrll Exp $	*/
 
 /*-
  * Copyright (c) 2010 The NetBSD Foundation, Inc.
@@ -30,10 +30,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: cpu_subr.c,v 1.26 2015/06/11 15:50:17 matt Exp $");
+__KERNEL_RCSID(0, "$NetBSD: cpu_subr.c,v 1.30 2016/10/31 12:49:04 skrll Exp $");
 
-#include "opt_cputype.h"
 #include "opt_ddb.h"
+#include "opt_cputype.h"
+#include "opt_modular.h"
 #include "opt_multiprocessor.h"
 
 #include <sys/param.h>
@@ -44,6 +45,7 @@ __KERNEL_RCSID(0, "$NetBSD: cpu_subr.c,v 1.26 2015/06/11 15:50:17 matt Exp $");
 #include <sys/lwp.h>
 #include <sys/proc.h>
 #include <sys/ras.h>
+#include <sys/module.h>
 #include <sys/bitops.h>
 #include <sys/idle.h>
 #include <sys/xcall.h>
@@ -61,7 +63,7 @@ __KERNEL_RCSID(0, "$NetBSD: cpu_subr.c,v 1.26 2015/06/11 15:50:17 matt Exp $");
 #include <mips/pte.h>
 
 #if defined(DDB) || defined(KGDB)
-#ifdef DDB 
+#ifdef DDB
 #include <mips/db_machdep.h>
 #include <ddb/db_command.h>
 #include <ddb/db_output.h>
@@ -80,9 +82,10 @@ struct cpu_info cpu_info_store
     = {
 	.ci_curlwp = &lwp0,
 	.ci_tlb_info = &pmap_tlb0_info,
-	.ci_pmap_user_segtab = (void *)(MIPS_KSEG2_START + 0x1eadbeef),
+	.ci_pmap_kern_segtab = &pmap_kern_segtab,
+	.ci_pmap_user_segtab = NULL,
 #ifdef _LP64
-	.ci_pmap_user_seg0tab = (void *)(MIPS_KSEG2_START + 0x1eadbeef),
+	.ci_pmap_user_seg0tab = NULL,
 #endif
 	.ci_cpl = IPL_HIGH,
 	.ci_tlb_slot = -1,
@@ -123,7 +126,7 @@ cpu_info_alloc(struct pmap_tlb_info *ti, cpuid_t cpu_id, cpuid_t cpu_package_id,
 #ifdef MIPS64_OCTEON
 	vaddr_t exc_page = MIPS_UTLB_MISS_EXC_VEC + 0x1000*cpu_id;
 	__CTASSERT(sizeof(struct cpu_info) + sizeof(struct pmap_tlb_info) <= 0x1000 - 0x280);
-	
+
 	struct cpu_info * const ci = ((struct cpu_info *)(exc_page + 0x1000)) - 1;
 	memset((void *)exc_page, 0, PAGE_SIZE);
 
@@ -132,7 +135,7 @@ cpu_info_alloc(struct pmap_tlb_info *ti, cpuid_t cpu_id, cpuid_t cpu_package_id,
 		pmap_tlb_info_init(ti);
 	}
 #else
-	const vaddr_t cpu_info_offset = (vaddr_t)&cpu_info_store & PAGE_MASK; 
+	const vaddr_t cpu_info_offset = (vaddr_t)&cpu_info_store & PAGE_MASK;
 	struct pglist pglist;
 	int error;
 
@@ -178,31 +181,18 @@ cpu_info_alloc(struct pmap_tlb_info *ti, cpuid_t cpu_id, cpuid_t cpu_package_id,
 
 	KASSERT(cpu_id != 0);
 	ci->ci_cpuid = cpu_id;
+	ci->ci_pmap_kern_segtab = &pmap_kern_segtab,
 	ci->ci_data.cpu_package_id = cpu_package_id;
 	ci->ci_data.cpu_core_id = cpu_core_id;
 	ci->ci_data.cpu_smt_id = cpu_smt_id;
 	ci->ci_cpu_freq = cpu_info_store.ci_cpu_freq;
 	ci->ci_cctr_freq = cpu_info_store.ci_cctr_freq;
-        ci->ci_cycles_per_hz = cpu_info_store.ci_cycles_per_hz;
-        ci->ci_divisor_delay = cpu_info_store.ci_divisor_delay;
-        ci->ci_divisor_recip = cpu_info_store.ci_divisor_recip;
+	ci->ci_cycles_per_hz = cpu_info_store.ci_cycles_per_hz;
+	ci->ci_divisor_delay = cpu_info_store.ci_divisor_delay;
+	ci->ci_divisor_recip = cpu_info_store.ci_divisor_recip;
 	ci->ci_cpuwatch_count = cpu_info_store.ci_cpuwatch_count;
 
-#ifndef _LP64
-	/*
-	 * If we have more memory than can be mapped by KSEG0, we need to
-	 * allocate enough VA so we can map pages with the right color
-	 * (to avoid cache alias problems).
-	 */
-	if (pmap_limits.avail_end > MIPS_KSEG1_START - MIPS_KSEG0_START) {
-		ci->ci_pmap_dstbase = uvm_km_alloc(kernel_map,
-		    uvmexp.ncolors * PAGE_SIZE, 0, UVM_KMF_VAONLY);
-		KASSERT(ci->ci_pmap_dstbase);
-		ci->ci_pmap_srcbase = uvm_km_alloc(kernel_map,
-		    uvmexp.ncolors * PAGE_SIZE, 0, UVM_KMF_VAONLY);
-		KASSERT(ci->ci_pmap_srcbase);
-	}
-#endif
+	pmap_md_alloc_ephemeral_address_space(ci);
 
 	mi_cpu_attach(ci);
 
@@ -295,6 +285,10 @@ cpu_attach_common(device_t self, struct cpu_info *ci)
 	 * Initialize IPI framework for this cpu instance
 	 */
 	ipi_init(ci);
+
+	kcpuset_create(&ci->ci_multicastcpus, true);
+	kcpuset_create(&ci->ci_watchcpus, true);
+	kcpuset_create(&ci->ci_ddbcpus, true);
 #endif
 }
 
@@ -346,6 +340,10 @@ cpu_startup_common(void)
 
 	format_bytes(pbuf, sizeof(pbuf), ptoa(uvmexp.free));
 	printf("avail memory = %s\n", pbuf);
+
+#if defined(__mips_n32)
+	module_machine = "mips-n32";
+#endif
 }
 
 void
@@ -527,9 +525,9 @@ cpu_need_resched(struct cpu_info *ci, int flags)
 		atomic_or_uint(&l->l_dopreempt, DOPREEMPT_ACTIVE);
 		if (ci == cur_ci) {
 			softint_trigger(SOFTINT_KPREEMPT);
-                } else {
-                        cpu_send_ipi(ci, IPI_KPREEMPT);
-                }
+		} else {
+			cpu_send_ipi(ci, IPI_KPREEMPT);
+		}
 #endif
 		return;
 	}
@@ -537,8 +535,14 @@ cpu_need_resched(struct cpu_info *ci, int flags)
 #ifdef MULTIPROCESSOR
 	if (ci != cur_ci && (flags & RESCHED_IMMED)) {
 		cpu_send_ipi(ci, IPI_AST);
-	} 
+	}
 #endif
+}
+
+uint32_t
+cpu_clkf_usermode_mask(void)
+{
+	return CPUISMIPS3 ? MIPS_SR_KSU_USER : MIPS_SR_KU_PREV;
 }
 
 void
@@ -576,7 +580,7 @@ cpu_set_curpri(int pri)
 bool
 cpu_kpreempt_enter(uintptr_t where, int s)
 {
-        KASSERT(kpreempt_disabled());
+	KASSERT(kpreempt_disabled());
 
 #if 0
 	if (where == (intptr_t)-2) {
@@ -659,18 +663,17 @@ void
 cpu_multicast_ipi(const kcpuset_t *kcp, int tag)
 {
 	struct cpu_info * const ci = curcpu();
-	kcpuset_t *kcp2;
+	kcpuset_t *kcp2 = ci->ci_multicastcpus;
 
 	if (kcpuset_match(cpus_running, ci->ci_data.cpu_kcpuset))
 		return;
 
-	kcpuset_clone(&kcp2, kcp);
+	kcpuset_copy(kcp2, kcp);
 	kcpuset_remove(kcp2, ci->ci_data.cpu_kcpuset);
 	for (cpuid_t cii; (cii = kcpuset_ffs(kcp2)) != 0; ) {
 		kcpuset_clear(kcp2, --cii);
 		(void)cpu_send_ipi(cpu_lookup(cii), tag);
 	}
-	kcpuset_destroy(kcp2);
 }
 
 int
@@ -684,9 +687,9 @@ static void
 cpu_ipi_wait(const char *s, const kcpuset_t *watchset, const kcpuset_t *wanted)
 {
 	bool done = false;
-	kcpuset_t *kcp;
-	kcpuset_create(&kcp, false);
-	
+	struct cpu_info * const ci = curcpu();
+	kcpuset_t *kcp = ci->ci_watchcpus;
+
 	/* some finite amount of time */
 
 	for (u_long limit = curcpu()->ci_cpu_freq/10; !done && limit--; ) {
@@ -708,8 +711,6 @@ cpu_ipi_wait(const char *s, const kcpuset_t *watchset, const kcpuset_t *wanted)
 			printf("\n");
 		}
 	}
-
-	kcpuset_destroy(kcp);
 }
 
 /*
@@ -797,19 +798,17 @@ void
 cpu_pause_others(void)
 {
 	struct cpu_info * const ci = curcpu();
-	kcpuset_t *kcp;
-
 	if (cold || kcpuset_match(cpus_running, ci->ci_data.cpu_kcpuset))
 		return;
 
-	kcpuset_clone(&kcp, cpus_running);
+	kcpuset_t *kcp = ci->ci_ddbcpus;
+
+	kcpuset_copy(kcp, cpus_running);
 	kcpuset_remove(kcp, ci->ci_data.cpu_kcpuset);
 	kcpuset_remove(kcp, cpus_paused);
 
 	cpu_broadcast_ipi(IPI_SUSPEND);
 	cpu_ipi_wait("pause", cpus_paused, kcp);
-
-	kcpuset_destroy(kcp);
 }
 
 /*
@@ -818,19 +817,17 @@ cpu_pause_others(void)
 void
 cpu_resume(cpuid_t cii)
 {
-	kcpuset_t *kcp;
-
 	if (__predict_false(cold))
 		return;
 
-	kcpuset_create(&kcp, true);
+	struct cpu_info * const ci = curcpu();
+	kcpuset_t *kcp = ci->ci_ddbcpus;
+
 	kcpuset_set(kcp, cii);
 	kcpuset_atomicly_remove(cpus_resumed, cpus_resumed);
 	kcpuset_atomic_clear(cpus_paused, cii);
 
 	cpu_ipi_wait("resume", cpus_resumed, kcp);
-
-	kcpuset_destroy(kcp);
 }
 
 /*
@@ -839,19 +836,18 @@ cpu_resume(cpuid_t cii)
 void
 cpu_resume_others(void)
 {
-	kcpuset_t *kcp;
-
 	if (__predict_false(cold))
 		return;
 
+	struct cpu_info * const ci = curcpu();
+	kcpuset_t *kcp = ci->ci_ddbcpus;
+
 	kcpuset_atomicly_remove(cpus_resumed, cpus_resumed);
-	kcpuset_clone(&kcp, cpus_paused);
+	kcpuset_copy(kcp, cpus_paused);
 	kcpuset_atomicly_remove(cpus_paused, cpus_paused);
 
 	/* CPUs awake on cpus_paused clear */
 	cpu_ipi_wait("resume", cpus_resumed, kcp);
-
-	kcpuset_destroy(kcp);
 }
 
 bool
@@ -912,8 +908,20 @@ cpu_hatch(struct cpu_info *ci)
 	if (ci->ci_tlb_slot >= 0) {
 		const uint32_t tlb_lo = MIPS3_PG_G|MIPS3_PG_V
 		    | mips3_paddr_to_tlbpfn((vaddr_t)ci);
+		const struct tlbmask tlbmask = {
+			.tlb_hi = -PAGE_SIZE | KERNEL_PID,
+#if (PGSHIFT & 1)
+			.tlb_lo0 = tlb_lo,
+			.tlb_lo1 = tlb_lo + MIPS3_PG_NEXT,
+#else
+			.tlb_lo0 = 0,
+			.tlb_lo1 = tlb_lo,
+#endif
+			.tlb_mask = -1,
+		};
 
-		tlb_enter(ci->ci_tlb_slot, -PAGE_SIZE, tlb_lo);
+		tlb_invalidate_addr(tlbmask.tlb_hi, KERNEL_PID);
+		tlb_write_entry(ci->ci_tlb_slot, &tlbmask);
 	}
 
 	/*

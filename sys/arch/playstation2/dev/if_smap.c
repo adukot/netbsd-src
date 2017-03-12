@@ -1,4 +1,4 @@
-/*	$NetBSD: if_smap.c,v 1.20 2016/04/03 09:58:45 martin Exp $	*/
+/*	$NetBSD: if_smap.c,v 1.23 2016/12/15 09:28:04 ozaki-r Exp $	*/
 
 /*-
  * Copyright (c) 2001 The NetBSD Foundation, Inc.
@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_smap.c,v 1.20 2016/04/03 09:58:45 martin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_smap.c,v 1.23 2016/12/15 09:28:04 ozaki-r Exp $");
 
 #include "debug_playstation2.h"
 
@@ -246,6 +246,7 @@ smap_attach(struct device *parent, struct device *self, void *aux)
 	}
 
 	if_attach(ifp);
+	if_deferred_start_init(ifp, NULL);
 	ether_ifattach(ifp, emac3->eaddr);
 	
 	spd_intr_establish(SPD_NIC, smap_intr, sc);
@@ -321,8 +322,7 @@ smap_intr(void *arg)
 	
 	/* if transmission is pending, start here */
 	ifp = &sc->ethercom.ec_if;
-	if (IFQ_IS_EMPTY(&ifp->if_snd) == 0)
-		smap_start(ifp);
+	if_schedule_deferred_start(ifp);
 	rnd_add_uint32(&sc->rnd_source, cause | sc->tx_fifo_ptr << 16);
 
 	return (1);
@@ -389,13 +389,11 @@ smap_rxeof(void *arg)
 		}
 
 		m->m_data += 2; /* for alignment */
-		m->m_pkthdr.rcvif = ifp;
+		m_set_rcvif(m, ifp);
 		m->m_pkthdr.len = m->m_len = sz;
 		memcpy(mtod(m, void *), (void *)sc->rx_buf, sz);
 
 	next_packet:
-		ifp->if_ipackets++;
-
 		_reg_write_1(SMAP_RXFIFO_FRAME_DEC_REG8, 1);
 
 		/* free descriptor */
@@ -404,11 +402,8 @@ smap_rxeof(void *arg)
 		d->stat	= SMAP_RXDESC_EMPTY;
 		_wbflush();
 		
-		if (m != NULL) {
-			if (ifp->if_bpf)
-				bpf_mtap(ifp, m);
+		if (m != NULL)
 			if_percpuq_enqueue(ifp->if_percpuq, m);
-		}
 	}
 	sc->rx_done_index = i;
 

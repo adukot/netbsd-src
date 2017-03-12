@@ -1,4 +1,13 @@
-#	$NetBSD: Makefile,v 1.75 2015/11/06 21:32:22 szptvlfn Exp $
+#	$NetBSD: Makefile,v 1.93 2016/12/03 16:38:15 macallan Exp $
+
+.include <bsd.own.mk>
+
+# modesetting is builtin to xorg-server 1.18 tree
+.if ${XORG_SERVER_SUBDIR} == "xorg-server.old"
+MODE_SETTING=	xf86-video-modesetting
+.else
+MODE_SETTING=
+.endif
 
 # xf86-input drivers
 
@@ -21,31 +30,21 @@ SUBDIR+= \
 
 # xf86-video drivers
 
-.include <bsd.own.mk>
-
 .if ${MACHINE_ARCH} == "i386" || \
     ${MACHINE_ARCH} == "x86_64"
 SUBDIR+= \
-	xf86-video-apm \
-	xf86-video-ark \
 	xf86-video-ast \
 	xf86-video-ati \
 	xf86-video-chips \
 	xf86-video-cirrus \
 	xf86-video-cirrus_alpine \
 	xf86-video-cirrus_laguna \
-	xf86-video-glint \
 	xf86-video-i128 \
-	xf86-video-i740
-
-# needs porting for xorg-server 1.6
-#	xf86-video-imstt \
-
-SUBDIR+= \
+	xf86-video-i740 \
 	xf86-video-intel \
-	xf86-video-intel-old \
 	xf86-video-mach64 \
 	xf86-video-mga \
+	${MODE_SETTING} \
 	xf86-video-neomagic \
 	xf86-video-nv \
 	xf86-video-nouveau \
@@ -64,9 +63,26 @@ SUBDIR+= \
 	xf86-video-tseng \
 	xf86-video-vmware \
 	xf86-video-vesa \
-	xf86-video-wsfb \
-	xf86-video-xgi
+	xf86-video-wsfb
+
+# needs porting for xorg-server 1.6
+#	xf86-video-imstt
 #	xf86-video-rendition
+
+# needs porting for xorg-server 1.18
+.if ${XORG_SERVER_SUBDIR} == "xorg-server.old"
+SUBDIR+= \
+	xf86-video-apm \
+	xf86-video-ark \
+	xf86-video-glint \
+	xf86-video-intel-old \
+	xf86-video-xgi
+.endif	# ${XORG_SERVER_SUBDIR} == "xorg-server.old"
+
+.if ${XORG_SERVER_SUBDIR} == "xorg-server"
+SUBDIR+= \
+	xf86-video-amdgpu
+.endif  # ${XORG_SERVER_SUBDIR} == "xorg-server"
 
 .if ${MACHINE_ARCH} == "i386"
 SUBDIR+= \
@@ -77,15 +93,12 @@ SUBDIR+= \
 
 .if ${MACHINE} == "alpha"
 SUBDIR+= \
-	xf86-video-apm \
-	xf86-video-ark \
 	xf86-video-ast \
 	xf86-video-ati \
 	xf86-video-chips \
 	xf86-video-cirrus \
 	xf86-video-cirrus_alpine \
 	xf86-video-cirrus_laguna \
-	xf86-video-glint \
 	xf86-video-i128 \
 	xf86-video-i740 \
 	xf86-video-mach64 \
@@ -104,6 +117,13 @@ SUBDIR+= \
 	xf86-video-tseng \
 	xf86-video-wsfb
 #	xf86-video-imstt
+# needs porting for xorg-server 1.18
+.if ${XORG_SERVER_SUBDIR} == "xorg-server.old"
+SUBDIR+= \
+	xf86-video-apm \
+	xf86-video-ark \
+	xf86-video-glint
+.endif	# ${XORG_SERVER_SUBDIR} == "xorg-server.old"
 .endif	# ${MACHINE} == "alpha"
 
 .if ${MACHINE} == "amiga"
@@ -156,7 +176,7 @@ SUBDIR+= \
 
 .if ${MACHINE} == "evbarm"
 SUBDIR+= \
-	xf86-video-modesetting \
+	${MODE_SETTING} \
 	xf86-video-wsfb
 .endif # ${MACHINE} == "evbarm"
 
@@ -203,6 +223,7 @@ SUBDIR+= \
 SUBDIR+= \
 	xf86-video-ati \
 	xf86-video-chips \
+	xf86-video-glint \
 	xf86-video-mach64 \
 	xf86-video-mga \
 	xf86-video-nv \
@@ -247,13 +268,16 @@ SUBDIR+= \
 
 .if ${MACHINE} == "sgimips"
 SUBDIR+= \
-	xf86-video-crime \
 	xf86-video-cirrus \
 	xf86-video-glint \
 	xf86-video-mga \
-	xf86-video-newport \
 	xf86-video-s3 \
 	xf86-video-wsfb
+.if ${XORG_SERVER_SUBDIR} == "xorg-server.old"
+SUBDIR+= \
+	xf86-video-crime \
+	xf86-video-newport
+.endif  # ${XORG_SERVER_SUBDIR} == "xorg-server.old"
 .endif	# ${MACHINE} == "sgimips"
 
 .if ${MACHINE} == "shark"
@@ -266,7 +290,6 @@ SUBDIR+= \
 .if ${MACHINE} == "sparc" || \
     ${MACHINE} == "sparc64"
 SUBDIR+= \
-	xf86-video-ag10e \
 	xf86-video-ati \
 	xf86-video-glint \
 	xf86-video-mach64 \
@@ -275,13 +298,29 @@ SUBDIR+= \
 	xf86-video-radeon \
 	xf86-video-suncg6 \
 	xf86-video-sunffb \
-	xf86-video-sunleo \
 	xf86-video-wsfb
-.if ${MACHINE} == "sparc"
+#	xf86-video-ag10e \
+
+.if ${XORG_SERVER_SUBDIR} == "xorg-server.old"
 SUBDIR+= \
-	xf86-video-pnozz \
+	xf86-video-ag10e \
+	xf86-video-glint \
+	xf86-video-sunleo
+.endif	# ${XORG_SERVER_SUBDIR} == "xorg-server.old"
+
+.if ${MACHINE} == "sparc"
+.if ${XORG_SERVER_SUBDIR} == "xorg-server.old"
+SUBDIR+= \
+	xf86-video-pnozz
+.endif  # ${XORG_SERVER_SUBDIR} == "xorg-server.old"
+
+SUBDIR+= \
 	xf86-video-suncg14 \
 	xf86-video-suntcx
+.if ${XORG_SERVER_SUBDIR} == "xorg-server.old"
+SUBDIR+= \
+	xf86-video-pnozz
+.endif	# ${XORG_SERVER_SUBDIR} == "xorg-server.old"
 .endif	# ${MACHINE} == "sparc"
 .endif	# ${MACHINE} == "sparc" || ${MACHINE} == "sparc64"
 

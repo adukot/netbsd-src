@@ -1,4 +1,4 @@
-/*	$NetBSD: types.h,v 1.63 2016/01/24 16:08:05 christos Exp $	*/
+/*	$NetBSD: types.h,v 1.66 2017/01/27 17:22:16 christos Exp $	*/
 
 /*-
  * Copyright (c) 1992, 1993
@@ -34,8 +34,8 @@
  *	@(#)types.h	8.3 (Berkeley) 1/5/94
  */
 
-#ifndef	_MACHTYPES_H_
-#define	_MACHTYPES_H_
+#ifndef	_MIPS_TYPES_H_
+#define	_MIPS_TYPES_H_
 
 #include <sys/cdefs.h>
 #include <sys/featuretest.h>
@@ -147,9 +147,7 @@ typedef __uint32_t tlb_asid_t;
 #define	__HAVE_CPU_LWP_SETPRIVATE
 #define	__HAVE_CPU_DATA_FIRST
 #define	__HAVE_MD_CPU_OFFLINE
-#ifdef MIPS3_PLUS	/* XXX bogus! */
 #define	__HAVE_CPU_COUNTER
-#endif
 #define	__HAVE_CPU_UAREA_ROUTINES
 #define	__HAVE_COMMON___TLS_GET_ADDR
 #define	__HAVE___LWP_GETTCB_FAST
@@ -171,4 +169,4 @@ typedef __uint32_t tlb_asid_t;
 #define	__HAVE_MM_MD_KERNACC
 #define	__HAVE_MM_MD_CACHE_ALIASING
 
-#endif	/* _MACHTYPES_H_ */
+#endif	/* _MIPS_TYPES_H_ */

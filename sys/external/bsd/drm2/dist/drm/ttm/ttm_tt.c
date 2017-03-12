@@ -203,6 +203,9 @@ int ttm_tt_init(struct ttm_tt *ttm, struct ttm_bo_device *bdev,
 	ttm->dummy_read_page = dummy_read_page;
 	ttm->state = tt_unpopulated;
 #ifdef __NetBSD__
+	WARN(size == 0, "zero-size allocation in %s, please file a NetBSD PR",
+	    __func__);	/* paranoia -- can't prove in five minutes */
+	size = MAX(size, 1);
 	ttm->swap_storage = uao_create(roundup2(size, PAGE_SIZE), 0);
 	uao_set_pgfl(ttm->swap_storage, bus_dmamem_pgfl(bdev->dmat));
 #else
@@ -245,6 +248,9 @@ int ttm_dma_tt_init(struct ttm_dma_tt *ttm_dma, struct ttm_bo_device *bdev,
 	ttm->dummy_read_page = dummy_read_page;
 	ttm->state = tt_unpopulated;
 #ifdef __NetBSD__
+	WARN(size == 0, "zero-size allocation in %s, please file a NetBSD PR",
+	    __func__);	/* paranoia -- can't prove in five minutes */
+	size = MAX(size, 1);
 	ttm->swap_storage = uao_create(roundup2(size, PAGE_SIZE), 0);
 	uao_set_pgfl(ttm->swap_storage, bus_dmamem_pgfl(bdev->dmat));
 #else
@@ -354,9 +360,9 @@ EXPORT_SYMBOL(ttm_tt_bind);
  * ttm_tt_wire(ttm)
  *
  *	Wire the uvm pages of ttm and fill the ttm page array.  ttm
- *	must be unpopulated or unbound, and must be marked swapped.
- *	This does not change either state -- the caller is expected to
- *	include it among other operations for such a state transition.
+ *	must be unpopulated, and must be marked swapped.  This does not
+ *	change either state -- the caller is expected to include it
+ *	among other operations for such a state transition.
  */
 int
 ttm_tt_wire(struct ttm_tt *ttm)
@@ -366,9 +372,8 @@ ttm_tt_wire(struct ttm_tt *ttm)
 	unsigned i;
 	int error;
 
-	KASSERTMSG((ttm->state == tt_unpopulated || ttm->state == tt_unbound),
-	    "ttm_tt %p must be unpopulated or unbound for wiring,"
-	    " but state=%d",
+	KASSERTMSG((ttm->state == tt_unpopulated),
+	    "ttm_tt %p must be unpopulated for wiring, but state=%d",
 	    ttm, (int)ttm->state);
 	KASSERT(ISSET(ttm->page_flags, TTM_PAGE_FLAG_SWAPPED));
 	KASSERT(uobj != NULL);

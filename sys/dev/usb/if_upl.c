@@ -1,4 +1,4 @@
-/*	$NetBSD: if_upl.c,v 1.53 2016/04/28 01:37:17 knakahara Exp $	*/
+/*	$NetBSD: if_upl.c,v 1.59 2017/01/12 18:26:08 maya Exp $	*/
 /*
  * Copyright (c) 2000 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -34,10 +34,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_upl.c,v 1.53 2016/04/28 01:37:17 knakahara Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_upl.c,v 1.59 2017/01/12 18:26:08 maya Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
+#include "opt_usb.h"
 #endif
 
 #include <sys/param.h>
@@ -171,12 +172,13 @@ Static struct upl_type sc_devs[] = {
 	{ 0, 0 }
 };
 
-int             upl_match(device_t, cfdata_t, void *);
-void            upl_attach(device_t, device_t, void *);
-int             upl_detach(device_t, int);
-int             upl_activate(device_t, enum devact);
+int	upl_match(device_t, cfdata_t, void *);
+void	upl_attach(device_t, device_t, void *);
+int	upl_detach(device_t, int);
+int	upl_activate(device_t, enum devact);
 extern struct cfdriver upl_cd;
-CFATTACH_DECL_NEW(upl, sizeof(struct upl_softc), upl_match, upl_attach, upl_detach, upl_activate);
+CFATTACH_DECL_NEW(upl, sizeof(struct upl_softc), upl_match, upl_attach,
+    upl_detach, upl_activate);
 
 Static int upl_openpipes(struct upl_softc *);
 Static int upl_tx_list_init(struct upl_softc *);
@@ -293,7 +295,7 @@ upl_attach(device_t parent, device_t self, void *aux)
 	ifp->if_ioctl = upl_ioctl;
 	ifp->if_start = upl_start;
 	ifp->if_watchdog = upl_watchdog;
-	strncpy(ifp->if_xname, device_xname(sc->sc_dev), IFNAMSIZ);
+	strlcpy(ifp->if_xname, device_xname(sc->sc_dev), IFNAMSIZ);
 
 	ifp->if_type = IFT_OTHER;
 	ifp->if_addrlen = 0;
@@ -316,8 +318,7 @@ upl_attach(device_t parent, device_t self, void *aux)
 	sc->sc_attached = 1;
 	splx(s);
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	    sc->sc_dev);
+	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev, sc->sc_dev);
 
 	return;
 }
@@ -357,8 +358,7 @@ upl_detach(device_t self, int flags)
 	sc->sc_attached = 0;
 	splx(s);
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-	    sc->sc_dev);
+	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev, sc->sc_dev);
 
 	return 0;
 }
@@ -516,10 +516,9 @@ upl_rxeof(struct usbd_xfer *xfer, void *priv, usbd_status status)
 	m = c->upl_mbuf;
 	memcpy(mtod(c->upl_mbuf, char *), c->upl_buf, total_len);
 
-	ifp->if_ipackets++;
 	m->m_pkthdr.len = m->m_len = total_len;
 
-	m->m_pkthdr.rcvif = ifp;
+	m_set_rcvif(m, ifp);
 
 	s = splnet();
 
@@ -528,14 +527,6 @@ upl_rxeof(struct usbd_xfer *xfer, void *priv, usbd_status status)
 		ifp->if_ierrors++;
 		goto done1;
 	}
-
-	/*
-	 * Handle BPF listeners. Let the BPF user see the packet, but
-	 * don't pass it up to the ether_input() layer unless it's
-	 * a broadcast packet, multicast packet, matches our ethernet
-	 * address or the interface is in promiscuous mode.
-	 */
-	bpf_mtap(ifp, m);
 
 	DPRINTFN(10,("%s: %s: deliver %d\n", device_xname(sc->sc_dev),
 		    __func__, m->m_len));
@@ -1003,7 +994,7 @@ upl_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	 * Queue message on interface, and start output if interface
 	 * not yet active.
 	 */
-	error = (*ifp->if_transmit)(ifp, m);
+	error = if_transmit_lock(ifp, m);
 
 	return error;
 }

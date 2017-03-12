@@ -1,4 +1,4 @@
-/*	$NetBSD: disk.h,v 1.67 2016/04/27 02:19:12 christos Exp $	*/
+/*	$NetBSD: disk.h,v 1.70 2017/03/05 23:07:12 mlelstv Exp $	*/
 
 /*-
  * Copyright (c) 1996, 1997, 2004 The NetBSD Foundation, Inc.
@@ -481,6 +481,8 @@ struct dkdriver {
 	int	(*d_dumpblocks)(device_t, void *, daddr_t, int);
 	int	(*d_lastclose)(device_t);
 	int	(*d_discard)(device_t, off_t, off_t);
+	int	(*d_firstopen)(device_t, dev_t, int, int);
+	void	(*d_label)(device_t, struct disklabel *lp);
 };
 #endif
 
@@ -532,6 +534,7 @@ int	disk_begindetach(struct disk *, int (*)(device_t), device_t, int);
 void	disk_detach(struct disk *);
 void	disk_init(struct disk *, const char *, const struct dkdriver *);
 void	disk_destroy(struct disk *);
+void	disk_wait(struct disk *);
 void	disk_busy(struct disk *);
 void	disk_unbusy(struct disk *, long, int);
 bool	disk_isbusy(struct disk *);

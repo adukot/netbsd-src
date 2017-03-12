@@ -1,4 +1,4 @@
-/*	$NetBSD: if_bge.c,v 1.295 2016/02/09 08:32:11 ozaki-r Exp $	*/
+/*	$NetBSD: if_bge.c,v 1.300 2016/12/15 09:28:05 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 2001 Wind River Systems
@@ -79,7 +79,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_bge.c,v 1.295 2016/02/09 08:32:11 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_bge.c,v 1.300 2016/12/15 09:28:05 ozaki-r Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -1516,6 +1516,7 @@ bge_update_all_threshes(int lvl)
 	struct ifnet *ifp;
 	const char * const namebuf = "bge";
 	int namelen;
+	int s;
 
 	if (lvl < 0)
 		lvl = 0;
@@ -1526,13 +1527,15 @@ bge_update_all_threshes(int lvl)
 	/*
 	 * Now search all the interfaces for this name/number
 	 */
-	IFNET_FOREACH(ifp) {
+	s = pserialize_read_enter();
+	IFNET_READER_FOREACH(ifp) {
 		if (strncmp(ifp->if_xname, namebuf, namelen) != 0)
 		      continue;
 		/* We got a match: update if doing auto-threshold-tuning */
 		if (bge_auto_thresh)
 			bge_set_thresh(ifp, lvl);
 	}
+	pserialize_read_exit(s);
 }
 
 /*
@@ -3741,7 +3744,7 @@ alloc_retry:
 	sc->bge_intrhand = pci_intr_establish(pc, sc->bge_pihp[0], IPL_NET,
 	    bge_intr, sc);
 	if (sc->bge_intrhand == NULL) {
-		intr_type = pci_intr_type(sc->bge_pihp[0]);
+		intr_type = pci_intr_type(pc, sc->bge_pihp[0]);
 		aprint_error_dev(sc->bge_dev,"unable to establish %s\n",
 		    (intr_type == PCI_INTR_TYPE_MSI) ? "MSI" : "INTx");
 		pci_intr_release(pc, sc->bge_pihp, 1);
@@ -4058,6 +4061,7 @@ alloc_retry:
 	 */
 	DPRINTFN(5, ("if_attach\n"));
 	if_attach(ifp);
+	if_deferred_start_init(ifp, NULL);
 	DPRINTFN(5, ("ether_ifattach\n"));
 	ether_ifattach(ifp, eaddr);
 	ether_set_ifflags_cb(&sc->ethercom, bge_ifflags_cb);
@@ -4542,7 +4546,6 @@ bge_rxeof(struct bge_softc *sc)
 			}
 		}
 
-		ifp->if_ipackets++;
 #ifndef __NO_STRICT_ALIGNMENT
 		/*
 		 * XXX: if the 5701 PCIX-Rx-DMA workaround is in effect,
@@ -4557,12 +4560,7 @@ bge_rxeof(struct bge_softc *sc)
 #endif
 
 		m->m_pkthdr.len = m->m_len = cur_rx->bge_len - ETHER_CRC_LEN;
-		m->m_pkthdr.rcvif = ifp;
-
-		/*
-		 * Handle BPF listeners. Let the BPF user see the packet.
-		 */
-		bpf_mtap(ifp, m);
+		m_set_rcvif(m, ifp);
 
 		bge_rxcsum(sc, cur_rx, m);
 
@@ -4785,8 +4783,8 @@ bge_intr(void *xsc)
 	/* Re-enable interrupts. */
 	bge_writembx_flush(sc, BGE_MBX_IRQ0_LO, statustag);
 
-	if (ifp->if_flags & IFF_RUNNING && !IFQ_IS_EMPTY(&ifp->if_snd))
-		bge_start(ifp);
+	if (ifp->if_flags & IFF_RUNNING)
+		if_schedule_deferred_start(ifp);
 
 	return 1;
 }

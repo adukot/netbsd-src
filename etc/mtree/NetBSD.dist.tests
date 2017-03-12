@@ -1,4 +1,4 @@
-#	$NetBSD: NetBSD.dist.tests,v 1.127 2016/04/15 01:38:17 ozaki-r Exp $
+#	$NetBSD: NetBSD.dist.tests,v 1.143 2017/02/22 02:42:53 kamil Exp $
 
 ./usr/libdata/debug/usr/tests
 ./usr/libdata/debug/usr/tests/atf
@@ -17,6 +17,8 @@
 ./usr/libdata/debug/usr/tests/dev
 ./usr/libdata/debug/usr/tests/dev/audio
 ./usr/libdata/debug/usr/tests/dev/cgd
+./usr/libdata/debug/usr/tests/dev/clock_subr
+./usr/libdata/debug/usr/tests/dev/fss
 ./usr/libdata/debug/usr/tests/dev/md
 ./usr/libdata/debug/usr/tests/dev/scsipi
 ./usr/libdata/debug/usr/tests/dev/sysmon
@@ -44,6 +46,10 @@
 ./usr/libdata/debug/usr/tests/include/sys
 ./usr/libdata/debug/usr/tests/ipf
 ./usr/libdata/debug/usr/tests/kernel
+./usr/libdata/debug/usr/tests/kernel/arch
+./usr/libdata/debug/usr/tests/kernel/arch/amd64
+./usr/libdata/debug/usr/tests/kernel/arch/i386
+./usr/libdata/debug/usr/tests/kernel/arch/x86
 ./usr/libdata/debug/usr/tests/kernel/kqueue
 ./usr/libdata/debug/usr/tests/kernel/kqueue/read
 ./usr/libdata/debug/usr/tests/kernel/kqueue/write
@@ -114,6 +120,8 @@
 ./usr/libdata/debug/usr/tests/lib/libprop
 ./usr/libdata/debug/usr/tests/lib/libpthread
 ./usr/libdata/debug/usr/tests/lib/libpthread/dlopen
+./usr/libdata/debug/usr/tests/lib/libpthread_dbg
+./usr/libdata/debug/usr/tests/lib/librefuse
 ./usr/libdata/debug/usr/tests/lib/librt
 ./usr/libdata/debug/usr/tests/lib/librumpclient
 ./usr/libdata/debug/usr/tests/lib/librumphijack
@@ -186,6 +194,8 @@
 ./usr/tests/dev
 ./usr/tests/dev/audio
 ./usr/tests/dev/cgd
+./usr/tests/dev/clock_subr
+./usr/tests/dev/fss
 ./usr/tests/dev/md
 ./usr/tests/dev/raidframe
 ./usr/tests/dev/scsipi
@@ -220,6 +230,10 @@
 ./usr/tests/ipf/input
 ./usr/tests/ipf/regress
 ./usr/tests/kernel
+./usr/tests/kernel/arch
+./usr/tests/kernel/arch/amd64
+./usr/tests/kernel/arch/i386
+./usr/tests/kernel/arch/x86
 ./usr/tests/kernel/kqueue
 ./usr/tests/kernel/kqueue/read
 ./usr/tests/kernel/kqueue/write
@@ -296,6 +310,8 @@
 ./usr/tests/lib/libprop
 ./usr/tests/lib/libpthread
 ./usr/tests/lib/libpthread/dlopen
+./usr/tests/lib/libpthread_dbg
+./usr/tests/lib/librefuse
 ./usr/tests/lib/librt
 ./usr/tests/lib/librumpclient
 ./usr/tests/lib/librumphijack
@@ -323,9 +339,12 @@
 ./usr/tests/net/if
 ./usr/tests/net/if_bridge
 ./usr/tests/net/if_gif
+./usr/tests/net/if_l2tp
 ./usr/tests/net/if_loop
 ./usr/tests/net/if_pppoe
 ./usr/tests/net/if_tap
+./usr/tests/net/if_tun
+./usr/tests/net/if_vlan
 ./usr/tests/net/in_cksum
 ./usr/tests/net/mcast
 ./usr/tests/net/mpls
@@ -387,8 +406,10 @@
 ./usr/tests/usr.bin/m4
 ./usr/tests/usr.bin/make
 ./usr/tests/usr.bin/make/unit-tests
+./usr/tests/usr.bin/mixerctl
 ./usr/tests/usr.bin/mkdep
 ./usr/tests/usr.bin/nbperf
+./usr/tests/usr.bin/pkill
 ./usr/tests/usr.bin/pr
 ./usr/tests/usr.bin/rump_server
 ./usr/tests/usr.bin/sdiff
@@ -398,6 +419,7 @@
 ./usr/tests/usr.bin/tmux
 ./usr/tests/usr.bin/tr
 ./usr/tests/usr.bin/unifdef
+./usr/tests/usr.bin/uniq
 ./usr/tests/usr.bin/vmstat
 ./usr/tests/usr.bin/xlint
 ./usr/tests/usr.bin/xlint/lint1

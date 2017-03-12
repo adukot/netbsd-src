@@ -765,7 +765,7 @@ ia64*-*-linux*)
 	;;
 ia64*-*-netbsd*)
 	extra_parts="${extra_parts} crtfastmath.o"
-	tmake_file="${tmake_file} ia64/t-ia64 ia64/t-ia64-elf ia64/t-eh-ia64 t-crtfm"
+	tmake_file="${tmake_file} ia64/t-ia64 ia64/t-ia64-elf t-crtfm ia64/t-softfp t-softfp ia64/t-eh-ia64"
 	;;
 ia64*-*-hpux*)
 	tmake_file="ia64/t-ia64 ia64/t-ia64-elf ia64/t-hpux t-slibgcc ia64/t-slibgcc-hpux t-slibgcc-hpux"
@@ -853,6 +853,17 @@ microblaze*-*-rtems*)
 	extra_parts="$extra_parts crtbeginS.o crtendS.o crtbeginT.o crti.o crtn.o"
 	;;
 mips*-*-netbsd*)			# NetBSD/mips, either endian.
+	if test "${libgcc_cv_mips_hard_float}" = no; then
+	  # Eat soft float stuff added above since the netbsd libc provides it.
+	  xtmake_file=
+	  for t in ${tmake_file}; do
+	    case $t in
+	    *softfp*) ;;
+	    *)	xtmake_file="${xtmake_file} $t";;
+	    esac
+	  done
+	  tmake_file="${xtmake_file}"
+	fi
 	;;
 mips*-*-linux*)				# Linux MIPS, either endian.
 	extra_parts="$extra_parts crtfastmath.o"
@@ -938,14 +949,9 @@ mmix-knuth-mmixware)
 mn10300-*-*)
 	tmake_file=t-fdpbit
 	;;
-moxie-*-elf | moxie-*-moxiebox* | moxie-*-uclinux*)
-	tmake_file="moxie/t-moxie t-softfp-sfdf t-softfp-excl t-softfp"
-	extra_parts="$extra_parts crti.o crtn.o crtbegin.o crtend.o"
-	;;
-moxie-*-rtems*)
+moxie-*-elf | moxie-*-moxiebox* | moxie-*-uclinux* | moxie-*-rtems*)
 	tmake_file="$tmake_file moxie/t-moxie t-softfp-sfdf t-softfp-excl t-softfp"
-	# Don't use default.
-	extra_parts=
+	extra_parts="$extra_parts crti.o crtn.o crtbegin.o crtend.o"
 	;;
 msp430*-*-elf)
 	tmake_file="$tm_file t-crtstuff t-fdpbit msp430/t-msp430"
@@ -1377,6 +1383,7 @@ i[34567]86-*-darwin* | x86_64-*-darwin* | \
   i[34567]86-*-mingw* | x86_64-*-mingw* | \
   i[34567]86-*-dragonfly* | x86_64-*-dragonfly* | \
   i[34567]86-*-freebsd* | x86_64-*-freebsd* | \
+  i[34567]86-*-netbsd* | x86_64-*-netbsd* | \
   i[34567]86-*-openbsd* | x86_64-*-openbsd*)
   	tmake_file="${tmake_file} t-softfp-tf"
 	if test "${host_address}" = 32; then

@@ -1,4 +1,4 @@
-/*	$NetBSD: readline.h,v 1.39 2016/02/17 19:47:49 christos Exp $	*/
+/*	$NetBSD: readline.h,v 1.41 2016/10/28 18:32:35 christos Exp $	*/
 
 /*-
  * Copyright (c) 1997 The NetBSD Foundation, Inc.
@@ -121,6 +121,7 @@ extern Function		*rl_startup_hook;
 extern char		*rl_terminal_name;
 extern int		rl_already_prompted;
 extern char		*rl_prompt;
+extern int		rl_done;
 /*
  * The following is not implemented
  */
@@ -158,6 +159,7 @@ int		 history_total_bytes(void);
 int		 history_set_pos(int);
 HIST_ENTRY	*previous_history(void);
 HIST_ENTRY	*next_history(void);
+HIST_ENTRY     **history_list(void);
 int		 history_search(const char *, int);
 int		 history_search_prefix(const char *, int);
 int		 history_search_pos(const char *, int, int);

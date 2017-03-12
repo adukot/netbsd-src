@@ -1,4 +1,4 @@
-/*	$NetBSD: uvisor.c,v 1.46 2016/04/23 10:15:32 skrll Exp $	*/
+/*	$NetBSD: uvisor.c,v 1.48 2016/11/25 12:56:29 skrll Exp $	*/
 
 /*
  * Copyright (c) 2000 The NetBSD Foundation, Inc.
@@ -35,7 +35,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: uvisor.c,v 1.46 2016/04/23 10:15:32 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: uvisor.c,v 1.48 2016/11/25 12:56:29 skrll Exp $");
+
+#ifdef _KERNEL_OPT
+#include "opt_usb.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -281,8 +285,7 @@ uvisor_attach(device_t parent, device_t self, void *aux)
 		goto bad;
 	}
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-			   sc->sc_dev);
+	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev, sc->sc_dev);
 
 	if (sc->sc_flags & VISOR) {
 		sc->sc_numcon = UGETW(coninfo.num_ports);

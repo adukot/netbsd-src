@@ -1,4 +1,4 @@
-/*	$NetBSD: keymacro.c,v 1.21 2016/04/18 17:01:19 christos Exp $	*/
+/*	$NetBSD: keymacro.c,v 1.23 2016/05/24 15:00:45 christos Exp $	*/
 
 /*-
  * Copyright (c) 1992, 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)key.c	8.1 (Berkeley) 6/4/93";
 #else
-__RCSID("$NetBSD: keymacro.c,v 1.21 2016/04/18 17:01:19 christos Exp $");
+__RCSID("$NetBSD: keymacro.c,v 1.23 2016/05/24 15:00:45 christos Exp $");
 #endif
 #endif /* not lint && not SCCSID */
 
@@ -101,7 +101,7 @@ static int		 node_enum(EditLine *, keymacro_node_t *, size_t);
 /* keymacro_init():
  *	Initialize the key maps
  */
-protected int
+libedit_private int
 keymacro_init(EditLine *el)
 {
 
@@ -117,7 +117,7 @@ keymacro_init(EditLine *el)
 /* keymacro_end():
  *	Free the key maps
  */
-protected void
+libedit_private void
 keymacro_end(EditLine *el)
 {
 
@@ -130,7 +130,7 @@ keymacro_end(EditLine *el)
 /* keymacro_map_cmd():
  *	Associate cmd with a key value
  */
-protected keymacro_value_t *
+libedit_private keymacro_value_t *
 keymacro_map_cmd(EditLine *el, int cmd)
 {
 
@@ -142,7 +142,7 @@ keymacro_map_cmd(EditLine *el, int cmd)
 /* keymacro_map_str():
  *	Associate str with a key value
  */
-protected keymacro_value_t *
+libedit_private keymacro_value_t *
 keymacro_map_str(EditLine *el, wchar_t *str)
 {
 
@@ -156,7 +156,7 @@ keymacro_map_str(EditLine *el, wchar_t *str)
  *	Then initializes el->el_keymacro.map with arrow keys
  *	[Always bind the ansi arrow keys?]
  */
-protected void
+libedit_private void
 keymacro_reset(EditLine *el)
 {
 
@@ -172,9 +172,10 @@ keymacro_reset(EditLine *el)
  *      complete match is found or a mismatch occurs. Returns the
  *      type of the match found (XK_STR or XK_CMD).
  *      Returns NULL in val.str and XK_STR for no match.
+ *      Returns XK_NOD for end of file or read error.
  *      The last character read is returned in *ch.
  */
-protected int
+libedit_private int
 keymacro_get(EditLine *el, wchar_t *ch, keymacro_value_t *val)
 {
 
@@ -188,7 +189,7 @@ keymacro_get(EditLine *el, wchar_t *ch, keymacro_value_t *val)
  *	code is applied to the existing key. Ntype specifies if code is a
  *	command, an out str or a unix command.
  */
-protected void
+libedit_private void
 keymacro_add(EditLine *el, const wchar_t *key, keymacro_value_t *val,
     int ntype)
 {
@@ -217,7 +218,7 @@ keymacro_add(EditLine *el, const wchar_t *key, keymacro_value_t *val,
 /* keymacro_clear():
  *
  */
-protected void
+libedit_private void
 keymacro_clear(EditLine *el, el_action_t *map, const wchar_t *in)
 {
         if (*in > N_KEYS) /* can't be in the map */
@@ -235,7 +236,7 @@ keymacro_clear(EditLine *el, el_action_t *map, const wchar_t *in)
  *      Delete the key and all longer keys staring with key, if
  *      they exists.
  */
-protected int
+libedit_private int
 keymacro_delete(EditLine *el, const wchar_t *key)
 {
 
@@ -256,7 +257,7 @@ keymacro_delete(EditLine *el, const wchar_t *key)
  *	Print the binding associated with key key.
  *	Print entire el->el_keymacro.map if null
  */
-protected void
+libedit_private void
 keymacro_print(EditLine *el, const wchar_t *key)
 {
 
@@ -286,11 +287,8 @@ node_trav(EditLine *el, keymacro_node_t *ptr, wchar_t *ch,
 		/* match found */
 		if (ptr->next) {
 			/* key not complete so get next char */
-			if (el_wgetc(el, ch) != 1) {/* if EOF or error */
-				val->cmd = ED_END_OF_FILE;
-				return XK_CMD;
-				/* PWP: Pretend we just read an end-of-file */
-			}
+			if (el_wgetc(el, ch) != 1)
+				return XK_NOD;
 			return node_trav(el, ptr->next, ch, val);
 		} else {
 			*val = ptr->val;
@@ -581,7 +579,7 @@ node_enum(EditLine *el, keymacro_node_t *ptr, size_t cnt)
  *	Print the specified key and its associated
  *	function specified by val
  */
-protected void
+libedit_private void
 keymacro_kprint(EditLine *el, const wchar_t *key, keymacro_value_t *val,
     int ntype)
 {
@@ -632,7 +630,7 @@ keymacro_kprint(EditLine *el, const wchar_t *key, keymacro_value_t *val,
 /* keymacro__decode_str():
  *	Make a printable version of the ey
  */
-protected size_t
+libedit_private size_t
 keymacro__decode_str(const wchar_t *str, char *buf, size_t len,
     const char *sep)
 {

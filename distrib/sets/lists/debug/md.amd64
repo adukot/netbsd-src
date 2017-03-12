@@ -1,6 +1,7 @@
-# $NetBSD: md.amd64,v 1.89 2016/02/23 15:22:14 wiz Exp $
+# $NetBSD: md.amd64,v 1.93 2017/02/22 01:07:13 kamil Exp $
+./usr/lib/i386/12.202++_g.a			comp-c-debuglib		debuglib,compat,12.202xx
 ./usr/lib/i386/libi386_g.a			comp-c-debuglib		debuglib,compat
-./usr/lib/i386/libc++_g.a			comp-c-debuglib		debuglib,compat,libcxx
+./usr/lib/i386/libiberty_g.a			comp-obsolete		obsolete
 ./usr/lib/libx86_64_g.a				comp-c-debuglib		debuglib
 ./usr/libdata/debug/libexec/ld.elf_so-i386.debug	comp-sys-debug		debug,compat
 ./usr/libdata/debug/usr/bin/fdformat.debug	comp-util-debug		debug
@@ -13,3 +14,9 @@
 ./usr/libdata/debug/usr/libexec/ld.elf_so-i386.debug	comp-sys-debug		debug,compat
 ./usr/libdata/debug/usr/sbin/acpidump.debug	comp-sysutil-debug	debug
 ./usr/libdata/debug/usr/sbin/amldb.debug	comp-sysutil-debug	debug
+./usr/libdata/debug/usr/tests/kernel/arch/x86/t_ptrace_wait.debug	tests-kernel-tests	debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/kernel/arch/x86/t_ptrace_wait3.debug	tests-kernel-tests	debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/kernel/arch/x86/t_ptrace_wait4.debug	tests-kernel-tests	debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/kernel/arch/x86/t_ptrace_wait6.debug	tests-kernel-tests	debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/kernel/arch/x86/t_ptrace_waitid.debug	tests-kernel-tests	debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/kernel/arch/x86/t_ptrace_waitpid.debug	tests-kernel-tests	debug,atf,compattestfile

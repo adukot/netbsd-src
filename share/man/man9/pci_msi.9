@@ -1,4 +1,4 @@
-.\" $NetBSD: pci_msi.9,v 1.7 2015/08/13 05:01:04 msaitoh Exp $
+.\" $NetBSD: pci_msi.9,v 1.16 2016/09/17 20:46:35 wiz Exp $
 .\"
 .\" Copyright (c) 2015 Internet Initiative Japan Inc.
 .\" All rights reserved.
@@ -24,7 +24,7 @@
 .\" ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 .\" POSSIBILITY OF SUCH DAMAGE.
 .\"
-.Dd August 13, 2015
+.Dd September 17, 2016
 .Dt PCI_MSI 9
 .Os
 .Sh NAME
@@ -47,35 +47,36 @@
 .Fn pci_msi_count "pci_chipset_tag_t pc" \
 "pcitag_t tag"
 .Ft int
-.Fn pci_msi_alloc  "struct pci_attach_args *pa" \
+.Fn pci_msi_alloc  "const struct pci_attach_args *pa" \
 "pci_intr_handle_t **ihps" "int *count"
 .Ft int
-.Fn pci_msi_alloc_exect "struct pci_attach_args *pa" \
+.Fn pci_msi_alloc_exact "const struct pci_attach_args *pa" \
 "pci_intr_handle_t **ihps" "int count"
 .Ft int
 .Fn pci_msix_count "pci_chipset_tag_t pc" \
 "pcitag_t tag"
 .Ft int
-.Fn pci_msix_alloc  "struct pci_attach_args *pa" \
+.Fn pci_msix_alloc  "const struct pci_attach_args *pa" \
 "pci_intr_handle_t **ihps" "int *count"
 .Ft int
-.Fn pci_msix_alloc_exect "struct pci_attach_args *pa" \
+.Fn pci_msix_alloc_exact "const struct pci_attach_args *pa" \
 "pci_intr_handle_t **ihps" "int count"
 .Ft int
-.Fn pci_msix_alloc_map "struct pci_attach_args *pa" \
+.Fn pci_msix_alloc_map "const struct pci_attach_args *pa" \
 "pci_intr_handle_t **ihps" "u_int *table_indexes" "int count"
 .Ft int
-.Fn pci_intx_alloc  "struct pci_attach_args *pa" \
+.Fn pci_intx_alloc  "const struct pci_attach_args *pa" \
 "pci_intr_handle_t **ihp"
 .Ft int
-.Fn pci_intr_alloc  "struct pci_attach_args *pa" \
+.Fn pci_intr_alloc  "const struct pci_attach_args *pa" \
 "pci_intr_handle_t **ihp" "int *counts" \
 "pci_intr_type_t max_type"
 .Ft void
 .Fn pci_intr_release "pci_chipset_tag_t pc" \
 "pci_intr_handle_t *pih" "int count"
 .Ft pci_intr_type_t
-.Fn pci_intr_type "pci_intr_handle_t ih"
+.Fn pci_intr_type "pci_chipset_tag_t pc" \
+"pci_intr_handle_t ih"
 .Sh DESCRIPTION
 The
 .Nm
@@ -158,6 +159,11 @@ when the driver is no longer interested in MSIs from the device.
 After that, the driver should also call
 .Fn pci_intr_release
 to free resources about MSI as well as INTx and MSI-X.
+If
+.Fa pih
+is NULL,
+.Fn pci_intr_release
+does nothing.
 .Pp
 If a driver wishes to establish an MSI-X handler for the device,
 it is almost the same as MSI.
@@ -308,3 +314,18 @@ for MSI, and
 for others.
 .Sh SEE ALSO
 .Xr pci_intr 9
+.Sh HISTORY
+.Nm
+support first appeared in
+.Nx 8.0 .
+Support is present on
+.Em i386
+and
+.Em amd64
+architectures.
+.Sh AUTHORS
+The
+.Nm
+interfaces were designed and implemented by
+.An Kengo Nakahara
+.Aq Mt knakahara@NetBSD.org .

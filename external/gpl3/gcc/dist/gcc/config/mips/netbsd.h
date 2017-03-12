@@ -30,7 +30,7 @@ along with GCC; see the file COPYING3.  If not see
 	builtin_define ("__LONG64");			\
 							\
       if (TARGET_ABICALLS)				\
-	builtin_define ("__ABICALLS__");		\
+	builtin_define ("__mips_abicalls");		\
 							\
     if (mips_abi == ABI_N32)				\
       {							\
@@ -157,13 +157,6 @@ along with GCC; see the file COPYING3.  If not see
     }								\
   while (0)
 
-
-/* Extra specs we need.  */
-#undef SUBTARGET_EXTRA_SPECS
-#define SUBTARGET_EXTRA_SPECS						\
-  { "netbsd_cpp_spec",		NETBSD_CPP_SPEC },			\
-  { "netbsd_link_spec",		NETBSD_LINK_SPEC_ELF },			\
-  { "netbsd_entry_point",	NETBSD_ENTRY_POINT },
 
 /* Provide a SUBTARGET_CPP_SPEC appropriate for NetBSD.  */
 

@@ -1,4 +1,4 @@
-/*	$NetBSD: mkfs.c,v 1.33 2015/12/21 00:58:08 christos Exp $	*/
+/*	$NetBSD: mkfs.c,v 1.37 2017/02/09 04:42:53 kre Exp $	*/
 
 /*
  * Copyright (c) 2002 Networks Associates Technology, Inc.
@@ -48,7 +48,7 @@
 static char sccsid[] = "@(#)mkfs.c	8.11 (Berkeley) 5/3/95";
 #else
 #ifdef __RCSID
-__RCSID("$NetBSD: mkfs.c,v 1.33 2015/12/21 00:58:08 christos Exp $");
+__RCSID("$NetBSD: mkfs.c,v 1.37 2017/02/09 04:42:53 kre Exp $");
 #endif
 #endif
 #endif /* not lint */
@@ -102,7 +102,11 @@ union {
 char *iobuf;
 int iobufsize;
 
-char writebuf[FFS_MAXBSIZE];
+union {
+	struct fs fs;
+	char pad[FFS_MAXBSIZE];
+} wb;
+#define writebuf wb.pad
 
 static int     Oflag;	   /* format as an 4.3BSD file system */
 static int64_t fssize;	   /* file system size */
@@ -120,6 +124,17 @@ static int     bbsize;	   /* boot block size */
 static int     sbsize;	   /* superblock size */
 static int     avgfilesize;	   /* expected average file size */
 static int     avgfpdir;	   /* expected number of files per directory */
+
+static void
+ffs_sb_copy(struct fs *o, const struct fs *i, size_t l, const fsinfo_t *fsopts)
+{
+	memcpy(o, i, l);
+	/* Zero out pointers */
+	o->fs_csp = NULL;
+	o->fs_maxcluster = NULL;
+	if (fsopts->needswap)
+		ffs_sb_swap(i, o);
+}
 
 struct fs *
 ffs_mkfs(const char *fsys, const fsinfo_t *fsopts, time_t tstamp)
@@ -508,9 +523,7 @@ ffs_mkfs(const char *fsys, const fsinfo_t *fsopts, time_t tstamp)
 	 * Make a copy of the superblock into the buffer that we will be
 	 * writing out in each cylinder group.
 	 */
-	memcpy(writebuf, &sblock, sbsize);
-	if (fsopts->needswap)
-		ffs_sb_swap(&sblock, (struct fs*)writebuf);
+	ffs_sb_copy(&wb.fs, &sblock, sbsize, fsopts);
 	memcpy(iobuf, writebuf, SBLOCKSIZE);
 
 	printf("super-block backups (for fsck -b #) at:");
@@ -555,9 +568,7 @@ ffs_write_superblock(struct fs *fs, const fsinfo_t *fsopts)
 	saveflag = fs->fs_flags & FS_INTERNAL;
 	fs->fs_flags &= ~FS_INTERNAL;
 
-        memcpy(writebuf, &sblock, sbsize);
-	if (fsopts->needswap)
-		ffs_sb_swap(fs, (struct fs*)writebuf);
+	ffs_sb_copy(&wb.fs, &sblock, sbsize, fsopts);
 	ffs_wtfs(fs->fs_sblockloc / sectorsize, sbsize, writebuf, fsopts);
 
 	/* Write out the duplicate super blocks */
@@ -787,15 +798,15 @@ ffs_rdfs(daddr_t bno, int size, void *bf, const fsinfo_t *fsopts)
 
 	offset = bno * fsopts->sectorsize + fsopts->offset;
 	if (lseek(fsopts->fd, offset, SEEK_SET) < 0)
-		err(1, "%s: seek error for sector %lld", __func__,
+		err(EXIT_FAILURE, "%s: seek error for sector %lld", __func__,
 		    (long long)bno);
 	n = read(fsopts->fd, bf, size);
 	if (n == -1) {
-		err(1, "%s: read error bno %lld size %d", __func__,
+		err(EXIT_FAILURE, "%s: read error bno %lld size %d", __func__,
 		    (long long)bno, size);
 	}
 	else if (n != size)
-		errx(1, "%s: short read error for sector %lld", __func__,
+		errx(EXIT_FAILURE, "%s: short read error for sector %lld", __func__,
 		    (long long)bno);
 }
 
@@ -810,15 +821,15 @@ ffs_wtfs(daddr_t bno, int size, void *bf, const fsinfo_t *fsopts)
 
 	offset = bno * fsopts->sectorsize + fsopts->offset;
 	if (lseek(fsopts->fd, offset, SEEK_SET) == -1)
-		err(1, "%s: seek error for sector %lld", __func__,
+		err(EXIT_FAILURE, "%s: seek error for sector %lld", __func__,
 		    (long long)bno);
 	n = write(fsopts->fd, bf, size);
 	if (n == -1)
-		err(1, "%s: write error for sector %lld", __func__,
+		err(EXIT_FAILURE, "%s: write error for sector %lld", __func__,
 		    (long long)bno);
 	else if (n != size)
-		errx(1, "%s: short write error for sector %lld", __func__,
-		    (long long)bno);
+		errx(EXIT_FAILURE, "%s: short write error for sector %lld",
+		    __func__, (long long)bno);
 }
 
 
@@ -841,5 +852,5 @@ ilog2(int val)
 	for (n = 0; n < sizeof(n) * CHAR_BIT; n++)
 		if (1 << n == val)
 			return (n);
-	errx(1, "%s: %d is not a power of 2", __func__, val);
+	errx(EXIT_FAILURE, "%s: %d is not a power of 2", __func__, val);
 }

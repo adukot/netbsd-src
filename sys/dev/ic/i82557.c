@@ -1,4 +1,4 @@
-/*	$NetBSD: i82557.c,v 1.144 2016/02/09 08:32:10 ozaki-r Exp $	*/
+/*	$NetBSD: i82557.c,v 1.147 2017/02/20 07:43:29 ozaki-r Exp $	*/
 
 /*-
  * Copyright (c) 1997, 1998, 1999, 2001, 2002 The NetBSD Foundation, Inc.
@@ -66,7 +66,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: i82557.c,v 1.144 2016/02/09 08:32:10 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: i82557.c,v 1.147 2017/02/20 07:43:29 ozaki-r Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -407,6 +407,7 @@ fxp_attach(struct fxp_softc *sc)
 	 * Attach the interface.
 	 */
 	if_attach(ifp);
+	if_deferred_start_init(ifp, NULL);
 	ether_ifattach(ifp, enaddr);
 	rnd_attach_source(&sc->rnd_source, device_xname(sc->sc_dev),
 	    RND_TYPE_NET, RND_FLAG_DEFAULT);
@@ -1120,7 +1121,7 @@ fxp_intr(void *arg)
 			/*
 			 * Try to get more packets going.
 			 */
-			fxp_start(ifp);
+			if_schedule_deferred_start(ifp);
 
 			if (sc->sc_txpending == 0) {
 				/*
@@ -1448,14 +1449,8 @@ fxp_rxintr(struct fxp_softc *sc)
 			}
 		}
 
-		m->m_pkthdr.rcvif = ifp;
+		m_set_rcvif(m, ifp);
 		m->m_pkthdr.len = m->m_len = len;
-
-		/*
-		 * Pass this up to any BPF listeners, but only
-		 * pass it up the stack if it's for us.
-		 */
-		bpf_mtap(ifp, m);
 
 		/* Pass it on. */
 		if_percpuq_enqueue(ifp->if_percpuq, m);

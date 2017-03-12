@@ -1,4 +1,4 @@
-/*	$NetBSD: intr.c,v 1.91 2015/11/17 10:34:04 hannken Exp $	*/
+/*	$NetBSD: intr.c,v 1.96 2016/12/06 15:09:04 maxv Exp $	*/
 
 /*-
  * Copyright (c) 2007, 2008, 2009 The NetBSD Foundation, Inc.
@@ -133,7 +133,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: intr.c,v 1.91 2015/11/17 10:34:04 hannken Exp $");
+__KERNEL_RCSID(0, "$NetBSD: intr.c,v 1.96 2016/12/06 15:09:04 maxv Exp $");
 
 #include "opt_intrdebug.h"
 #include "opt_multiprocessor.h"
@@ -210,6 +210,8 @@ static void intr_calculatemasks(struct cpu_info *);
 static SIMPLEQ_HEAD(, intrsource) io_interrupt_sources =
 	SIMPLEQ_HEAD_INITIALIZER(io_interrupt_sources);
 
+static kmutex_t intr_distribute_lock;
+
 #if NIOAPIC > 0 || NACPICA > 0
 static int intr_scan_bus(int, int, intr_handle_t *);
 #if NPCI > 0
@@ -273,6 +275,8 @@ intr_default_setup(void)
 	 * Eventually might want to check if it's actually there.
 	 */
 	i8259_default_setup();
+
+	mutex_init(&intr_distribute_lock, MUTEX_DEFAULT, IPL_NONE);
 }
 
 /*
@@ -612,6 +616,11 @@ intr_free_io_intrsource(const char *intrid)
 		return;
 	}
 
+	/* If the interrupt uses shared IRQ, don't free yet. */
+	if (isp->is_handlers != NULL) {
+		return;
+	}
+
 	intr_free_io_intrsource_direct(isp);
 }
 
@@ -941,12 +950,14 @@ intr_establish_xname(int legacy_irq, struct pic *pic, int pin, int type,
 	if (chained == NULL) {
 		if (msipic_is_msi_pic(pic)) {
 			mutex_exit(&cpu_lock);
+			kmem_free(ih, sizeof(*ih));
 			printf("%s: %s has no intrsource\n", __func__, intrstr);
 			return NULL;
 		}
 		chained = intr_allocate_io_intrsource(intrstr);
 		if (chained == NULL) {
 			mutex_exit(&cpu_lock);
+			kmem_free(ih, sizeof(*ih));
 			printf("%s: can't allocate io_intersource\n", __func__);
 			return NULL;
 		}
@@ -1871,6 +1882,7 @@ intr_set_affinity(struct intrsource *isp, const kcpuset_t *cpuset)
 	int err;
 	int pin;
 
+	KASSERT(mutex_owned(&intr_distribute_lock));
 	KASSERT(mutex_owned(&cpu_lock));
 
 	/* XXX
@@ -1916,12 +1928,8 @@ intr_set_affinity(struct intrsource *isp, const kcpuset_t *cpuset)
 
 	pin = isp->is_pin;
 	(*pic->pic_hwmask)(pic, pin); /* for ci_ipending check */
-	if (oldci->ci_ipending & (1 << oldslot)) {
-		(*pic->pic_hwunmask)(pic, pin);
-		DPRINTF(("pin %d on cpuid %ld has pending interrupts.\n",
-			pin, oldci->ci_cpuid));
-		return EBUSY;
-	}
+	while(oldci->ci_ipending & (1 << oldslot))
+		(void)kpause("intrdist", false, 1, &cpu_lock);
 
 	kpreempt_disable();
 
@@ -2098,7 +2106,7 @@ interrupt_get_devname(const char *intrid, char *buf, size_t len)
 	}
 	slot = ih->ih_slot;
 	isp = ih->ih_cpu->ci_isources[slot];
-	strncpy(buf, isp->is_xname, INTRDEVNAMEBUF);
+	strlcpy(buf, isp->is_xname, len);
 
  out:
 	mutex_exit(&cpu_lock);
@@ -2111,6 +2119,7 @@ intr_distribute_locked(struct intrhand *ih, const kcpuset_t *newset,
 	struct intrsource *isp;
 	int slot;
 
+	KASSERT(mutex_owned(&intr_distribute_lock));
 	KASSERT(mutex_owned(&cpu_lock));
 
 	if (ih == NULL)
@@ -2135,9 +2144,11 @@ interrupt_distribute(void *cookie, const kcpuset_t *newset, kcpuset_t *oldset)
 	int error;
 	struct intrhand *ih = cookie;
 
+	mutex_enter(&intr_distribute_lock);
 	mutex_enter(&cpu_lock);
 	error = intr_distribute_locked(ih, newset, oldset);
 	mutex_exit(&cpu_lock);
+	mutex_exit(&intr_distribute_lock);
 
 	return error;
 }
@@ -2152,6 +2163,7 @@ interrupt_distribute_handler(const char *intrid, const kcpuset_t *newset,
 	int error;
 	struct intrhand *ih;
 
+	mutex_enter(&intr_distribute_lock);
 	mutex_enter(&cpu_lock);
 
 	ih = intr_get_handler(intrid);
@@ -2163,6 +2175,7 @@ interrupt_distribute_handler(const char *intrid, const kcpuset_t *newset,
 
  out:
 	mutex_exit(&cpu_lock);
+	mutex_exit(&intr_distribute_lock);
 	return error;
 }
 

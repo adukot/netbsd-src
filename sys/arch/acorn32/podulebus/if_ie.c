@@ -1,4 +1,4 @@
-/* $NetBSD: if_ie.c,v 1.36 2016/02/09 08:32:07 ozaki-r Exp $ */
+/* $NetBSD: if_ie.c,v 1.39 2017/02/22 09:45:15 nonaka Exp $ */
 
 /*
  * Copyright (c) 1995 Melvin Tang-Richardson.
@@ -53,7 +53,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_ie.c,v 1.36 2016/02/09 08:32:07 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_ie.c,v 1.39 2017/02/22 09:45:15 nonaka Exp $");
 
 #define IGNORE_ETHER1_IDROM_CHECKSUM
 
@@ -452,6 +452,7 @@ ieattach(device_t parent, device_t self, void *aux)
 	
 	/* Signed, dated then sent */
         if_attach (ifp);
+	if_deferred_start_init(ifp, NULL);
 	ether_ifattach(ifp, hwaddr);
 
 	/* "Hmm," said nuts, "what if the attach fails" */
@@ -1102,7 +1103,7 @@ ieget(struct ie_softc *sc, int *to_bpf )
     if ( m==0 )
 	return 0;
 
-    m->m_pkthdr.rcvif = &sc->sc_ethercom.ec_if;
+    m_set_rcvif(m, &sc->sc_ethercom.ec_if);
     m->m_pkthdr.len = totlen;
     len = MHLEN;
     top = 0;
@@ -1277,10 +1278,6 @@ ie_read_frame(struct ie_softc *sc, int num)
 	ifp->if_ierrors++;
 	return;
     }
-
-    ifp->if_ipackets++;
-
-    bpf_mtap(ifp, m);
 
     if_percpuq_enqueue(ifp->if_percpuq, m);
 }
@@ -1559,7 +1556,7 @@ ietint(struct ie_softc *sc)
     if ( sc->xmit_free<NTXBUF )
 	iexmit(sc);
 
-    iestart(ifp);
+    if_schedule_deferred_start(ifp);
 }
 
 /* End of if_ie.c */

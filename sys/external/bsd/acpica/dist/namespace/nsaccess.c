@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2016, Intel Corp.
+ * Copyright (C) 2000 - 2017, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -116,8 +116,8 @@ AcpiNsRootInitialize (
             continue;
         }
 
-        Status = AcpiNsLookup (NULL, __UNCONST(InitVal->Name), InitVal->Type,
-            ACPI_IMODE_LOAD_PASS2, ACPI_NS_NO_UPSEARCH,
+        Status = AcpiNsLookup (NULL, ACPI_CAST_PTR (char, InitVal->Name),
+            InitVal->Type, ACPI_IMODE_LOAD_PASS2, ACPI_NS_NO_UPSEARCH,
             NULL, &NewNode);
         if (ACPI_FAILURE (Status))
         {

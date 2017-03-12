@@ -1,4 +1,4 @@
-#	$NetBSD: bsd.sys.mk,v 1.258 2016/04/12 18:50:45 christos Exp $
+#	$NetBSD: bsd.sys.mk,v 1.269 2017/02/07 21:19:13 christos Exp $
 #
 # Build definitions used for NetBSD source tree builds.
 
@@ -23,12 +23,15 @@ CPPFLAGS+=	-Wp,-iremap,${DESTDIR}:
 REPROFLAGS+=	-fdebug-prefix-map=\$$DESTDIR=
 .endif
 
+CPPFLAGS+=	-Wp,-fno-canonical-system-headers
 CPPFLAGS+=	-Wp,-iremap,${NETBSDSRCDIR}:/usr/src
 CPPFLAGS+=	-Wp,-iremap,${X11SRCDIR}:/usr/xsrc
 REPROFLAGS+=	-fdebug-prefix-map=\$$NETBSDSRCDIR=/usr/src
 REPROFLAGS+=	-fdebug-prefix-map=\$$X11SRCDIR=/usr/xsrc
+LINTFLAGS+=	-R${NETBSDSRCDIR}=/usr/src -R${X11SRCDIR}=/usr/xsrc
 
-REPROFLAGS+=	-fdebug-regex-map='/usr/src/(.*)/obj.${MACHINE}=/usr/obj/\1'
+REPROFLAGS+=	-fdebug-regex-map='/usr/src/(.*)/obj.*=/usr/obj/\1'
+REPROFLAGS+=	-fdebug-regex-map='/usr/src/(.*)/obj.*/(.*)=/usr/obj/\1/\2'
 
 CFLAGS+=	${REPROFLAGS}
 CXXFLAGS+=	${REPROFLAGS}
@@ -51,11 +54,23 @@ CFLAGS+=	-Wall -Wstrict-prototypes -Wmissing-prototypes -Wpointer-arith
 # differently in traditional and ansi environments' which is the warning
 # we wanted, and now we don't get anymore.
 CFLAGS+=	-Wno-sign-compare
+# Don't suppress warnings coming from constructs in system headers.
+# Our system headers should be clean and we want to warn about things like:
+# isdigit((char)1)
+CFLAGS+=	${${ACTIVE_CC} == "gcc" :? -Wsystem-headers :}
 CFLAGS+=	${${ACTIVE_CC} == "gcc" :? -Wno-traditional :}
 .if !defined(NOGCCERROR)
 # Set assembler warnings to be fatal
-CFLAGS+=	-Wa,--fatal-warnings
+CFLAGS+=	${${ACTIVE_CC} == "gcc" :? -Wa,--fatal-warnings :}
 .endif
+
+.if ${MKRELRO:Uno} != "no"
+LDFLAGS+=	-Wl,-z,relro
+.endif
+.if ${MKRELRO:Uno} == "full"
+LDFLAGS+=	-Wl,-z,now
+.endif
+
 # Set linker warnings to be fatal
 # XXX no proper way to avoid "FOO is a patented algorithm" warnings
 # XXX on linking static libs
@@ -150,6 +165,11 @@ FOPTS+=		-msoft-float
 COPTS+=		-mhard-float
 FOPTS+=		-mhard-float
 .endif
+
+#.if !empty(MACHINE_ARCH:Mearmv7*)
+#COPTS+=		-mthumb
+#FOPTS+=		-mthumb
+#.endif
 
 .if ${MKIEEEFP:Uno} != "no"
 .if ${MACHINE_ARCH} == "alpha"
@@ -281,7 +301,7 @@ YFLAGS+=	${YPREFIX:D-p${YPREFIX}} ${YHEADER:D-d}
 .if ${MACHINE_ARCH} == aarch64eb
 # AARCH64 big endian needs to preserve $x/$d symbols for the linker.
 OBJCOPYLIBFLAGS_EXTRA=-w -K '[$$][dx]' -K '[$$][dx]\.*'
-.elif !empty(MACHINE_ARCH:M*arm*eb)
+.elif ${MACHINE_CPU} == "arm"
 # ARM big endian needs to preserve $a/$d/$t symbols for the linker.
 OBJCOPYLIBFLAGS_EXTRA=-w -K '[$$][adt]' -K '[$$][adt]\.*'
 .endif

@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2016, Intel Corp.
+ * Copyright (C) 2000 - 2017, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -455,6 +455,20 @@ AcpiDmDescendingOp (
         return (AE_CTRL_DEPTH);
     }
 
+    if (AcpiDmIsTempName(Op))
+    {
+        /* Ignore compiler generated temporary names */
+
+        return (AE_CTRL_DEPTH);
+    }
+
+    if (Op->Common.DisasmOpcode == ACPI_DASM_IGNORE_SINGLE)
+    {
+        /* Ignore this op, but not it's children */
+
+        return (AE_OK);
+    }
+
     if (Op->Common.AmlOpcode == AML_IF_OP)
     {
         NextOp = AcpiPsGetDepthNext (NULL, Op);
@@ -462,21 +476,26 @@ AcpiDmDescendingOp (
         {
             NextOp->Common.DisasmFlags |= ACPI_PARSEOP_PARAMETER_LIST;
 
-            /*
-             * A Zero predicate indicates the possibility of one or more
-             * External() opcodes within the If() block.
-             */
-            if (NextOp->Common.AmlOpcode == AML_ZERO_OP)
+            /* Don't emit the actual embedded externals unless asked */
+
+            if (!AcpiGbl_DmEmitExternalOpcodes)
             {
-                NextOp2 = NextOp->Common.Next;
-
-                if (NextOp2 &&
-                    (NextOp2->Common.AmlOpcode == AML_EXTERNAL_OP))
+                /*
+                 * A Zero predicate indicates the possibility of one or more
+                 * External() opcodes within the If() block.
+                 */
+                if (NextOp->Common.AmlOpcode == AML_ZERO_OP)
                 {
-                    /* Ignore the If 0 block and all children */
+                    NextOp2 = NextOp->Common.Next;
 
-                    Op->Common.DisasmFlags |= ACPI_PARSEOP_IGNORE;
-                    return (AE_CTRL_DEPTH);
+                    if (NextOp2 &&
+                        (NextOp2->Common.AmlOpcode == AML_EXTERNAL_OP))
+                    {
+                        /* Ignore the If 0 block and all children */
+
+                        Op->Common.DisasmFlags |= ACPI_PARSEOP_IGNORE;
+                        return (AE_CTRL_DEPTH);
+                    }
                 }
             }
         }
@@ -884,7 +903,8 @@ AcpiDmAscendingOp (
     ACPI_PARSE_OBJECT       *ParentOp;
 
 
-    if (Op->Common.DisasmFlags & ACPI_PARSEOP_IGNORE)
+    if (Op->Common.DisasmFlags & ACPI_PARSEOP_IGNORE ||
+        Op->Common.DisasmOpcode == ACPI_DASM_IGNORE_SINGLE)
     {
         /* Ignore this op -- it was handled elsewhere */
 
@@ -1044,9 +1064,12 @@ AcpiDmAscendingOp (
 
         /*
          * Just completed a parameter node for something like "Buffer (param)".
-         * Close the paren and open up the term list block with a brace
+         * Close the paren and open up the term list block with a brace.
+         *
+         * Switch predicates don't have a Next node but require a closing paren
+         * and opening brace.
          */
-        if (Op->Common.Next)
+        if (Op->Common.Next || Op->Common.DisasmOpcode == ACPI_DASM_SWITCH_PREDICATE)
         {
             AcpiOsPrintf (")");
 
@@ -1059,6 +1082,13 @@ AcpiDmAscendingOp (
                 (ParentOp->Asl.AmlOpcode == AML_NAME_OP))
             {
                 AcpiDmPredefinedDescription (ParentOp);
+            }
+
+            /* Correct the indentation level for Switch and Case predicates */
+
+            if (Op->Common.DisasmOpcode == ACPI_DASM_SWITCH_PREDICATE)
+            {
+                --Level;
             }
 
             AcpiOsPrintf ("\n");

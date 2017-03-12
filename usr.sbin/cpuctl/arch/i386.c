@@ -1,4 +1,4 @@
-/*	$NetBSD: i386.c,v 1.72 2016/04/27 08:53:28 msaitoh Exp $	*/
+/*	$NetBSD: i386.c,v 1.74 2016/10/11 04:16:28 msaitoh Exp $	*/
 
 /*-
  * Copyright (c) 1999, 2000, 2001, 2006, 2007, 2008 The NetBSD Foundation, Inc.
@@ -57,7 +57,7 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: i386.c,v 1.72 2016/04/27 08:53:28 msaitoh Exp $");
+__RCSID("$NetBSD: i386.c,v 1.74 2016/10/11 04:16:28 msaitoh Exp $");
 #endif /* not lint */
 
 #include <sys/types.h>
@@ -370,17 +370,18 @@ const struct cpu_cpuid_nameclass i386_cpuid_cpus[] = {
 				[0x4c] = "Atom X[57]-Z8000 (Airmont)",
 				[0x4d] = "Atom C2000",
 				[0x4e] = "6th gen Core, Xeon E3-1[25]00 v5 (Skylake)",
-				[0x4f] = "Xeon E5 v4 (Broadwell)",
+				[0x4f] = "Xeon E[57] v4 (Broadwell), Core i7-69xx Extreme",
 				[0x55] = "Future Xeon",
 				[0x56] = "Xeon D-1500 (Broadwell)",
-				[0x57] = "Next gen Xeon Phi",
+				[0x57] = "Xeon Phi [357]200",
 				[0x5a] = "Atom E3500",
 				[0x5c] = "Next Atom (Goldmont)",
 				[0x5d] = "Atom X3-C3000 (Silvermont)",
 				[0x5e] = "6th gen Core, Xeon E3-1[25]00 v5 (Skylake)",
-				[0x5f] = "Future Atom (Goldmont)",
-				[0x8e] = "Future Core",
-				[0x9e] = "Future Core",
+				[0x5f] = "Future Atom (Denverton)",
+				[0x85] = "Future Xeon Phi",
+				[0x8e] = "7th gen Core (Kaby Lake)",
+				[0x9e] = "7th gen Core (Kaby Lake)",
 			},
 			"Pentium Pro, II or III",	/* Default */
 			NULL,

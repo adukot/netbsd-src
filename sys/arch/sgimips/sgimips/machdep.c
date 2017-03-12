@@ -1,4 +1,4 @@
-/*	$NetBSD: machdep.c,v 1.141 2015/06/26 22:55:06 matt Exp $	*/
+/*	$NetBSD: machdep.c,v 1.144 2017/02/10 04:00:48 christos Exp $	*/
 
 /*
  * Copyright (c) 2000 Soren S. Jorvang
@@ -34,7 +34,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.141 2015/06/26 22:55:06 matt Exp $");
+__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.144 2017/02/10 04:00:48 christos Exp $");
 
 #include "opt_ddb.h"
 #include "opt_kgdb.h"
@@ -255,7 +255,10 @@ mach_init(int argc, int32_t argv32[], uintptr_t magic, int32_t bip32)
 	struct btinfo_symtab *bi_syms;
 #endif
 #ifdef _LP64
-	char *argv[argc+1];
+	char *argv[20];
+
+	if (argc >= __arraycount(argv))
+		panic("too many args");
 
 	for (i = 0; i < argc; i++) {
 		argv[i] = (void *)(intptr_t)argv32[i];
@@ -287,7 +290,7 @@ mach_init(int argc, int32_t argv32[], uintptr_t magic, int32_t bip32)
 
 	cpu_setmodel("%s", arcbios_system_identifier);
 
-	uvm_setpagesize();
+	uvm_md_init();
 
 	/* set up bootinfo structures */
 	if (magic == BOOTINFO_MAGIC && bip != NULL) {
@@ -394,7 +397,7 @@ mach_init(int argc, int32_t argv32[], uintptr_t magic, int32_t bip32)
 
 	/*
 	 * The case where the kernel has been loaded by a
-	 * boot loader will usually have been catched by
+	 * boot loader will usually have been caught by
 	 * the first makebootdev() case earlier on, but
 	 * we still use OSLoadPartition to get the preferred
 	 * root filesystem location, even if it's not

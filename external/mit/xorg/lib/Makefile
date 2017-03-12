@@ -1,13 +1,13 @@
-#	$NetBSD: Makefile,v 1.37 2015/10/24 14:30:28 jmcneill Exp $
+#	$NetBSD: Makefile,v 1.40 2016/08/18 08:11:22 mrg Exp $
 
 # build libraries for xorg
 
 .include <bsd.own.mk>
 
 SUBDIR=	libfontenc freetype libFS libICE libglapi \
-	libXau libXdmcp libdrm libpciaccess libpthread-stubs .WAIT
+	libXau libXdmcp libdrm libpciaccess libpthread-stubs libxshmfence .WAIT
 .if ${MACHINE_ARCH} == "i386" || ${MACHINE_ARCH} == "x86_64"
-SUBDIR+=libdrm_intel
+SUBDIR+=libdrm_intel libdrm_amdgpu
 .endif
 .if ${MACHINE_ARCH} == "i386" || ${MACHINE_ARCH} == "x86_64" || ${MACHINE} == "evbarm"
 SUBDIR+=libdrm_nouveau
@@ -24,7 +24,7 @@ SUBDIR+=dri7 dri gallium
 SUBDIR+=fontconfig libSM libX11 \
 	.WAIT \
 	libXcomposite libXdamage libXext libXfixes libXt \
-	libxkbfile \
+	libxkbfile libepoxy \
 	.WAIT \
 	libXi libXxf86vm \
 	.WAIT \

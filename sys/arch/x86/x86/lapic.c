@@ -1,4 +1,4 @@
-/*	$NetBSD: lapic.c,v 1.51 2015/07/27 15:45:20 msaitoh Exp $	*/
+/*	$NetBSD: lapic.c,v 1.54 2016/11/25 14:12:56 maxv Exp $	*/
 
 /*-
  * Copyright (c) 2000, 2008 The NetBSD Foundation, Inc.
@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: lapic.c,v 1.51 2015/07/27 15:45:20 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: lapic.c,v 1.54 2016/11/25 14:12:56 maxv Exp $");
 
 #include "opt_ddb.h"
 #include "opt_mpbios.h"		/* for MPDEBUG */
@@ -92,9 +92,8 @@ struct pic local_pic = {
 static void
 lapic_map(paddr_t lapic_base)
 {
-	int s;
 	pt_entry_t *pte;
-	vaddr_t va = (vaddr_t)&local_apic;
+	vaddr_t va = local_apic_va;
 
 	/*
 	 * If the CPU has an APIC MSR, use it and ignore the supplied value:
@@ -113,7 +112,6 @@ lapic_map(paddr_t lapic_base)
 	}
 
 	x86_disable_intr();
-	s = lapic_tpr;
 
 	/*
 	 * Map local apic.  If we have a local apic, it's safe to assume
@@ -125,14 +123,14 @@ lapic_map(paddr_t lapic_base)
 	 */
 
 	pte = kvtopte(va);
-	*pte = lapic_base | PG_RW | PG_V | PG_N | pmap_pg_g;
+	*pte = lapic_base | PG_RW | PG_V | PG_N | pmap_pg_g | pmap_pg_nx;
 	invlpg(va);
 
 #ifdef MULTIPROCESSOR
 	cpu_init_first();	/* catch up to changed cpu_number() */
 #endif
 
-	lapic_tpr = s;
+	i82489_writereg(LAPIC_TPRI, 0);
 	x86_enable_intr();
 }
 

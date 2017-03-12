@@ -1,4 +1,4 @@
-/*	$NetBSD: rumpfs.c,v 1.140 2016/03/07 00:51:32 christos Exp $	*/
+/*	$NetBSD: rumpfs.c,v 1.145 2017/03/01 10:44:47 hannken Exp $	*/
 
 /*
  * Copyright (c) 2009, 2010, 2011 Antti Kantee.  All Rights Reserved.
@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: rumpfs.c,v 1.140 2016/03/07 00:51:32 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: rumpfs.c,v 1.145 2017/03/01 10:44:47 hannken Exp $");
 
 #include <sys/param.h>
 #include <sys/atomic.h>
@@ -1012,6 +1012,7 @@ rump_vop_rmdir(void *v)
 	freedir(rnd, cnp);
 	rn->rn_flags |= RUMPNODE_CANRECLAIM;
 	rn->rn_parent = NULL;
+	rn->rn_va.va_nlink = 0;
 
 out:
 	vput(dvp);
@@ -1040,6 +1041,7 @@ rump_vop_remove(void *v)
 
 	freedir(rnd, cnp);
 	rn->rn_flags |= RUMPNODE_CANRECLAIM;
+	rn->rn_va.va_nlink = 0;
 
 	vput(dvp);
 	vput(vp);
@@ -1278,7 +1280,7 @@ rump_vop_readdir(void *v)
 			break;
 		}
 
-		rv = uiomove(dentp, dentp->d_reclen, uio); 
+		rv = uiomove(dentp, dentp->d_reclen, uio);
 		if (rv) {
 			i--;
 			break;
@@ -1622,7 +1624,6 @@ rump_vop_reclaim(void *v)
 	struct vnode *vp = ap->a_vp;
 	struct rumpfs_node *rn = vp->v_data;
 
-	vcache_remove(vp->v_mount, &rn, sizeof(rn));
 	mutex_enter(&reclock);
 	rn->rn_vp = NULL;
 	mutex_exit(&reclock);
@@ -1777,7 +1778,7 @@ struct vfsops rumpfs_vfsops = {
 	.vfs_mountroot =	rumpfs_mountroot,
 	.vfs_snapshot =		(void *)eopnotsupp,
 	.vfs_extattrctl =	(void *)eopnotsupp,
-	.vfs_suspendctl =	(void *)eopnotsupp,
+	.vfs_suspendctl =	genfs_suspendctl,
 	.vfs_renamelock_enter =	genfs_renamelock_enter,
 	.vfs_renamelock_exit =	genfs_renamelock_exit,
 	.vfs_opv_descs =	rump_opv_descs,
@@ -1819,9 +1820,21 @@ rumpfs_mountfs(struct mount *mp)
 int
 rumpfs_mount(struct mount *mp, const char *mntpath, void *arg, size_t *alen)
 {
-	int error;
+	int error, flags;
 
+	if (mp->mnt_flag & MNT_GETARGS) {
+		return 0;
+	}
 	if (mp->mnt_flag & MNT_UPDATE) {
+		if ((mp->mnt_iflag & IMNT_WANTRDONLY)) {
+			/* Changing from read/write to read-only. */
+			flags = WRITECLOSE;
+			if ((mp->mnt_flag & MNT_FORCE))
+				flags |= FORCECLOSE;
+			error = vflush(mp, NULL, flags);
+			if (error)
+				return error;
+		}
 		return 0;
 	}
 

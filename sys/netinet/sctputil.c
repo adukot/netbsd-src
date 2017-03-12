@@ -1,5 +1,5 @@
 /*	$KAME: sctputil.c,v 1.39 2005/06/16 20:54:06 jinmei Exp $	*/
-/*	$NetBSD: sctputil.c,v 1.6 2016/04/26 11:02:57 rjs Exp $	*/
+/*	$NetBSD: sctputil.c,v 1.12 2017/01/16 15:44:47 christos Exp $	*/
 
 /*
  * Copyright (c) 2001, 2002, 2003, 2004 Cisco Systems, Inc.
@@ -34,7 +34,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: sctputil.c,v 1.6 2016/04/26 11:02:57 rjs Exp $");
+__KERNEL_RCSID(0, "$NetBSD: sctputil.c,v 1.12 2017/01/16 15:44:47 christos Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -2076,7 +2076,7 @@ sctp_notify_assoc_change(u_int32_t event, struct sctp_tcb *stcb,
 
 	m_notify->m_flags |= M_EOR | M_NOTIFICATION;
 	m_notify->m_pkthdr.len = sizeof(struct sctp_assoc_change);
-	m_notify->m_pkthdr.rcvif = 0;
+	m_reset_rcvif(m_notify);
 	m_notify->m_len = sizeof(struct sctp_assoc_change);
 	m_notify->m_next = NULL;
 
@@ -2163,7 +2163,7 @@ sctp_notify_peer_addr_change(struct sctp_tcb *stcb, uint32_t state,
 
 	m_notify->m_flags |= M_EOR | M_NOTIFICATION;
 	m_notify->m_pkthdr.len = sizeof(struct sctp_paddr_change);
-	m_notify->m_pkthdr.rcvif = 0;
+	m_reset_rcvif(m_notify);
 	m_notify->m_len = sizeof(struct sctp_paddr_change);
 	m_notify->m_next = NULL;
 
@@ -2256,7 +2256,7 @@ sctp_notify_send_failed(struct sctp_tcb *stcb, u_int32_t error,
 		m->m_flags |= M_EOR;
 	}
 	m_notify->m_pkthdr.len = length;
-	m_notify->m_pkthdr.rcvif = 0;
+	m_reset_rcvif(m_notify);
 	m_notify->m_len = sizeof(struct sctp_send_failed);
 
 	/* Steal off the mbuf */
@@ -2329,7 +2329,7 @@ sctp_notify_adaption_layer(struct sctp_tcb *stcb,
 
 	m_notify->m_flags |= M_EOR | M_NOTIFICATION;
 	m_notify->m_pkthdr.len = sizeof(struct sctp_adaption_event);
-	m_notify->m_pkthdr.rcvif = 0;
+	m_reset_rcvif(m_notify);
 	m_notify->m_len = sizeof(struct sctp_adaption_event);
 	m_notify->m_next = NULL;
 
@@ -2399,7 +2399,7 @@ sctp_notify_partial_delivery_indication(struct sctp_tcb *stcb,
 
 	m_notify->m_flags |= M_EOR | M_NOTIFICATION;
 	m_notify->m_pkthdr.len = sizeof(struct sctp_pdapi_event);
-	m_notify->m_pkthdr.rcvif = 0;
+	m_reset_rcvif(m_notify);
 	m_notify->m_len = sizeof(struct sctp_pdapi_event);
 	m_notify->m_next = NULL;
 
@@ -2478,7 +2478,7 @@ sctp_notify_shutdown_event(struct sctp_tcb *stcb)
 
 	m_notify->m_flags |= M_EOR | M_NOTIFICATION;
 	m_notify->m_pkthdr.len = sizeof(struct sctp_shutdown_event);
-	m_notify->m_pkthdr.rcvif = 0;
+	m_reset_rcvif(m_notify);
 	m_notify->m_len = sizeof(struct sctp_shutdown_event);
 	m_notify->m_next = NULL;
 
@@ -2570,7 +2570,7 @@ sctp_notify_stream_reset(struct sctp_tcb *stcb,
 	}
 	m_notify->m_flags |= M_EOR | M_NOTIFICATION;
 	m_notify->m_pkthdr.len = len;
-	m_notify->m_pkthdr.rcvif = 0;
+	m_reset_rcvif(m_notify);
 	m_notify->m_len = len;
 	m_notify->m_next = NULL;
 	if (sctp_sbspace(&stcb->sctp_socket->so_rcv) < m_notify->m_len) {
@@ -2959,7 +2959,7 @@ sctp_is_there_an_abort_here(struct mbuf *m, int iphlen, int *vtagfill)
  * so, create this function to compare link local scopes
  */
 uint32_t
-sctp_is_same_scope(struct sockaddr_in6 *addr1, struct sockaddr_in6 *addr2)
+sctp_is_same_scope(const struct sockaddr_in6 *addr1, const struct sockaddr_in6 *addr2)
 {
 	struct sockaddr_in6 a, b;
 
@@ -3048,12 +3048,13 @@ sctp_cmpaddr(const struct sockaddr *sa1, const struct sockaddr *sa2)
 void
 sctp_print_address(const struct sockaddr *sa)
 {
+	char ip6buf[INET6_ADDRSTRLEN];
 
 	if (sa->sa_family == AF_INET6) {
 		const struct sockaddr_in6 *sin6;
 		sin6 = (const struct sockaddr_in6 *)sa;
 		printf("IPv6 address: %s:%d scope:%u\n",
-		    ip6_sprintf(&sin6->sin6_addr), ntohs(sin6->sin6_port),
+		    IN6_PRINT(ip6buf, &sin6->sin6_addr), ntohs(sin6->sin6_port),
 		    sin6->sin6_scope_id);
 	} else if (sa->sa_family == AF_INET) {
 		const struct sockaddr_in *sin;
@@ -3607,11 +3608,13 @@ sctp_find_ifa_by_addr(struct sockaddr *sa)
 {
 	struct ifnet *ifn;
 	struct ifaddr *ifa;
+	int s;
 
 	/* go through all our known interfaces */
-	IFNET_FOREACH(ifn) {
+	s = pserialize_read_enter();
+	IFNET_READER_FOREACH(ifn) {
 		/* go through each interface addresses */
-		IFADDR_FOREACH(ifa, ifn) {
+		IFADDR_READER_FOREACH(ifa, ifn) {
 			/* correct family? */
 			if (ifa->ifa_addr->sa_family != sa->sa_family)
 				continue;
@@ -3632,6 +3635,7 @@ sctp_find_ifa_by_addr(struct sockaddr *sa)
 				if (memcmp(&sin1->sin6_addr, &sin2->sin6_addr,
 					   sizeof(struct in6_addr)) == 0) {
 					/* found it */
+					pserialize_read_exit(s);
 					return (ifa);
 				}
 			} else
@@ -3644,12 +3648,15 @@ sctp_find_ifa_by_addr(struct sockaddr *sa)
 				if (sin1->sin_addr.s_addr ==
 				    sin2->sin_addr.s_addr) {
 					/* found it */
+					pserialize_read_exit(s);
 					return (ifa);
 				}
 			}
 			/* else, not AF_INET or AF_INET6, so skip */
 		} /* end foreach ifa */
 	} /* end foreach ifn */
+	pserialize_read_exit(s);
+
 	/* not found! */
 	return (NULL);
 }

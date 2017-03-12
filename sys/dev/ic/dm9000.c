@@ -1,4 +1,4 @@
-/*	$NetBSD: dm9000.c,v 1.9 2016/02/09 08:32:10 ozaki-r Exp $	*/
+/*	$NetBSD: dm9000.c,v 1.11 2016/12/15 09:28:05 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 2009 Paul Fleischer
@@ -824,9 +824,6 @@ dme_receive(struct dme_softc *sc, struct ifnet *ifp)
 			} else if (rx_status & DM9000_RSR_LCS) {
 				ifp->if_collisions++;
 			} else {
-				if (ifp->if_bpf)
-					bpf_mtap(ifp, m);
-				ifp->if_ipackets++;
 				if_percpuq_enqueue(ifp->if_percpuq, m);
 			}
 
@@ -1220,7 +1217,7 @@ dme_alloc_receive_buffer(struct ifnet *ifp, unsigned int frame_length)
 	MGETHDR(m, M_DONTWAIT, MT_DATA);
 	if (m == NULL) return NULL;
 
-	m->m_pkthdr.rcvif = ifp;
+	m_set_rcvif(m, ifp);
 	/* Ensure that we always allocate an even number of
 	 * bytes in order to avoid writing beyond the buffer
 	 */

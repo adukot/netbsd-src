@@ -1,4 +1,4 @@
-/*	$NetBSD: cpu.h,v 1.118 2015/09/07 20:00:49 palle Exp $ */
+/*	$NetBSD: cpu.h,v 1.123 2017/02/10 23:26:23 palle Exp $ */
 
 /*
  * Copyright (c) 1992, 1993
@@ -68,6 +68,7 @@
 #include <machine/pte.h>
 #include <machine/intr.h>
 #if defined(_KERNEL)
+#include <machine/bus_defs.h>
 #include <machine/cpuset.h>
 #include <sparc64/sparc64/intreg.h>
 #endif
@@ -184,7 +185,7 @@ struct cpu_info {
 	 * Will be initialized to the physical address of the bottom of
 	 * the interrupt stack.
 	 */
-	paddr_t			ci_mmfsa;
+	paddr_t			ci_mmufsa;
 
 	/*
 	 * sun4v mondo control fields
@@ -341,6 +342,7 @@ struct clockframe {
  */
 void cpu_signotify(struct lwp *);
 
+
 /*
  * Interrupt handler chains.  Interrupt handlers should return 0 for
  * ``not me'' or 1 (``I took care of it'').  intr_establish() inserts a
@@ -361,6 +363,8 @@ struct intrhand {
 	struct intrhand		*ih_pending;	/* interrupt queued */
 	volatile uint64_t	*ih_map;	/* Interrupt map reg */
 	volatile uint64_t	*ih_clr;	/* clear interrupt reg */
+	void			(*ih_ack)(struct intrhand *); /* ack interrupt function */
+	bus_space_tag_t		ih_bus;		/* parent bus */
 	struct evcnt		ih_cnt;		/* counter for vmstat */
 	uint32_t		ih_ivec;
 	char			ih_name[32];	/* name for the above */
@@ -372,6 +376,7 @@ void	intr_establish(int level, bool mpsafe, struct intrhand *);
 void	*sparc_softintr_establish(int, int (*)(void *), void *);
 void	sparc_softintr_schedule(void *);
 void	sparc_softintr_disestablish(void *);
+struct intrhand *intrhand_alloc(void);
 
 /* cpu.c */
 int	cpu_myid(void);

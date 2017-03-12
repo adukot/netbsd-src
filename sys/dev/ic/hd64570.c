@@ -1,4 +1,4 @@
-/*	$NetBSD: hd64570.c,v 1.49 2016/04/28 00:16:56 ozaki-r Exp $	*/
+/*	$NetBSD: hd64570.c,v 1.53 2017/02/20 07:43:29 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 1999 Christian E. Hopps
@@ -65,7 +65,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: hd64570.c,v 1.49 2016/04/28 00:16:56 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: hd64570.c,v 1.53 2017/02/20 07:43:29 ozaki-r Exp $");
 
 #include "opt_inet.h"
 
@@ -455,8 +455,10 @@ sca_port_attach(struct sca_softc *sc, u_int port)
 #endif
 	IFQ_SET_READY(&ifp->if_snd);
 	if_attach(ifp);
+	if_deferred_start_init(ifp, NULL);
 	if_alloc_sadl(ifp);
 	bpf_attach(ifp, DLT_HDLC, HDLC_HDRLEN);
+	bpf_mtap_softint_init(ifp);
 
 	if (sc->sc_parent == NULL)
 		printf("%s: port %d\n", ifp->if_xname, port);
@@ -1303,7 +1305,7 @@ sca_dmac_intr(sca_port_t *scp, u_int8_t isr)
 				/*
 				 * check for more packets
 				 */
-				sca_start(&scp->sp_if);
+				if_schedule_deferred_start(&scp->sp_if);
 			}
 		}
 	}
@@ -1574,7 +1576,7 @@ sca_frame_process(sca_port_t *scp)
 		return;
 	}
 
-	bpf_mtap(&scp->sp_if, m);
+	bpf_mtap_softint(&scp->sp_if, m);
 
 	scp->sp_if.if_ipackets++;
 
@@ -1583,7 +1585,7 @@ sca_frame_process(sca_port_t *scp)
 #ifdef INET
 	case HDLC_PROTOCOL_IP:
 		SCA_DPRINTF(SCA_DEBUG_RX, ("Received IP packet\n"));
-		m->m_pkthdr.rcvif = &scp->sp_if;
+		m_set_rcvif(m, &scp->sp_if);
 		m->m_pkthdr.len -= sizeof(struct hdlc_header);
 		m->m_data += sizeof(struct hdlc_header);
 		m->m_len -= sizeof(struct hdlc_header);
@@ -1593,7 +1595,7 @@ sca_frame_process(sca_port_t *scp)
 #ifdef INET6
 	case HDLC_PROTOCOL_IPV6:
 		SCA_DPRINTF(SCA_DEBUG_RX, ("Received IP packet\n"));
-		m->m_pkthdr.rcvif = &scp->sp_if;
+		m_set_rcvif(m, &scp->sp_if);
 		m->m_pkthdr.len -= sizeof(struct hdlc_header);
 		m->m_data += sizeof(struct hdlc_header);
 		m->m_len -= sizeof(struct hdlc_header);
@@ -1620,7 +1622,7 @@ sca_frame_process(sca_port_t *scp)
 
 		cisco = (struct cisco_pkt *)
 		    (mtod(m, u_int8_t *) + HDLC_HDRLEN);
-		m->m_pkthdr.rcvif = &scp->sp_if;
+		m_set_rcvif(m, &scp->sp_if);
 
 		switch (ntohl(cisco->type)) {
 		case CISCO_ADDR_REQ:

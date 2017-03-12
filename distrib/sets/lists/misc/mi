@@ -1,4 +1,4 @@
-# $NetBSD: mi,v 1.197 2016/01/07 22:07:18 roy Exp $
+# $NetBSD: mi,v 1.202 2017/02/09 13:26:56 szptvlfn Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 #
@@ -1432,16 +1432,16 @@
 ./usr/share/examples/kyua-cli/Kyuafile.top	misc-kyua-examples	share,kyua
 ./usr/share/examples/kyua-cli/kyua.conf		misc-kyua-examples	share,kyua
 ./usr/share/examples/libsaslc			misc-libsaslc-examples
-./usr/share/examples/libsaslc/README		misc-libsaslc-examples	share
+./usr/share/examples/libsaslc/README		misc-libsaslc-examples	share,crypto
 ./usr/share/examples/libsaslc/mech		misc-libsaslc-examples
-./usr/share/examples/libsaslc/mech/ANONYMOUS.conf	misc-libsaslc-examples	share
-./usr/share/examples/libsaslc/mech/CRAM-MD5.conf	misc-libsaslc-examples	share
-./usr/share/examples/libsaslc/mech/DIGEST-MD5.conf	misc-libsaslc-examples	share
-./usr/share/examples/libsaslc/mech/EXTERNAL.conf	misc-libsaslc-examples	share
-./usr/share/examples/libsaslc/mech/GSSAPI.conf	misc-libsaslc-examples	share
-./usr/share/examples/libsaslc/mech/LOGIN.conf	misc-libsaslc-examples	share
-./usr/share/examples/libsaslc/mech/PLAIN.conf	misc-libsaslc-examples	share
-./usr/share/examples/libsaslc/saslc.conf	misc-libsaslc-examples	share
+./usr/share/examples/libsaslc/mech/ANONYMOUS.conf	misc-libsaslc-examples	share,crypto
+./usr/share/examples/libsaslc/mech/CRAM-MD5.conf	misc-libsaslc-examples	share,crypto
+./usr/share/examples/libsaslc/mech/DIGEST-MD5.conf	misc-libsaslc-examples	share,crypto
+./usr/share/examples/libsaslc/mech/EXTERNAL.conf	misc-libsaslc-examples	share,crypto
+./usr/share/examples/libsaslc/mech/GSSAPI.conf	misc-libsaslc-examples	share,crypto
+./usr/share/examples/libsaslc/mech/LOGIN.conf	misc-libsaslc-examples	share,crypto
+./usr/share/examples/libsaslc/mech/PLAIN.conf	misc-libsaslc-examples	share,crypto
+./usr/share/examples/libsaslc/saslc.conf	misc-libsaslc-examples	share,crypto
 ./usr/share/examples/lutok			misc-lutok-examples
 ./usr/share/examples/lutok/bindings.cpp		misc-lutok-examples	share,kyua
 ./usr/share/examples/lutok/hello.cpp		misc-lutok-examples	share,kyua
@@ -1463,6 +1463,7 @@
 ./usr/share/examples/mount_portal/tcp.1		misc-sys-examples	share
 ./usr/share/examples/mount_portal/tcp.1.conf	misc-sys-examples	share
 ./usr/share/examples/named/named.conf		misc-obsolete		obsolete
+./usr/share/examples/nsd/nsd.conf		misc-netutil-examples	share,nsd
 ./usr/share/examples/openssl/CA.pl		misc-crypto-examples	crypto,share
 ./usr/share/examples/openssl/CA.sh		misc-crypto-examples	crypto,share
 ./usr/share/examples/openssl/der_chop		misc-obsolete		obsolete
@@ -1612,11 +1613,13 @@
 ./usr/share/examples/syslogd/all.debug		misc-sysutil-examples	share
 ./usr/share/examples/syslogd/all.newsyslog.conf	misc-sysutil-examples	share
 ./usr/share/examples/tmux			misc-tmux-examples
-./usr/share/examples/tmux/screen-keys.conf	misc-tmux-examples	share
+./usr/share/examples/tmux/example_tmux.conf	misc-tmux-examples	share
+./usr/share/examples/tmux/screen-keys.conf	misc-obsolete		obsolete
 ./usr/share/examples/usermgmt			misc-obsolete		obsolete
 ./usr/share/examples/usermgmt/.cshrc		misc-obsolete		obsolete
 ./usr/share/examples/usermgmt/.login		misc-obsolete		obsolete
 ./usr/share/examples/usermgmt/.profile		misc-obsolete		obsolete
+./usr/share/examples/unbound/unbound.conf	misc-netutil-examples	share,unbound
 ./usr/share/misc/NetBSD.el			misc-reference-share	share
 ./usr/share/misc/airport			misc-reference-share	share
 ./usr/share/misc/birthtoken			misc-reference-share	share

@@ -1,8 +1,8 @@
-/*	$NetBSD: version.h,v 1.20 2016/03/11 01:55:00 christos Exp $	*/
-/* $OpenBSD: version.h,v 1.76 2016/02/23 09:14:34 djm Exp $ */
+/*	$NetBSD: version.h,v 1.22 2016/12/25 00:07:47 christos Exp $	*/
+/* $OpenBSD: version.h,v 1.78 2016/12/19 04:55:51 djm Exp $ */
 
-#define __OPENSSH_VERSION	"OpenSSH_7.2"
-#define __NETBSDSSH_VERSION	"NetBSD_Secure_Shell-20160310"
+#define __OPENSSH_VERSION	"OpenSSH_7.4"
+#define __NETBSDSSH_VERSION	"NetBSD_Secure_Shell-20160802"
 #define SSH_HPN         "-hpn13v14"
 #define SSH_LPK		"-lpk"
 /*

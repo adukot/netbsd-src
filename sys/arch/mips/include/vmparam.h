@@ -1,4 +1,4 @@
-/*	$NetBSD: vmparam.h,v 1.54 2015/06/30 04:20:19 matt Exp $	*/
+/*	$NetBSD: vmparam.h,v 1.57 2016/11/22 11:01:50 skrll Exp $	*/
 
 /*
  * Copyright (c) 1988 University of Utah.
@@ -61,10 +61,11 @@
  */
 #ifdef ENABLE_MIPS_16KB_PAGE
 #define	PAGE_SHIFT	14
-#elif defined(ENABLE_MIPS_4KB_PAGE) || 1
+#elif defined(ENABLE_MIPS_8KB_PAGE) \
+    || (!defined(ENABLE_MIPS_4KB_PAGE) && __mips >= 3)
+#define	PAGE_SHIFT	13
+#else /* defined(ENABLE_MIPS_4KB_PAGE) */
 #define	PAGE_SHIFT	12
-#else
-#error ENABLE_MIPS_xKB_PAGE not defined
 #endif
 #define	PAGE_SIZE	(1 << PAGE_SHIFT)
 #define	PAGE_MASK	(PAGE_SIZE - 1)
@@ -157,14 +158,13 @@
  */
 #define VM_MIN_ADDRESS		((vaddr_t)0x00000000)
 #ifdef _LP64
-#define MIPS_VM_MAXUSER_ADDRESS	((vaddr_t) 1L << (4*PGSHIFT-8))
+#define MIPS_VM_MAXUSER_ADDRESS	((vaddr_t) 1L << 40)
 #ifdef ENABLE_MIPS_16KB_PAGE
 #define VM_MAXUSER_ADDRESS	mips_vm_maxuser_address
 #else
 #define VM_MAXUSER_ADDRESS	MIPS_VM_MAXUSER_ADDRESS
 #endif
-							/* 0x0000010000000000 */
-#define VM_MAX_ADDRESS		VM_MAXUSER_ADDRESS
+#define VM_MAX_ADDRESS		VM_MAXUSER_ADDRESS	/* 0x0000010000000000 */
 #define VM_MIN_KERNEL_ADDRESS	((vaddr_t) 3L << 62)	/* 0xC000000000000000 */
 #define VM_MAX_KERNEL_ADDRESS	((vaddr_t) -1L << 31)	/* 0xFFFFFFFF80000000 */
 #else
@@ -177,7 +177,7 @@
 #define VM_MAX_KERNEL_ADDRESS	((vaddr_t)-0x00004000)	/* 0xFFFFFFFFFFFFC000 */
 #endif
 #endif
-#define VM_MAXUSER32_ADDRESS	((vaddr_t)(1UL << 31))/* 0x0000000080000000 */
+#define VM_MAXUSER32_ADDRESS	((vaddr_t)(1UL << 31))	/* 0x0000000080000000 */
 
 /*
  * The address to which unspecified mapping requests default

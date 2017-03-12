@@ -1,4 +1,4 @@
-/*	$NetBSD: if_es.c,v 1.54 2016/02/09 08:32:07 ozaki-r Exp $ */
+/*	$NetBSD: if_es.c,v 1.57 2017/02/22 09:45:15 nonaka Exp $ */
 
 /*
  * Copyright (c) 1995 Michael L. Hitch
@@ -33,7 +33,7 @@
 #include "opt_ns.h"
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_es.c,v 1.54 2016/02/09 08:32:07 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_es.c,v 1.57 2017/02/22 09:45:15 nonaka Exp $");
 
 
 #include <sys/param.h>
@@ -185,6 +185,7 @@ esattach(device_t parent, device_t self, void *aux)
 
 	/* Attach the interface. */
 	if_attach(ifp);
+	if_deferred_start_init(ifp, NULL);
 	ether_ifattach(ifp, myaddr);
 
 	/* Print additional info when attached. */
@@ -292,7 +293,7 @@ esinit(struct es_softc *sc)
 	ifp->if_flags &= ~IFF_OACTIVE;
 
 	/* Attempt to start output, if any. */
-	esstart(ifp);
+	if_schedule_deferred_start(ifp);
 
 	splx(s);
 }
@@ -659,11 +660,10 @@ esrint(struct es_softc *sc)
 	}
 #endif
 #endif /* USEPKTBUF */
-	ifp->if_ipackets++;
 	MGETHDR(m, M_DONTWAIT, MT_DATA);
 	if (m == NULL)
 		return;
-	m->m_pkthdr.rcvif = ifp;
+	m_set_rcvif(m, ifp);
 	m->m_pkthdr.len = pktlen;
 	len = MHLEN;
 	top = NULL;
@@ -720,7 +720,6 @@ esrint(struct es_softc *sc)
 	 * Check if there's a BPF listener on this interface.  If so, hand off
 	 * the raw packet to bpf.
 	 */
-	bpf_mtap(ifp, top);
 	if_percpuq_enqueue(ifp->if_percpuq, top);
 #ifdef ESDEBUG
 	if (--sc->sc_smcbusy) {

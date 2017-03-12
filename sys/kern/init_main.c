@@ -1,4 +1,4 @@
-/*	$NetBSD: init_main.c,v 1.479 2016/03/28 16:45:44 macallan Exp $	*/
+/*	$NetBSD: init_main.c,v 1.490 2017/01/16 09:28:40 ryo Exp $	*/
 
 /*-
  * Copyright (c) 2008, 2009 The NetBSD Foundation, Inc.
@@ -97,7 +97,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: init_main.c,v 1.479 2016/03/28 16:45:44 macallan Exp $");
+__KERNEL_RCSID(0, "$NetBSD: init_main.c,v 1.490 2017/01/16 09:28:40 ryo Exp $");
 
 #include "opt_ddb.h"
 #include "opt_inet.h"
@@ -115,6 +115,7 @@ __KERNEL_RCSID(0, "$NetBSD: init_main.c,v 1.479 2016/03/28 16:45:44 macallan Exp
 #include "opt_ptrace.h"
 #include "opt_rnd_printf.h"
 #include "opt_splash.h"
+#include "opt_kernhist.h"
 
 #if defined(SPLASHSCREEN) && defined(makeoptions_SPLASHSCREEN_IMAGE)
 extern void *_binary_splash_image_start;
@@ -175,6 +176,7 @@ extern void *_binary_splash_image_end;
 #include <sys/ksyms.h>
 #include <sys/uidinfo.h>
 #include <sys/kprintf.h>
+#include <sys/bufq.h>
 #ifdef IPSEC
 #include <netipsec/ipsec.h>
 #endif
@@ -190,17 +192,12 @@ extern void *_binary_splash_image_end;
 #endif
 #include <sys/kauth.h>
 #include <net80211/ieee80211_netbsd.h>
-#ifdef PTRACE
-#include <sys/ptrace.h>
-#endif /* PTRACE */
 #include <sys/cprng.h>
 
 #include <sys/syscall.h>
 #include <sys/syscallargs.h>
 
-#if defined(PAX_MPROTECT) || defined(PAX_SEGVGUARD) || defined(PAX_ASLR)
 #include <sys/pax.h>
-#endif /* PAX_MPROTECT || PAX_SEGVGUARD || PAX_ASLR */
 
 #include <secmodel/secmodel.h>
 
@@ -218,6 +215,7 @@ extern void *_binary_splash_image_end;
 
 #include <net/bpf.h>
 #include <net/if.h>
+#include <net/pfil.h>
 #include <net/raw_cb.h>
 #include <net/if_llatbl.h>
 
@@ -353,6 +351,11 @@ main(void)
 
 	/* Initialize the buffer cache */
 	bufinit();
+	biohist_init();
+
+#ifdef KERNHIST
+	sysctl_kernhist_init();
+#endif
 
 
 #if defined(SPLASHSCREEN) && defined(SPLASHSCREEN_IMAGE)
@@ -477,6 +480,9 @@ main(void)
 	kern_cprng = cprng_strong_create("kernel", IPL_VM,
 					 CPRNG_INIT_ANY|CPRNG_REKEY_ANY);
 
+	/* Initialize pfil */
+	pfil_init();
+
 	/* Initialize interfaces. */
 	ifinit1();
 
@@ -484,6 +490,14 @@ main(void)
 
 	/* Initialize sockets thread(s) */
 	soinit1();
+
+	/*
+	 * Initialize the bufq strategy sub-system and any built-in
+	 * strategy modules - they may be needed by some devices during
+	 * auto-configuration
+	 */
+	bufq_init();
+	module_init_class(MODULE_CLASS_BUFQ);
 
 	/* Configure the system hardware.  This will enable interrupts. */
 	configure();
@@ -527,9 +541,7 @@ main(void)
 	veriexec_init();
 #endif /* NVERIEXEC > 0 */
 
-#if defined(PAX_MPROTECT) || defined(PAX_SEGVGUARD) || defined(PAX_ASLR)
 	pax_init();
-#endif /* PAX_MPROTECT || PAX_SEGVGUARD || PAX_ASLR */
 
 #ifdef	IPSEC
 	/* Attach network crypto subsystem */
@@ -566,11 +578,6 @@ main(void)
 	/* Initialize ktrace. */
 	ktrinit();
 #endif
-
-#ifdef PTRACE
-	/* Initialize ptrace. */
-	ptrace_init();
-#endif /* PTRACE */
 
 	machdep_init();
 
@@ -799,7 +806,7 @@ rootconf_handle_wedges(void)
 	struct vnode *vp;
 	daddr_t startblk;
 	uint64_t nblks;
-	device_t dev; 
+	device_t dev;
 	int error;
 
 	if (booted_nblks) {
@@ -935,10 +942,10 @@ start_init(void *arg)
 	 */
 	addr = (vaddr_t)STACK_ALLOC(USRSTACK, PAGE_SIZE);
 	if (uvm_map(&p->p_vmspace->vm_map, &addr, PAGE_SIZE,
-                    NULL, UVM_UNKNOWN_OFFSET, 0,
-                    UVM_MAPFLAG(UVM_PROT_ALL, UVM_PROT_ALL, UVM_INH_COPY,
-		    UVM_ADV_NORMAL,
-                    UVM_FLAG_FIXED|UVM_FLAG_OVERLAY|UVM_FLAG_COPYONW)) != 0)
+	    NULL, UVM_UNKNOWN_OFFSET, 0,
+	    UVM_MAPFLAG(UVM_PROT_RW, UVM_PROT_RW, UVM_INH_COPY,
+	    UVM_ADV_NORMAL,
+	    UVM_FLAG_FIXED|UVM_FLAG_OVERLAY|UVM_FLAG_COPYONW)) != 0)
 		panic("init: couldn't allocate argument space");
 	p->p_vmspace->vm_maxsaddr = (void *)STACK_MAX(addr, PAGE_SIZE);
 
@@ -1048,7 +1055,7 @@ start_init(void *arg)
 			goto copyerr;
 
 		/*
-		 * Now try to exec the program.  If can't for any reason
+		 * Now try to exec the program.  If it can't for any reason
 		 * other than it doesn't exist, complain.
 		 */
 		error = sys_execve(l, &args, retval);

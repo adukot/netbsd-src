@@ -1,4 +1,4 @@
-/*	$NetBSD: cpu.c,v 1.119 2015/12/16 18:54:03 maxv Exp $	*/
+/*	$NetBSD: cpu.c,v 1.123 2017/02/11 14:11:24 maxv Exp $	*/
 
 /*-
  * Copyright (c) 2000-2012 NetBSD Foundation, Inc.
@@ -62,7 +62,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: cpu.c,v 1.119 2015/12/16 18:54:03 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: cpu.c,v 1.123 2017/02/11 14:11:24 maxv Exp $");
 
 #include "opt_ddb.h"
 #include "opt_mpbios.h"		/* for MPDEBUG */
@@ -138,7 +138,7 @@ struct cpu_softc {
 };
 
 #ifdef MULTIPROCESSOR
-int mp_cpu_start(struct cpu_info *, paddr_t); 
+int mp_cpu_start(struct cpu_info *, paddr_t);
 void mp_cpu_start_cleanup(struct cpu_info *);
 const struct cpu_functions mp_cpu_funcs = { mp_cpu_start, NULL,
 					    mp_cpu_start_cleanup };
@@ -177,7 +177,7 @@ static void	tss_init(struct i386tss *, void *, void *);
 
 static void	cpu_init_idle_lwp(struct cpu_info *);
 
-uint32_t cpu_feature[7]; /* X86 CPUID feature bits */
+uint32_t cpu_feature[7] __read_mostly; /* X86 CPUID feature bits */
 			/* [0] basic features cpuid.1:%edx
 			 * [1] basic features cpuid.1:%ecx (CPUID2_xxx bits)
 			 * [2] extended features cpuid:80000001:%edx
@@ -286,6 +286,9 @@ cpu_vm_init(struct cpu_info *ci)
 	uvm_page_recolor(ncolors);
 
 	pmap_tlb_cpu_init(ci);
+#ifndef __HAVE_DIRECT_MAP
+	pmap_vpage_cpu_init(ci);
+#endif
 }
 
 static void
@@ -877,7 +880,7 @@ cpu_hatch(void *v)
 
 	s = splhigh();
 #ifdef i386
-	lapic_tpr = 0;
+	i82489_writereg(LAPIC_TPRI, 0);
 #else
 	lcr8(0);
 #endif

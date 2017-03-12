@@ -1,4 +1,4 @@
-/* $NetBSD: uslsa.c,v 1.20 2016/04/23 10:15:32 skrll Exp $ */
+/* $NetBSD: uslsa.c,v 1.23 2016/12/16 14:56:34 maya Exp $ */
 
 /* from ugensa.c */
 
@@ -58,7 +58,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: uslsa.c,v 1.20 2016/04/23 10:15:32 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: uslsa.c,v 1.23 2016/12/16 14:56:34 maya Exp $");
+
+#ifdef _KERNEL_OPT
+#include "opt_usb.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -156,11 +160,11 @@ uslsa_match(device_t parent, cfdata_t match, void *aux)
 {
 	const struct usbif_attach_arg *uiaa = aux;
 
-	if (usb_lookup(uslsa_devs, uiaa->uiaa_vendor, uiaa->uiaa_product) != NULL) {
+	if (usb_lookup(uslsa_devs, uiaa->uiaa_vendor, uiaa->uiaa_product)
+	    != NULL)
 		return UMATCH_VENDOR_PRODUCT;
-	} else {
+	else
 		return UMATCH_NONE;
-	}
 }
 
 static void
@@ -202,8 +206,7 @@ uslsa_attach(device_t parent, device_t self, void *aux)
 	ucaa.ucaa_methods = &uslsa_methods;
 	ucaa.ucaa_arg = sc;
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	                   sc->sc_dev);
+	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev, sc->sc_dev);
 
 	ucaa.ucaa_bulkin = ucaa.ucaa_bulkout = -1;
 	for (i = 0; i < id->bNumEndpoints; i++) {
@@ -238,6 +241,9 @@ uslsa_attach(device_t parent, device_t self, void *aux)
 	sc->sc_subdev = config_found_sm_loc(self, "ucombus", NULL, &ucaa,
 	                                    ucomprint, ucomsubmatch);
 
+	if (!pmf_device_register(self, NULL, NULL))
+		aprint_error_dev(self, "couldn't establish power handler\n");
+	
 	return;
 }
 
@@ -278,8 +284,7 @@ uslsa_detach(device_t self, int flags)
 		rv = config_detach(sc->sc_subdev, flags);
 	}
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-	                   sc->sc_dev);
+	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev, sc->sc_dev);
 
 	return (rv);
 }
@@ -348,7 +353,8 @@ uslsa_set(void *vsc, int portno, int reg, int onoff)
 
 	sc = vsc;
 
-	DPRINTF((sc->sc_dev, "%s(%p, %d, %d, %d)\n", __func__, vsc, portno, reg, onoff));
+	DPRINTF((sc->sc_dev, "%s(%p, %d, %d, %d)\n", __func__, vsc, portno,
+	    reg, onoff));
 
 	if (sc->sc_dying) {
 		return;
@@ -415,7 +421,8 @@ uslsa_param(void *vsc, int portno, struct termios *t)
 		    __func__, baud, usbd_errstr(status));
 
 		value = SLSA_RV_BAUDDIV(t->c_ospeed);
-		if ((ret = uslsa_request_set(sc, SLSA_R_SET_BAUDDIV, value)) != 0) {
+		if ((ret = uslsa_request_set(sc, SLSA_R_SET_BAUDDIV, value))
+		    != 0) {
 			device_printf(sc->sc_dev, "%s: SET_BAUDDIV failed\n",
 			       __func__);
 			return ret;

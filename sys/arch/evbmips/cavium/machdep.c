@@ -1,4 +1,4 @@
-/*	$NetBSD: machdep.c,v 1.5 2015/06/10 22:31:00 matt Exp $	*/
+/*	$NetBSD: machdep.c,v 1.10 2016/12/28 03:27:08 mrg Exp $	*/
 
 /*
  * Copyright 2001, 2002 Wasabi Systems, Inc.
@@ -112,9 +112,10 @@
  */
 
 #include "opt_multiprocessor.h"
+#include "opt_cavium.h"
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.5 2015/06/10 22:31:00 matt Exp $");
+__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.10 2016/12/28 03:27:08 mrg Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -179,6 +180,8 @@ void	mach_init(uint64_t, uint64_t, uint64_t, uint64_t);
 struct octeon_config octeon_configuration;
 struct octeon_btinfo octeon_btinfo;
 
+char octeon_nmi_stack[PAGE_SIZE] __section(".data1") __aligned(PAGE_SIZE);
+
 /*
  * Do all the stuff that locore normally does before calling main().
  */
@@ -192,7 +195,7 @@ mach_init(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3)
 	mach_init_bss();
 
 	KASSERT(MIPS_XKPHYS_P(arg3));
-	btinfo_paddr = mips64_ld_a64(arg3 + OCTEON_BTINFO_PADDR_OFFSET);
+	btinfo_paddr = mips3_ld(arg3 + OCTEON_BTINFO_PADDR_OFFSET);
 
 	/* Should be in first 256MB segment */
 	KASSERT(btinfo_paddr < 256 * 1024 * 1024);
@@ -201,7 +204,11 @@ mach_init(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3)
 	    sizeof(octeon_btinfo));
 
 	corefreq = octeon_btinfo.obt_eclock_hz;
+#ifdef OCTEON_MEMSIZE // avoid uvm issue
+	memsize = OCTEON_MEMSIZE;
+#else
 	memsize = octeon_btinfo.obt_dram_size * 1024 * 1024;
+#endif
 
 	octeon_cal_timer(corefreq);
 
@@ -215,11 +222,10 @@ mach_init(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3)
 	case 7: cpu_setmodel("Cavium Octeon CN52XX"); break;
 	default: cpu_setmodel("Cavium Octeon"); break;
 	}
-	
+
 	mach_init_vector();
 
-	/* set the VM page size */
-	uvm_setpagesize();
+	uvm_md_init();
 
 	mach_init_bus_space();
 
@@ -234,6 +240,18 @@ mach_init(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3)
 
 	boothowto = RB_AUTOBOOT;
 	boothowto |= AB_VERBOSE;
+
+#if 0
+	curcpu()->ci_nmi_stack = octeon_nmi_stack + sizeof(octeon_nmi_stack) - sizeof(struct kernframe);
+	*(uint64_t *)MIPS_PHYS_TO_KSEG0(0x800) = (intptr_t)octeon_reset_vector;
+	const uint64_t wdog_reg = MIPS_PHYS_TO_XKPHYS_UNCACHED(CIU_WDOG0);
+	uint64_t wdog = mips3_ld(wdog_reg);
+	wdog &= ~(CIU_WDOGX_MODE|CIU_WDOGX_LEN);
+	wdog |= __SHIFTIN(3, CIU_WDOGX_MODE);
+	wdog |= CIU_WDOGX_LEN;		// max period
+	mips64_sd_a64(wdog_reg, wdog);
+	printf("Watchdog enabled!\n");
+#endif
 
 #if defined(DDB)
 	if (boothowto & RB_KDB)
@@ -344,7 +362,7 @@ mach_init_memory(u_quad_t memsize)
 		mem_cluster_cnt = 3;
 	}
 
-	
+
 #ifdef MULTIPROCESSOR
 	const u_int cores = mipsNN_cp0_ebase_read() & MIPS_EBASE_CPUNUM;
 	mem_clusters[0].start = cores * 4096;
@@ -434,6 +452,9 @@ haltsys:
 		printf("\n");
 		printf("The operating system has halted.\n");
 		printf("Please press any key to reboot.\n\n");
+		cnpollc(1);	/* For proper keyboard command handling */
+		cngetc();
+		cnpollc(0);
 	}
 
 	printf("%s\n\n", ((howto & RB_HALT) != 0) ? "halted." : "rebooting...");

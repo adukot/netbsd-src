@@ -1,5 +1,5 @@
-/*	$Id: at91emac.c,v 1.16 2016/02/09 08:32:07 ozaki-r Exp $	*/
-/*	$NetBSD: at91emac.c,v 1.16 2016/02/09 08:32:07 ozaki-r Exp $	*/
+/*	$Id: at91emac.c,v 1.19 2017/02/20 08:25:57 ozaki-r Exp $	*/
+/*	$NetBSD: at91emac.c,v 1.19 2017/02/20 08:25:57 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 2007 Embedtronics Oy
@@ -33,7 +33,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: at91emac.c,v 1.16 2016/02/09 08:32:07 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: at91emac.c,v 1.19 2017/02/20 08:25:57 ozaki-r Exp $");
 
 #include <sys/types.h>
 #include <sys/param.h>
@@ -279,10 +279,9 @@ emac_intr(void *arg)
 						MCLBYTES, BUS_DMASYNC_POSTREAD);
 				bus_dmamap_unload(sc->sc_dmat, 
 					sc->rxq[bi].m_dmamap);
-				sc->rxq[bi].m->m_pkthdr.rcvif = ifp;
+				m_set_rcvif(sc->rxq[bi].m, ifp);
 				sc->rxq[bi].m->m_pkthdr.len = 
 					sc->rxq[bi].m->m_len = fl;
-				bpf_mtap(ifp, sc->rxq[bi].m);
 				DPRINTFN(2,("received %u bytes packet\n", fl));
 				if_percpuq_enqueue(ifp->if_percpuq, sc->rxq[bi].m);
 				if (mtod(m, intptr_t) & 3) {
@@ -313,9 +312,8 @@ emac_intr(void *arg)
 //		bus_dmamap_sync(sc->sc_dmat, sc->rbqpage_dmamap, 0, sc->rbqlen, BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 	}
 
-	if (emac_gctx(sc) > 0 && IFQ_IS_EMPTY(&ifp->if_snd) == 0) {
-		emac_ifstart(ifp);
-	} 
+	if (emac_gctx(sc) > 0)
+		if_schedule_deferred_start(ifp);
 #if 0 // reloop
 	irq = EMAC_READ(IntStsC);
 	if ((irq & (IntSts_RxSQ|IntSts_ECI)) != 0)
@@ -497,6 +495,7 @@ emac_init(struct emac_softc *sc)
 	ifp->if_softc = sc;
         IFQ_SET_READY(&ifp->if_snd);
         if_attach(ifp);
+	if_deferred_start_init(ifp, NULL);
         ether_ifattach(ifp, (sc)->sc_enaddr);
 }
 

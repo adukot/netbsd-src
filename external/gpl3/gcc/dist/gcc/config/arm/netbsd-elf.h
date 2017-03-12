@@ -75,13 +75,6 @@
   "%{mhard-float:%{!mfpu=*:-mfpu=vfp}}   \
    %{mfloat-abi=hard:%{!mfpu=*:-mfpu=vfp}}"
 
-#undef SUBTARGET_EXTRA_SPECS
-#define SUBTARGET_EXTRA_SPECS				\
-  { "subtarget_extra_asm_spec",	SUBTARGET_EXTRA_ASM_SPEC }, \
-  { "subtarget_asm_float_spec", SUBTARGET_ASM_FLOAT_SPEC }, \
-  { "netbsd_link_spec",		NETBSD_LINK_SPEC_ELF },	\
-  { "netbsd_entry_point",	NETBSD_ENTRY_POINT },
-
 #define NETBSD_ENTRY_POINT "__start"
 
 #undef LINK_SPEC
@@ -178,3 +171,8 @@ while (0)
 #undef FPUTYPE_DEFAULT
 #define FPUTYPE_DEFAULT "vfp"
 
+/* Ensure that libgcc does not attempt to define __[CD]TOR_LIST__[] for APCS,
+   which belongs in crtbegin on NetBSD.  */
+#ifndef __ARM_EABI__
+#define CTOR_LISTS_DEFINED_EXTERNALLY
+#endif

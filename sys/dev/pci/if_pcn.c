@@ -1,4 +1,4 @@
-/*	$NetBSD: if_pcn.c,v 1.61 2016/02/09 08:32:11 ozaki-r Exp $	*/
+/*	$NetBSD: if_pcn.c,v 1.64 2016/12/15 09:28:05 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 2001 Wasabi Systems, Inc.
@@ -65,7 +65,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_pcn.c,v 1.61 2016/02/09 08:32:11 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_pcn.c,v 1.64 2016/12/15 09:28:05 ozaki-r Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -812,6 +812,7 @@ pcn_attach(device_t parent, device_t self, void *aux)
 
 	/* Attach the interface. */
 	if_attach(ifp);
+	if_deferred_start_init(ifp, NULL);
 	ether_ifattach(ifp, enaddr);
 	rnd_attach_source(&sc->rnd_source, device_xname(self),
 	    RND_TYPE_NET, RND_FLAG_DEFAULT);
@@ -1288,7 +1289,7 @@ pcn_intr(void *arg)
 			pcn_init(ifp);
 
 		/* Try to get more packets going. */
-		pcn_start(ifp);
+		if_schedule_deferred_start(ifp);
 	}
 
 	return (handled);
@@ -1544,15 +1545,11 @@ pcn_rxintr(struct pcn_softc *sc)
 			}
 		}
 
-		m->m_pkthdr.rcvif = ifp;
+		m_set_rcvif(m, ifp);
 		m->m_pkthdr.len = m->m_len = len;
-
-		/* Pass this up to any BPF listeners. */
-		bpf_mtap(ifp, m);
 
 		/* Pass it on. */
 		if_percpuq_enqueue(ifp->if_percpuq, m);
-		ifp->if_ipackets++;
 	}
 
 	/* Update the receive pointer. */

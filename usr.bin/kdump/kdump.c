@@ -1,4 +1,4 @@
-/*	$NetBSD: kdump.c,v 1.123 2016/03/27 21:51:20 alnsn Exp $	*/
+/*	$NetBSD: kdump.c,v 1.125 2016/09/05 00:40:29 sevan Exp $	*/
 
 /*-
  * Copyright (c) 1988, 1993
@@ -39,7 +39,7 @@ __COPYRIGHT("@(#) Copyright (c) 1988, 1993\
 #if 0
 static char sccsid[] = "@(#)kdump.c	8.4 (Berkeley) 4/28/95";
 #else
-__RCSID("$NetBSD: kdump.c,v 1.123 2016/03/27 21:51:20 alnsn Exp $");
+__RCSID("$NetBSD: kdump.c,v 1.125 2016/09/05 00:40:29 sevan Exp $");
 #endif
 #endif /* not lint */
 
@@ -48,6 +48,7 @@ __RCSID("$NetBSD: kdump.c,v 1.123 2016/03/27 21:51:20 alnsn Exp $");
 #define _KMEMUSER        /* To get the pseudo errors defined */
 #include <sys/errno.h>
 #undef _KMEMUSER
+#include <sys/mman.h>
 #include <sys/time.h>
 #include <sys/uio.h>
 #include <sys/ktrace.h>
@@ -101,7 +102,6 @@ static const char * const linux_ptrace_ops[] = {
 	"PTRACE_SYSCALL",
 };
 
-int	main(int, char **);
 static int	fread_tail(void *, size_t, size_t);
 static int	dumpheader(struct ktr_header *);
 static void	output_long(u_long, int);
@@ -598,7 +598,43 @@ ktrsyscall(struct ktr_syscall *ktr)
 			ap += 2;
 			argcount -= 2;
 			c = ',';
-
+		} else if (strcmp(sys_name, "mmap") == 0 && argcount >= 6) {
+			char buf[1024];
+			putchar('(');
+			output_long((long)ap[0], !(decimal || small(ap[0])));
+			c = ',';
+			putchar(c);
+			output_long((long)ap[1], !(decimal || small(ap[1])));
+			putchar(c);
+			if (ap[2] == PROT_NONE) {
+			    fputs("PROT_NONE", stdout);
+			} else {
+			    const char *s = "";
+			    c = 0;
+			    if (ap[2] & PROT_READ) {
+				fputs("PROT_READ", stdout);
+				s = "|";
+				ap[2] &= ~PROT_READ;
+			    }
+			    if (ap[2] & PROT_WRITE) {
+				printf("%sPROT_WRITE", s);
+				ap[2] &= ~PROT_WRITE;
+				s = "|";
+			    }
+			    if (ap[2] & PROT_EXEC) {
+				printf("%sPROT_EXEC", s);
+				ap[2] &= ~PROT_EXEC;
+				s = "|";
+			    }
+			    if (ap[2]) {
+				printf("%s%#lx", s, (long)ap[2]);
+			    }
+			}
+			snprintb(buf, sizeof(buf), MAP_FMT, ap[3]);
+			printf(",%s", buf);
+			ap += 4;
+			argcount -= 4;
+			c = ',';
 		} else if (strcmp(sys_name, "ptrace") == 0 && argcount >= 1) {
 			putchar('(');
 			if (strcmp(emul->name, "linux") == 0 ||

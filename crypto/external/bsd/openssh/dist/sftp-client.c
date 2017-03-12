@@ -1,5 +1,5 @@
-/*	$NetBSD: sftp-client.c,v 1.15 2016/03/11 01:55:00 christos Exp $	*/
-/* $OpenBSD: sftp-client.c,v 1.121 2016/02/11 02:21:34 djm Exp $ */
+/*	$NetBSD: sftp-client.c,v 1.17 2016/12/25 00:07:47 christos Exp $	*/
+/* $OpenBSD: sftp-client.c,v 1.125 2016/09/12 01:22:38 deraadt Exp $ */
 
 /*
  * Copyright (c) 2001-2004 Damien Miller <djm@openbsd.org>
@@ -23,7 +23,8 @@
 /* XXX: copy between two remote sites */
 
 #include "includes.h"
-__RCSID("$NetBSD: sftp-client.c,v 1.15 2016/03/11 01:55:00 christos Exp $");
+__RCSID("$NetBSD: sftp-client.c,v 1.17 2016/12/25 00:07:47 christos Exp $");
+
 #include <sys/param.h>	/* MIN MAX */
 #include <sys/types.h>
 #include <sys/poll.h>
@@ -50,6 +51,7 @@ __RCSID("$NetBSD: sftp-client.c,v 1.15 2016/03/11 01:55:00 christos Exp $");
 #include "atomicio.h"
 #include "progressmeter.h"
 #include "misc.h"
+#include "utf8.h"
 
 #include "sftp.h"
 #include "sftp-common.h"
@@ -458,7 +460,7 @@ do_init(int fd_in, int fd_out, u_int transfer_buflen, u_int num_requests,
 
 	/* Some filexfer v.0 servers don't support large packets */
 	if (ret->version == 0)
-		ret->transfer_buflen = MIN(ret->transfer_buflen, 20480);
+		ret->transfer_buflen = MINIMUM(ret->transfer_buflen, 20480);
 
 	ret->limit_kbps = limit_kbps;
 	if (ret->limit_kbps > 0) {
@@ -512,8 +514,7 @@ do_lsreaddir(struct sftp_conn *conn, const char *path, int print_flag,
 	struct sshbuf *msg;
 	u_int count, id, i, expected_id, ents = 0;
 	size_t handle_len;
-	u_char type;
-	char *handle;
+	u_char type, *handle;
 	int status = SSH2_FX_FAILURE;
 	int r;
 
@@ -608,7 +609,7 @@ do_lsreaddir(struct sftp_conn *conn, const char *path, int print_flag,
 			}
 
 			if (print_flag)
-				printf("%s\n", longname);
+				mprintf("%s\n", longname);
 
 			/*
 			 * Directory entries should never contain '/'
@@ -1349,7 +1350,7 @@ do_download(struct sftp_conn *conn, const char *remote_path,
 				    req->offset, req->len, handle, handle_len);
 				/* Reduce the request size */
 				if (len < buflen)
-					buflen = MAX(MIN_READ_SIZE, len);
+					buflen = MAXIMUM(MIN_READ_SIZE, len);
 			}
 			if (max_req > 0) { /* max_req = 0 iff EOF received */
 				if (size > 0 && offset > size) {
@@ -1455,7 +1456,7 @@ download_dir_internal(struct sftp_conn *conn, const char *src, const char *dst,
 		return -1;
 	}
 	if (print_flag)
-		printf("Retrieving %s\n", src);
+		mprintf("Retrieving %s\n", src);
 
 	if (dirattrib->flags & SSH2_FILEXFER_ATTR_PERMISSIONS)
 		mode = dirattrib->perm & 01777;
@@ -1595,7 +1596,7 @@ do_upload(struct sftp_conn *conn, const char *local_path,
 	if (resume) {
 		/* Get remote file size if it exists */
 		if ((c = do_stat(conn, remote_path, 0)) == NULL) {
-			close(local_fd);                
+			close(local_fd);
 			return -1;
 		}
 
@@ -1787,7 +1788,7 @@ upload_dir_internal(struct sftp_conn *conn, const char *src, const char *dst,
 		return -1;
 	}
 	if (print_flag)
-		printf("Entering %s\n", src);
+		mprintf("Entering %s\n", src);
 
 	attrib_clear(&a);
 	stat_to_attrib(&sb, &a);

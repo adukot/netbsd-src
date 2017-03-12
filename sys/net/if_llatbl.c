@@ -1,4 +1,4 @@
-/*	$NetBSD: if_llatbl.c,v 1.13 2016/04/06 08:45:46 ozaki-r Exp $	*/
+/*	$NetBSD: if_llatbl.c,v 1.18 2017/03/03 06:27:20 msaitoh Exp $	*/
 /*
  * Copyright (c) 2004 Luigi Rizzo, Alessandro Cerri. All rights reserved.
  * Copyright (c) 2004-2008 Qing Li. All rights reserved.
@@ -33,6 +33,7 @@
 #include "opt_ddb.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
+#include "opt_net_mpsafe.h"
 #endif
 
 #include "arp.h"
@@ -60,6 +61,7 @@
 #include <net/if_dl.h>
 #include <net/route.h>
 #include <netinet/if_inarp.h>
+#include <netinet/in_var.h>
 #include <netinet6/in6_var.h>
 #include <netinet6/nd6.h>
 
@@ -423,8 +425,24 @@ lltable_purge_entries(struct lltable *llt)
 	IF_AFDATA_WUNLOCK(llt->llt_ifp);
 
 	LIST_FOREACH_SAFE(lle, &dchain, lle_chain, next) {
-		if (callout_halt(&lle->la_timer, &lle->lle_lock))
-			LLE_REMREF(lle);
+		/*
+		 * We need to release the lock here to lle_timer proceeds;
+		 * lle_timer should stop immediately if LLE_LINKED isn't set.
+		 * Note that we cannot pass lle->lle_lock to callout_halt
+		 * because it's a rwlock.
+		 */
+		LLE_ADDREF(lle);
+		LLE_WUNLOCK(lle);
+#ifdef NET_MPSAFE
+		callout_halt(&lle->la_timer, NULL);
+#else
+		if (mutex_owned(softnet_lock))
+			callout_halt(&lle->la_timer, softnet_lock);
+		else
+			callout_halt(&lle->la_timer, NULL);
+#endif
+		LLE_WLOCK(lle);
+		LLE_REMREF(lle);
 		llentry_free(lle);
 	}
 
@@ -556,6 +574,13 @@ lltable_unlink_entry(struct lltable *llt, struct llentry *lle)
 }
 
 void
+lltable_free_entry(struct lltable *llt, struct llentry *lle)
+{
+
+	llt->llt_free_entry(llt, lle);
+}
+
+void
 lltable_fill_sa_entry(const struct llentry *lle, struct sockaddr *sa)
 {
 	struct lltable *llt;
@@ -592,14 +617,18 @@ lla_rt_output(const u_char rtm_type, const int rtm_flags, const time_t rtm_expir
 	struct llentry *lle;
 	u_int laflags;
 	int error;
+	struct psref psref;
+	int bound;
 
 	KASSERTMSG(dl != NULL && dl->sdl_family == AF_LINK, "invalid dl");
 
+	bound = curlwp_bind();
 	if (sdl_index != 0)
-		ifp = if_byindex(sdl_index);
+		ifp = if_get_byindex(sdl_index, &psref);
 	else
-		ifp = if_byindex(dl->sdl_index);
+		ifp = if_get_byindex(dl->sdl_index, &psref);
 	if (ifp == NULL) {
+		curlwp_bindx(bound);
 		log(LOG_INFO, "%s: invalid ifp (sdl_index %d)\n",
 		    __func__, sdl_index != 0 ? sdl_index : dl->sdl_index);
 		return EINVAL;
@@ -628,7 +657,8 @@ lla_rt_output(const u_char rtm_type, const int rtm_flags, const time_t rtm_expir
 		    (lle->la_flags & LLE_STATIC || lle->la_expire == 0)) {
 			LLE_RUNLOCK(lle);
 			IF_AFDATA_WUNLOCK(ifp);
-			return EEXIST;
+			error = EEXIST;
+			goto out;
 		}
 		if (lle != NULL)
 			LLE_RUNLOCK(lle);
@@ -636,7 +666,8 @@ lla_rt_output(const u_char rtm_type, const int rtm_flags, const time_t rtm_expir
 		lle = lla_create(llt, 0, dst);
 		if (lle == NULL) {
 			IF_AFDATA_WUNLOCK(ifp);
-			return (ENOMEM);
+			error = ENOMEM;
+			goto out;
 		}
 
 		KASSERT(ifp->if_addrlen <= sizeof(lle->ll_addr));
@@ -665,11 +696,19 @@ lla_rt_output(const u_char rtm_type, const int rtm_flags, const time_t rtm_expir
 		IF_AFDATA_WUNLOCK(ifp);
 #if defined(INET) && NARP > 0
 		/* gratuitous ARP */
-		if ((laflags & LLE_PUB) && dst->sa_family == AF_INET)
-			arprequest(ifp,
-			    &((const struct sockaddr_in *)dst)->sin_addr,
-			    &((const struct sockaddr_in *)dst)->sin_addr,
-			    CLLADDR(dl));
+		if ((laflags & LLE_PUB) && dst->sa_family == AF_INET) {
+			const struct sockaddr_in *sin;
+			struct in_ifaddr *ia;
+			struct psref _psref;
+
+			sin = satocsin(dst);
+			ia = in_get_ia_on_iface_psref(sin->sin_addr,
+			    ifp, &_psref);
+			if (ia != NULL) {
+				arpannounce(ifp, &ia->ia_ifa, CLLADDR(dl));
+				ia4_release(ia, &_psref);
+			}
+		}
 #else
 		(void)laflags;
 #endif
@@ -680,12 +719,16 @@ lla_rt_output(const u_char rtm_type, const int rtm_flags, const time_t rtm_expir
 		IF_AFDATA_WLOCK(ifp);
 		error = lla_delete(llt, 0, dst);
 		IF_AFDATA_WUNLOCK(ifp);
-		return (error == 0 ? 0 : ENOENT);
+		error = (error == 0 ? 0 : ENOENT);
+		break;
 
 	default:
 		error = EINVAL;
 	}
 
+out:
+	if_put(ifp, &psref);
+	curlwp_bindx(bound);
 	return (error);
 }
 
@@ -752,7 +795,7 @@ llatbl_lle_show(struct llentry_sa *la)
 		char l3s[INET6_ADDRSTRLEN];
 
 		sin6 = (struct sockaddr_in6 *)&la->l3_addr;
-		ip6_sprintf(l3s, &sin6->sin6_addr);
+		IN6_PRINT(l3s, &sin6->sin6_addr);
 		db_printf(" l3_addr=%s\n", l3s);
 		break;
 	}

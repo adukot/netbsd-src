@@ -1,4 +1,4 @@
-/*	$NetBSD: mb86960.c,v 1.82 2016/02/09 08:32:10 ozaki-r Exp $	*/
+/*	$NetBSD: mb86960.c,v 1.84 2016/12/15 09:28:05 ozaki-r Exp $	*/
 
 /*
  * All Rights Reserved, Copyright (C) Fujitsu Limited 1995
@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: mb86960.c,v 1.82 2016/02/09 08:32:10 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: mb86960.c,v 1.84 2016/12/15 09:28:05 ozaki-r Exp $");
 
 /*
  * Device driver for Fujitsu MB86960A/MB86965A based Ethernet cards.
@@ -1064,9 +1064,6 @@ mb86960_rint(struct mb86960_softc *sc, uint8_t rstat)
 			 */
 			return;
 		}
-
-		/* Successfully received a packet.  Update stat. */
-		ifp->if_ipackets++;
 	}
 }
 
@@ -1286,7 +1283,7 @@ mb86960_get_packet(struct mb86960_softc *sc, u_int len)
 	MGETHDR(m, M_DONTWAIT, MT_DATA);
 	if (m == 0)
 		return 0;
-	m->m_pkthdr.rcvif = ifp;
+	m_set_rcvif(m, ifp);
 	m->m_pkthdr.len = len;
 
 	/* The following silliness is to make NFS happy. */
@@ -1329,12 +1326,6 @@ mb86960_get_packet(struct mb86960_softc *sc, u_int len)
 	else
 		bus_space_read_multi_stream_2(bst, bsh, FE_BMPR8,
 		    mtod(m, uint16_t *), (len + 1) >> 1);
-
-	/*
-	 * Check if there's a BPF listener on this interface.  If so, hand off
-	 * the raw packet to bpf.
-	 */
-	bpf_mtap(ifp, m);
 
 	if_percpuq_enqueue(ifp->if_percpuq, m);
 	return 1;

@@ -1,5 +1,5 @@
 #!/bin/sh -
-#	$NetBSD: MAKEDEV.tmpl,v 1.179 2016/01/28 19:06:39 riz Exp $
+#	$NetBSD: MAKEDEV.tmpl,v 1.183 2016/09/08 15:00:08 nonaka Exp $
 #
 # Copyright (c) 2003,2007,2008 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -264,6 +264,8 @@
 #	np*	UNIBUS Ethernet co-processor interface, for downloading.
 #	npf	NPF packet filter
 #	nsmb*	SMB requester
+#	nvme*	Non-Volatile Memory Host Controller Interface device driver
+#	nvme*ns* Non-Volatile Memory namespace
 #	openfirm OpenFirmware accessor
 #	pad*	Pseudo-audio device driver
 #	pci*	PCI bus access devices
@@ -586,8 +588,8 @@ setup()
 	esac
 
 	# If we are using mknod, then decide what options to pass it.
+	MKNOD="${TOOL_MKNOD:-mknod} -F netbsd"
 	if $do_mknod; then
-		MKNOD="${TOOL_MKNOD:-mknod} -F netbsd"
 		if $do_force; then
 			MKNOD="${MKNOD} -R"
 		else
@@ -2201,6 +2203,22 @@ vchiq)
 	mkdev vchiq c %vchiq_chr% 0 600
 	;;
 
+nvme[0-9]*ns[0-9]*)
+	unit=${i#nvme}
+	unit=${unit%ns*}
+	subunit=${i#nvme${unit}ns}
+	if [ 0$subunit -le 0 -o 0$subunit -ge 65536 ]; then
+		warn "bad nsid for $i: $subunit"
+		break
+	fi
+	mkdev nvme${unit}ns$subunit c %nvme_chr% $(($unit * 65536 + $subunit))
+	;;
+
+nvme[0-9]*)
+	unit=${i#nvme}
+	mkdev nvme$unit c %nvme_chr% $(($unit * 65536))
+	;;
+
 midevend)
 %MI_DEVICES_END%
 local)
@@ -2234,6 +2252,10 @@ makedisk_p8()
 {
 	name="$1"; unit="$2"; blk="$3"; chr="$4"
 
+	ro=%RAWDISK_OFF%
+	mkdev ${name}${unit}	b $blk $(($unit * 8 + $ro))	640 $g_operator
+	mkdev r${name}${unit}	c $chr $(($unit * 8 + $ro))	640 $g_operator
+
 	mkdev ${name}${unit}a	b $blk $(($unit * 8 + 0))	640 $g_operator
 	mkdev ${name}${unit}b	b $blk $(($unit * 8 + 1))	640 $g_operator
 	mkdev ${name}${unit}c	b $blk $(($unit * 8 + 2))	640 $g_operator
@@ -2256,6 +2278,10 @@ makedisk_p12high()
 {
 	ho=524280	# offset for partition 9 to 11 (same as ...p16high)
 	name="$1"; unit="$2"; blk="$3"; chr="$4"
+
+	ro=%RAWDISK_OFF%
+	mkdev ${name}${unit}	b $blk $(($unit * 8 + $ro))	640 $g_operator
+	mkdev r${name}${unit}	c $chr $(($unit * 8 + $ro))	640 $g_operator
 
 	mkdev ${name}${unit}a	b $blk $(($unit * 8 + 0))	640 $g_operator
 	mkdev ${name}${unit}b	b $blk $(($unit * 8 + 1))	640 $g_operator
@@ -2286,6 +2312,10 @@ makedisk_p12high()
 makedisk_p16()
 {
 	name="$1"; unit="$2"; blk="$3"; chr="$4"
+
+	ro=%RAWDISK_OFF%
+	mkdev ${name}${unit}	b $blk $(($unit * 16 + $ro))	640 $g_operator
+	mkdev r${name}${unit}	c $chr $(($unit * 16 + $ro))	640 $g_operator
 
 	mkdev ${name}${unit}a	b $blk $(($unit * 16 + 0))	640 $g_operator
 	mkdev ${name}${unit}b	b $blk $(($unit * 16 + 1))	640 $g_operator
@@ -2325,6 +2355,10 @@ makedisk_p16high()
 {
 	ho=524280	# offset for partition 9 to 16
 	name="$1"; unit="$2"; blk="$3"; chr="$4"
+
+	ro=%RAWDISK_OFF%
+	mkdev ${name}${unit}	b $blk $(($unit * 8 + $ro))	640 $g_operator
+	mkdev r${name}${unit}	c $chr $(($unit * 8 + $ro))	640 $g_operator
 
 	mkdev ${name}${unit}a	b $blk $(($unit * 8 + 0))	640 $g_operator
 	mkdev ${name}${unit}b	b $blk $(($unit * 8 + 1))	640 $g_operator
@@ -2368,6 +2402,9 @@ makedisk_minimal()
 	doff=%DISKMINOROFFSET%
 	ro=%RAWDISK_OFF%
 	rn=%RAWDISK_NAME%
+
+	mkdev ${name}${unit}	b $blk $(($unit * $doff + $ro))	640 $g_operator
+	mkdev r${name}${unit}	c $chr $(($unit * $doff + $ro))	640 $g_operator
 
 	mkdev ${name}${unit}a	b $blk $(($unit * $doff + 0))	640 $g_operator
 	mkdev ${name}${unit}$rn b $blk $(($unit * $doff + $ro)) 640 $g_operator

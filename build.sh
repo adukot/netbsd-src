@@ -1,5 +1,5 @@
 #! /usr/bin/env sh
-#	$NetBSD: build.sh,v 1.309 2016/04/29 16:08:09 christos Exp $
+#	$NetBSD: build.sh,v 1.315 2017/03/10 17:15:47 sevan Exp $
 #
 # Copyright (c) 2001-2011 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -458,7 +458,8 @@ initdefaults()
 
 	[ -d usr.bin/make ] || cd "$(dirname $0)"
 	[ -d usr.bin/make ] ||
-	    bomb "build.sh must be run from the top source level"
+	    bomb "usr.bin/make not found; build.sh must be run from the top \
+level of source directory"
 	[ -f share/mk/bsd.own.mk ] ||
 	    bomb "src/share/mk is missing; please re-fetch the source tree"
 
@@ -506,7 +507,7 @@ initdefaults()
 	# XXX Except that doesn't work on Solaris. Or many Linuces.
 	#
 	unset PWD
-	TOP=$(/bin/pwd -P 2>/dev/null || /bin/pwd 2>/dev/null)
+	TOP=$( (exec pwd -P 2>/dev/null) || (exec pwd 2>/dev/null) )
 
 	# The user can set HOST_SH in the environment, or we try to
 	# guess an appropriate value.  Then we set several other
@@ -1003,7 +1004,7 @@ usage()
 	fi
 	cat <<_usage_
 
-Usage: ${progname} [-EhnorUuxy] [-a arch] [-B buildid] [-C cdextras]
+Usage: ${progname} [-EhnoPRrUuxy] [-a arch] [-B buildid] [-C cdextras]
                 [-D dest] [-j njob] [-M obj] [-m mach] [-N noisy]
                 [-O obj] [-R release] [-S seed] [-T tools]
                 [-V var=[value]] [-w wrapper] [-X x11src] [-Y extsrcsrc]
@@ -1078,6 +1079,8 @@ Usage: ${progname} [-EhnorUuxy] [-a arch] [-B buildid] [-C cdextras]
     -O obj         Set obj root directory to obj; sets a MAKEOBJDIR pattern.
                    Unsets MAKEOBJDIRPREFIX.
     -o             Set MKOBJDIRS=no; do not create objdirs at start of build.
+    -P             Set MKREPRO and MKREPRO_TIMESTAMP to the latest source
+                   CVS timestamp for reproducible builds.
     -R release     Set RELEASEDIR to release.  [Default: releasedir]
     -r             Remove contents of TOOLDIR and DESTDIR before building.
     -S seed        Set BUILDSEED to seed.  [Default: NetBSD-majorversion]
@@ -1103,7 +1106,7 @@ _usage_
 
 parseoptions()
 {
-	opts='a:B:C:D:Ehj:M:m:N:nO:oR:rS:T:UuV:w:X:xY:yZ:'
+	opts='a:B:C:D:Ehj:M:m:N:nO:oPR:rS:T:UuV:w:X:xY:yZ:'
 	opt_a=false
 	opt_m=false
 
@@ -1217,6 +1220,10 @@ parseoptions()
 
 		-o)
 			MKOBJDIRS=no
+			;;
+
+		-P)
+			MKREPRO=yes
 			;;
 
 		-R)
@@ -1435,7 +1442,62 @@ sanitycheck()
 		;;
 	esac
 }
+# print_tooldir_make --
+# Try to find and print a path to an existing
+# ${TOOLDIR}/bin/${toolprefix}program
+print_tooldir_program()
+{
+	local possible_TOP_OBJ
+	local possible_TOOLDIR
+	local possible_program
+	local tooldir_program
+	local program=${1}
 
+	if [ -n "${TOOLDIR}" ]; then
+		echo "${TOOLDIR}/bin/${toolprefix}${program}"
+		return
+	fi
+
+	# Set host_ostype to something like "NetBSD-4.5.6-i386".  This
+	# is intended to match the HOST_OSTYPE variable in <bsd.own.mk>.
+	#
+	local host_ostype="${uname_s}-$(
+		echo "${uname_r}" | sed -e 's/([^)]*)//g' -e 's/ /_/g'
+		)-$(
+		echo "${uname_p}" | sed -e 's/([^)]*)//g' -e 's/ /_/g'
+		)"
+
+	# Look in a few potential locations for
+	# ${possible_TOOLDIR}/bin/${toolprefix}${program}.
+	# If we find it, then set possible_program.
+	#
+	# In the usual case (without interference from environment
+	# variables or /etc/mk.conf), <bsd.own.mk> should set TOOLDIR to
+	# "${_SRC_TOP_OBJ_}/tooldir.${host_ostype}".
+	#
+	# In practice it's difficult to figure out the correct value
+	# for _SRC_TOP_OBJ_.  In the easiest case, when the -M or -O
+	# options were passed to build.sh, then ${TOP_objdir} will be
+	# the correct value.  We also try a few other possibilities, but
+	# we do not replicate all the logic of <bsd.obj.mk>.
+	#
+	for possible_TOP_OBJ in \
+		"${TOP_objdir}" \
+		"${MAKEOBJDIRPREFIX:+${MAKEOBJDIRPREFIX}${TOP}}" \
+		"${TOP}" \
+		"${TOP}/obj" \
+		"${TOP}/obj.${MACHINE}"
+	do
+		[ -n "${possible_TOP_OBJ}" ] || continue
+		possible_TOOLDIR="${possible_TOP_OBJ}/tooldir.${host_ostype}"
+		possible_program="${possible_TOOLDIR}/bin/${toolprefix}${program}"
+		if [ -x "${possible_make}" ]; then
+			echo ${possible_program}
+			return;
+		fi
+	done
+	echo ""
+}
 # print_tooldir_make --
 # Try to find and print a path to an existing
 # ${TOOLDIR}/bin/${toolprefix}make, for use by rebuildmake() before a
@@ -1459,56 +1521,11 @@ sanitycheck()
 #
 print_tooldir_make()
 {
-	local possible_TOP_OBJ
-	local possible_TOOLDIR
 	local possible_make
+	local possible_TOOLDIR
 	local tooldir_make
 
-	if [ -n "${TOOLDIR}" ]; then
-		echo "${TOOLDIR}/bin/${toolprefix}make"
-		return 0
-	fi
-
-	# Set host_ostype to something like "NetBSD-4.5.6-i386".  This
-	# is intended to match the HOST_OSTYPE variable in <bsd.own.mk>.
-	#
-	local host_ostype="${uname_s}-$(
-		echo "${uname_r}" | sed -e 's/([^)]*)//g' -e 's/ /_/g'
-		)-$(
-		echo "${uname_p}" | sed -e 's/([^)]*)//g' -e 's/ /_/g'
-		)"
-
-	# Look in a few potential locations for
-	# ${possible_TOOLDIR}/bin/${toolprefix}make.
-	# If we find it, then set possible_make.
-	#
-	# In the usual case (without interference from environment
-	# variables or /etc/mk.conf), <bsd.own.mk> should set TOOLDIR to
-	# "${_SRC_TOP_OBJ_}/tooldir.${host_ostype}".
-	#
-	# In practice it's difficult to figure out the correct value
-	# for _SRC_TOP_OBJ_.  In the easiest case, when the -M or -O
-	# options were passed to build.sh, then ${TOP_objdir} will be
-	# the correct value.  We also try a few other possibilities, but
-	# we do not replicate all the logic of <bsd.obj.mk>.
-	#
-	for possible_TOP_OBJ in \
-		"${TOP_objdir}" \
-		"${MAKEOBJDIRPREFIX:+${MAKEOBJDIRPREFIX}${TOP}}" \
-		"${TOP}" \
-		"${TOP}/obj" \
-		"${TOP}/obj.${MACHINE}"
-	do
-		[ -n "${possible_TOP_OBJ}" ] || continue
-		possible_TOOLDIR="${possible_TOP_OBJ}/tooldir.${host_ostype}"
-		possible_make="${possible_TOOLDIR}/bin/${toolprefix}make"
-		if [ -x "${possible_make}" ]; then
-			break
-		else
-			unset possible_make
-		fi
-	done
-
+	possible_make=$(print_tooldir_program make)
 	# If the above didn't work, search the PATH for a suitable
 	# ${toolprefix}make, nbmake, bmake, or make.
 	#
@@ -1876,7 +1893,7 @@ createmakewrapper()
 	eval cat <<EOF ${makewrapout}
 #! ${HOST_SH}
 # Set proper variables to allow easy "make" building of a NetBSD subtree.
-# Generated from:  \$NetBSD: build.sh,v 1.309 2016/04/29 16:08:09 christos Exp $
+# Generated from:  \$NetBSD: build.sh,v 1.315 2017/03/10 17:15:47 sevan Exp $
 # with these arguments: ${_args}
 #
 
@@ -1907,8 +1924,8 @@ EOF
 
 make_in_dir()
 {
-	dir="$1"
-	op="$2"
+	local dir="$1"
+	local op="$2"
 	${runcmd} cd "${dir}" ||
 	    bomb "Failed to cd to \"${dir}\""
 	${runcmd} "${makewrapper}" ${parallel} ${op} ||
@@ -2100,7 +2117,8 @@ RUMP_LIBSETS='
 	-lrumpkern_tty -lrumpvfs -lrump,
 	-lrumpfs_tmpfs -lrumpvfs -lrump,
 	-lrumpfs_ffs -lrumpfs_msdos -lrumpvfs -lrumpdev_disk -lrumpdev -lrump,
-	-lrumpnet_virtif -lrumpnet_netinet -lrumpnet_net -lrumpnet -lrump,
+	-lrumpnet_virtif -lrumpnet_netinet -lrumpnet_net -lrumpnet 
+	    -lrumpdev -lrumpvfs -lrump,
 	-lrumpnet_sockin -lrumpfs_smbfs -lrumpdev_netsmb
 	    -lrumpkern_crypto -lrumpdev -lrumpnet -lrumpvfs -lrump,
 	-lrumpnet_sockin -lrumpfs_nfs -lrumpnet -lrumpvfs -lrump,
@@ -2171,6 +2189,23 @@ dorump()
 	statusmsg "Rump build&link tests successful"
 }
 
+setup_mkrepro()
+{
+	if [ ${MKREPRO-no} != "yes" ]; then
+		return
+	fi
+	buildtools
+	local dirs=${NETBSDSRCDIR-/usr/src}/
+	if [ ${MKX11-no} = "yes" ]; then
+		dirs="$dirs ${X11SRCDIR-/usr/xsrc}/"
+	fi
+	local cvslatest=$(print_tooldir_program cvslatest)
+	MKREPRO_TIMESTAMP=$(${cvslatest} ${dirs})
+	[ -n "${MKREPRO_TIMESTAMP}" ] || bomb "Failed to compute timestamp"
+	statusmsg2 "MKREPRO_TIMESTAMP" "$(date -r ${MKREPRO_TIMESTAMP})"
+	export MKREPRO MKREPRO_TIMESTAMP
+}
+
 main()
 {
 	initdefaults
@@ -2223,7 +2258,14 @@ main()
 			statusmsg "Built sets to ${setdir}"
 			;;
 
-		cleandir|obj|build|distribution|release|sourcesets|syspkgs|params)
+		build|distribution|release)
+			setup_mkrepro
+			${runcmd} "${makewrapper}" ${parallel} ${op} ||
+			    bomb "Failed to make ${op}"
+			statusmsg "Successful make ${op}"
+			;;
+
+		cleandir|obj|sourcesets|syspkgs|params)
 			${runcmd} "${makewrapper}" ${parallel} ${op} ||
 			    bomb "Failed to make ${op}"
 			statusmsg "Successful make ${op}"

@@ -1,5 +1,5 @@
 #include <sys/cdefs.h>
- __RCSID("$NetBSD: if-options.c,v 1.33 2016/05/09 10:15:59 roy Exp $");
+ __RCSID("$NetBSD: if-options.c,v 1.36 2016/10/09 09:18:26 roy Exp $");
 
 /*
  * dhcpcd - DHCP client daemon
@@ -104,6 +104,7 @@
 #define O_NODELAY		O_BASE + 44
 #define O_INFORM6		O_BASE + 45
 #define O_LASTLEASE_EXTEND	O_BASE + 46
+#define O_INACTIVE		O_BASE + 47
 
 const struct option cf_options[] = {
 	{"background",      no_argument,       NULL, 'b'},
@@ -203,6 +204,7 @@ const struct option cf_options[] = {
 	{"nodelay",         no_argument,       NULL, O_NODELAY},
 	{"noup",            no_argument,       NULL, O_NOUP},
 	{"lastleaseextend", no_argument,       NULL, O_LASTLEASE_EXTEND},
+	{"inactive",        no_argument,       NULL, O_INACTIVE},
 	{NULL,              0,                 NULL, '\0'}
 };
 
@@ -288,7 +290,7 @@ parse_string_hwaddr(char *sbuf, size_t slen, const char *str, int clid)
 	size_t l;
 	const char *p;
 	int i, punt_last = 0;
-	char c[4];
+	char c[4], cmd;
 
 	/* If surrounded by quotes then it's a string */
 	if (*str == '"') {
@@ -326,28 +328,25 @@ parse_string_hwaddr(char *sbuf, size_t slen, const char *str, int clid)
 		}
 		if (*str == '\\') {
 			str++;
-			switch(*str) {
+			switch((cmd = *str++)) {
 			case '\0':
+				str--;
 				break;
 			case 'b':
 				if (sbuf)
 					*sbuf++ = '\b';
-				str++;
 				break;
 			case 'n':
 				if (sbuf)
 					*sbuf++ = '\n';
-				str++;
 				break;
 			case 'r':
 				if (sbuf)
 					*sbuf++ = '\r';
-				str++;
 				break;
 			case 't':
 				if (sbuf)
 					*sbuf++ = '\t';
-				str++;
 				break;
 			case 'x':
 				/* Grab a hex code */
@@ -381,8 +380,7 @@ parse_string_hwaddr(char *sbuf, size_t slen, const char *str, int clid)
 				break;
 			default:
 				if (sbuf)
-					*sbuf++ = *str;
-				str++;
+					*sbuf++ = cmd;
 				break;
 			}
 		} else {
@@ -432,12 +430,14 @@ parse_iaid(uint8_t *iaid, const char *arg, size_t len)
 	return parse_iaid1(iaid, arg, len, 1);
 }
 
+#ifdef AUTH
 static int
 parse_uint32(uint32_t *i, const char *arg)
 {
 
 	return parse_iaid1((uint8_t *)i, arg, sizeof(uint32_t), 0);
 }
+#endif
 
 static char **
 splitv(struct dhcpcd_ctx *ctx, int *argc, char **argv, const char *arg)
@@ -627,6 +627,7 @@ strskipwhite(const char *s)
 	return UNCONST(s);
 }
 
+#ifdef AUTH
 /* Find the end pointer of a string. */
 static char *
 strend(const char *s)
@@ -648,6 +649,7 @@ strend(const char *s)
 	}
 	return UNCONST(++s);
 }
+#endif
 
 static int
 parse_option(struct dhcpcd_ctx *ctx, const char *ifname, struct if_options *ifo,
@@ -666,12 +668,14 @@ parse_option(struct dhcpcd_ctx *ctx, const char *ifname, struct if_options *ifo,
 	struct dhcp_opt **dop, *ndop;
 	size_t *dop_len, dl, odl;
 	struct vivco *vivco;
-	struct token *token;
 	struct group *grp;
+#ifdef AUTH
+	struct token *token;
+#endif
 #ifdef _REENTRANT
 	struct group grpbuf;
 #endif
-#ifdef INET6
+#ifdef DHCP6
 	size_t sl;
 	struct if_ia *ia;
 	uint8_t iaid[4];
@@ -1093,7 +1097,7 @@ parse_option(struct dhcpcd_ctx *ctx, const char *ifname, struct if_options *ifo,
 				*fp = ' ';
 				return -1;
 			}
-			if (parse_addr(ctx, &rt->dest, &rt->net, p) == -1 ||
+			if (parse_addr(ctx, &rt->dest, &rt->mask, p) == -1 ||
 			    parse_addr(ctx, &rt->gate, NULL, np) == -1)
 			{
 				free(rt);
@@ -1118,7 +1122,7 @@ parse_option(struct dhcpcd_ctx *ctx, const char *ifname, struct if_options *ifo,
 				return -1;
 			}
 			rt->dest.s_addr = INADDR_ANY;
-			rt->net.s_addr = INADDR_ANY;
+			rt->mask.s_addr = INADDR_ANY;
 			if (parse_addr(ctx, &rt->gate, NULL, p) == -1) {
 				free(rt);
 				return -1;
@@ -1179,8 +1183,8 @@ parse_option(struct dhcpcd_ctx *ctx, const char *ifname, struct if_options *ifo,
 			}
 			nconf = realloc(ifo->config, sizeof(char *) * (dl + 2));
 			if (nconf == NULL) {
-				free(p);
 				logger(ctx, LOG_ERR, "%s: %m", __func__);
+				free(p);
 				return -1;
 			}
 			ifo->config = nconf;
@@ -1327,7 +1331,7 @@ parse_option(struct dhcpcd_ctx *ctx, const char *ifname, struct if_options *ifo,
 	case O_NOALIAS:
 		ifo->options |= DHCPCD_NOALIAS;
 		break;
-#ifdef INET6
+#ifdef DHCP6
 	case O_IA_NA:
 		i = D6_OPTION_IA_NA;
 		/* FALLTHROUGH */
@@ -1901,6 +1905,7 @@ err_sla:
 		break;
 	case O_AUTHPROTOCOL:
 		ARG_REQUIRED;
+#ifdef AUTH
 		fp = strwhite(arg);
 		if (fp)
 			*fp++ = '\0';
@@ -1949,8 +1954,13 @@ err_sla:
 		}
 		ifo->auth.options |= DHCPCD_AUTH_SEND;
 		break;
+#else
+		logger(ctx, LOG_ERR, "no authentication support");
+		return -1;
+#endif
 	case O_AUTHTOKEN:
 		ARG_REQUIRED;
+#ifdef AUTH
 		fp = strwhite(arg);
 		if (fp == NULL) {
 			logger(ctx, LOG_ERR, "authtoken requires a realm");
@@ -2043,6 +2053,10 @@ err_sla:
 		token->key = malloc(token->key_len);
 		parse_string((char *)token->key, token->key_len, arg);
 		TAILQ_INSERT_TAIL(&ifo->auth.tokens, token, next);
+#else
+		logger(ctx, LOG_ERR, "no authentication support");
+		return -1;
+#endif
 		break;
 	case O_AUTHNOTREQUIRED:
 		ifo->auth.options &= ~DHCPCD_AUTH_REQUIRE;
@@ -2135,6 +2149,9 @@ err_sla:
 		break;
 	case O_LASTLEASE_EXTEND:
 		ifo->options |= DHCPCD_LASTLEASE | DHCPCD_LASTLEASE_EXTEND;
+		break;
+	case O_INACTIVE:
+		ifo->options |= DHCPCD_INACTIVE;
 		break;
 	default:
 		return 0;
@@ -2246,7 +2263,9 @@ default_config(struct dhcpcd_ctx *ctx)
 	ifo->reboot = DEFAULT_REBOOT;
 	ifo->metric = -1;
 	ifo->auth.options |= DHCPCD_AUTH_REQUIRE;
+#ifdef AUTH
 	TAILQ_INIT(&ifo->auth.tokens);
+#endif
 
 	/* Inherit some global defaults */
 	if (ctx->options & DHCPCD_PERSISTENT)
@@ -2343,19 +2362,25 @@ read_config(struct dhcpcd_ctx *ctx,
 		buf = malloc(buflen);
 		if (buf == NULL) {
 			logger(ctx, LOG_ERR, "%s: %m", __func__);
+			free_options(ifo);
 			return NULL;
 		}
 		ldop = edop = NULL;
 		for (e = dhcpcd_embedded_conf; *e; e++) {
 			ol = strlen(*e) + 1;
 			if (ol > buflen) {
+				char *nbuf;
+
 				buflen = ol;
-				buf = realloc(buf, buflen);
-				if (buf == NULL) {
-					logger(ctx, LOG_ERR, "%s: %m", __func__);
+				nbuf = realloc(buf, buflen);
+				if (nbuf == NULL) {
+					logger(ctx, LOG_ERR,
+					    "%s: %m", __func__);
 					free(buf);
+					free_options(ifo);
 					return NULL;
 				}
+				buf = nbuf;
 			}
 			memcpy(buf, *e, ol);
 			line = buf;
@@ -2560,7 +2585,9 @@ free_options(struct if_options *ifo)
 	size_t i;
 	struct dhcp_opt *opt;
 	struct vivco *vo;
+#ifdef AUTH
 	struct token *token;
+#endif
 
 	if (ifo) {
 		if (ifo->environ) {
@@ -2613,6 +2640,7 @@ free_options(struct if_options *ifo)
 #endif
 		free(ifo->ia);
 
+#ifdef AUTH
 		while ((token = TAILQ_FIRST(&ifo->auth.tokens))) {
 			TAILQ_REMOVE(&ifo->auth.tokens, token, next);
 			if (token->realm_len)
@@ -2620,6 +2648,7 @@ free_options(struct if_options *ifo)
 			free(token->key);
 			free(token);
 		}
+#endif
 		free(ifo);
 	}
 }

@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.628 2016/05/01 10:21:01 nonaka Exp $
+#	$NetBSD: Makefile,v 1.634 2017/03/06 09:06:01 pgoyette Exp $
 #	@(#)Makefile	8.1 (Berkeley) 6/18/93
 
 MAN=	aac.4 ac97.4 acardide.4 aceride.4 acphy.4 \
@@ -38,7 +38,7 @@ MAN=	aac.4 ac97.4 acardide.4 aceride.4 acphy.4 \
 	ixpide.4 \
 	jme.4 jmide.4 joy.4 \
 	kloader.4 kse.4 ksyms.4 kttcp.4 \
-	lc.4 ld.4 lii.4 lo.4 lua.4 lxtphy.4 \
+	l2tp.4 lc.4 ld.4 lii.4 lo.4 lua.4 lxtphy.4 \
 	mainbus.4 makphy.4 malo.4 mbe.4 mca.4 mcclock.4 md.4 mfb.4 \
 	mfi.4 mhzc.4 \
 	micphy.4 midi.4 mii.4 mk48txx.4 mlx.4 mly.4 mpls.4 mpii.4 mpt.4 mpu.4 mtd.4 \
@@ -49,9 +49,9 @@ MAN=	aac.4 ac97.4 acardide.4 aceride.4 acphy.4 \
 	oak.4 oosiop.4 opl.4 options.4 optiide.4 osiop.4 otus.4 \
 	pad.4 pas.4 pcdisplay.4 pcf8563rtc.4 pciide.4 pckbc.4 pckbd.4 pcn.4 \
 	pcppi.4 pcscp.4 pcweasel.4 pdcide.4 pdcsata.4 piixide.4 piixpcib.4 \
-	piixpm.4 pim.4 plip.4 pms.4 pmu.4 pnaphy.4 ppbus.4 ppp.4 pppoe.4 \
-	pseye.4 ptcd.4 ptm.4 pty.4 puc.4 pud.4 puffs.4 pwdog.4 px.4 pxg.4 \
-	qe.4 qec.4 qsphy.4 \
+	piixpm.4 pim.4 plip.4 pm3fb.4 pms.4 pmu.4 pnaphy.4 ppbus.4 ppp.4 pppoe.4 \
+	pseye.4 ptcd.4 ptm.4 pty.4 puc.4 pud.4 puffs.4 pwdog.4 px.4 pxaip.4 \
+	pxg.4 qe.4 qec.4 qsphy.4 \
 	raid.4 ral.4 ray.4 rcons.4 rdcphy.4 re.4 rgephy.4 rlphy.4 \
 	rnd.4 route.4 rs5c372rtc.4 rtk.4 rtsx.4 rtw.4 rtwn.4 rum.4 run.4 \
 	s390rtc.4 satalink.4 sbus.4 scc.4 schide.4 \
@@ -61,7 +61,7 @@ MAN=	aac.4 ac97.4 acardide.4 aceride.4 acphy.4 \
 	sm.4 smsh.4 sn.4 sony.4 spc.4 speaker.4 spif.4 sqphy.4 ss.4 \
 	st.4 ste.4 stge.4 sti.4 stpcide.4 sv.4 strip.4 \
 	svwsata.4 swsensor.4 swwdog.4 sysmon.4 \
-	tap.4 tc.4 tcds.4 tcp.4 tdvfb.4 termios.4 tfb.4 thinkpad.4 \
+	tap.4 tc.4 tcds.4 tcp.4 tcu.4 tdvfb.4 termios.4 tfb.4 thinkpad.4 \
 	ti.4 tl.4 tlp.4 tlphy.4 tpm.4 tprof.4 tr.4 tra.4 \
 	trm.4 tty.4 tun.4 tqphy.4 twa.4 twe.4 txp.4 \
 	uark.4 ubsec.4 udp.4 uep.4 ug.4 uha.4 uk.4 ukphy.4 unix.4 userconf.4 \
@@ -83,7 +83,8 @@ MAN+=	atu.4 aubtfwl.4 aue.4 axe.4 axen.4 cdce.4 cue.4 ehci.4 kue.4 ohci.4 \
 	urio.4 url.4 urndis.4 urtw.4 urtwn.4 \
 	usb.4 uscanner.4 uslsa.4 usmsc.4 usscanner.4 \
 	ustir.4 uthum.4 utoppy.4 uts.4 uvideo.4 uvisor.4 uvscom.4 uyap.4 \
-	uyurex.4
+	uyurex.4 \
+	xhci.4 \
 
 # Ir devices
 MAN+=	irframe.4 cir.4 irframetty.4 oboe.4
@@ -183,6 +184,7 @@ MLINKS+=acpiwmi.4 wmidell.4 \
 	acpiwmi.4 wmieeepc.4 \
 	acpiwmi.4 wmihp.4 \
 	acpiwmi.4 wmimsi.4
+MLINKS+=ahcisata.4 ahci.4
 MLINKS+=aibs.4 aiboost.4
 MLINKS+=ata.4 atabus.4
 MLINKS+=audio.4 audioctl.4

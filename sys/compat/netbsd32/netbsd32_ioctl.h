@@ -1,4 +1,4 @@
-/*	$NetBSD: netbsd32_ioctl.h,v 1.53 2015/12/08 20:36:14 christos Exp $	*/
+/*	$NetBSD: netbsd32_ioctl.h,v 1.56 2016/12/26 23:05:06 christos Exp $	*/
 
 /*
  * Copyright (c) 1998, 2001 Matthew R. Green
@@ -552,7 +552,7 @@ struct netbsd32_clockctl_clock_settime {
 
 struct netbsd32_clockctl_ntp_adjtime {
 	netbsd32_timexp_t tp;
-	/* register_t */ int32_t retval;
+	register32_t retval;
 };
 
 #define CLOCKCTL_NTP_ADJTIME32 _IOWR('C', 0x8, \
@@ -575,15 +575,7 @@ struct netbsd32_ksyms_gvalue {
 #define	KIOCGSYMBOL32	_IOWR('l', 5, struct netbsd32_ksyms_gsymbol)
 #endif /* KIOCGSYMBOL */
 
-/* From net/npf/npf.h */
-typedef struct in6_addr		netbsd32_npf_addr_t;
-typedef uint8_t			netbsd32_npf_netmask_t;
-
-typedef struct netbsd32_npf_ioctl_ent {
-	int			alen;
-	netbsd32_npf_addr_t	addr;
-	netbsd32_npf_netmask_t	mask;
-} netbsd32_npf_ioctl_ent_t;
+#include <net/npf/npf.h>
 
 typedef struct netbsd32_npf_ioctl_buf {
 	netbsd32_voidp		buf;
@@ -594,7 +586,7 @@ typedef struct netbsd32_npf_ioctl_table {
 	int			nct_cmd;
 	netbsd32_charp		nct_name;
 	union {
-		netbsd32_npf_ioctl_ent_t ent;
+		npf_ioctl_ent_t ent;
 		netbsd32_npf_ioctl_buf_t buf;
 	} nct_data;
 } netbsd32_npf_ioctl_table_t;
@@ -604,3 +596,22 @@ typedef struct netbsd32_npf_ioctl_table {
 #define IOC_NPF_STATS32         _IOW('N', 104, netbsd32_voidp)
 #define IOC_NPF_SAVE32          _IOR('N', 105, struct netbsd32_plistref)
 #define IOC_NPF_RULE32          _IOWR('N', 107, struct netbsd32_plistref)
+
+/* From sys/drvctlio.h */
+struct netbsd32_devlistargs {
+	char			l_devname[16];
+	netbsd32_charpp		l_childname;
+	netbsd32_size_t		l_children;
+};
+
+struct netbsd32_devrescanargs {
+	char			busname[16];
+	char			ifattr[16];
+	unsigned int		numlocators;
+	netbsd32_intp		locators;
+};
+
+#define	DRVRESCANBUS32		_IOW('D', 124, struct netbsd32_devrescanargs)
+#define DRVCTLCOMMAND32		_IOWR('D', 125, struct netbsd32_plistref)
+#define	DRVLISTDEV32		_IOWR('D', 127, struct netbsd32_devlistargs)
+#define DRVGETEVENT32		_IOR('D', 128, struct netbsd32_plistref)

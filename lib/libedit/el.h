@@ -1,4 +1,4 @@
-/*	$NetBSD: el.h,v 1.39 2016/05/02 16:48:34 christos Exp $	*/
+/*	$NetBSD: el.h,v 1.41 2016/05/24 15:00:45 christos Exp $	*/
 
 /*-
  * Copyright (c) 1992, 1993
@@ -114,7 +114,6 @@ struct editline {
 	int		  el_outfd;	/* Output file descriptor	*/
 	int		  el_errfd;	/* Error file descriptor	*/
 	int		  el_flags;	/* Various flags.		*/
-	int		  el_errno;	/* Local copy of errno		*/
 	coord_t		  el_cursor;	/* Cursor location		*/
 	wchar_t		**el_display;	/* Real screen image = what is there */
 	wchar_t		**el_vdisplay;	/* Virtual screen image = what we see */
@@ -139,7 +138,7 @@ struct editline {
 	LineInfo          el_lgcylinfo; /* Legacy LineInfo buffer       */
 };
 
-protected int	el_editmode(EditLine *, int, const wchar_t **);
+libedit_private int	el_editmode(EditLine *, int, const wchar_t **);
 
 #ifdef DEBUG
 #define	EL_ABORT(a)	do { \

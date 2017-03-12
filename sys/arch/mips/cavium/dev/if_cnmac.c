@@ -1,8 +1,8 @@
-/*	$NetBSD: if_cnmac.c,v 1.2 2016/02/09 08:32:09 ozaki-r Exp $	*/
+/*	$NetBSD: if_cnmac.c,v 1.5 2016/12/15 09:28:03 ozaki-r Exp $	*/
 
 #include <sys/cdefs.h>
 #if 0
-__KERNEL_RCSID(0, "$NetBSD: if_cnmac.c,v 1.2 2016/02/09 08:32:09 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_cnmac.c,v 1.5 2016/12/15 09:28:03 ozaki-r Exp $");
 #endif
 
 #include "opt_octeon.h"
@@ -946,11 +946,19 @@ octeon_eth_send_makecmd(struct octeon_eth_softc *sc, struct mbuf *m,
 	 */
 	pko_cmd_w0 = octeon_eth_send_makecmd_w0(sc->sc_fau_done.fd_regno,
 	    0, m->m_pkthdr.len, segs);
-	pko_cmd_w1 = octeon_eth_send_makecmd_w1(
-	    (segs == 1) ? m->m_pkthdr.len : segs,
-	    (segs == 1) ? 
-		kvtophys((vaddr_t)m->m_data) :
-		MIPS_XKPHYS_TO_PHYS(gbuf));
+	if (segs == 1) {
+		pko_cmd_w1 = octeon_eth_send_makecmd_w1(
+		    m->m_pkthdr.len, kvtophys((vaddr_t)m->m_data));
+	} else {
+#ifdef __mips_n32
+		KASSERT(MIPS_KSEG0_P(gbuf));
+		pko_cmd_w1 = octeon_eth_send_makecmd_w1(segs,
+		    MIPS_KSEG0_TO_PHYS(gbuf));
+#else
+		pko_cmd_w1 = octeon_eth_send_makecmd_w1(segs,
+		    MIPS_XKPHYS_TO_PHYS(gbuf));
+#endif
+	}
 
 	*rpko_cmd_w0 = pko_cmd_w0;
 	*rpko_cmd_w1 = pko_cmd_w1;
@@ -966,7 +974,12 @@ octeon_eth_send_cmd(struct octeon_eth_softc *sc, uint64_t pko_cmd_w0,
 	uint64_t *cmdptr;
 	int result = 0;
 
+#ifdef __mips_n32
+	KASSERT((sc->sc_cmdptr.cmdptr & ~MIPS_PHYS_MASK) == 0);
+	cmdptr = (uint64_t *)MIPS_PHYS_TO_KSEG0(sc->sc_cmdptr.cmdptr);
+#else
 	cmdptr = (uint64_t *)MIPS_PHYS_TO_XKPHYS_CACHED(sc->sc_cmdptr.cmdptr);
+#endif
 	cmdptr += sc->sc_cmdptr.cmdptr_idx;
 
 	OCTEON_ETH_KASSERT(cmdptr != NULL);
@@ -1047,7 +1060,12 @@ octeon_eth_send(struct octeon_eth_softc *sc, struct mbuf *m)
 	}
 	OCTEON_EVCNT_INC(sc, txbufgbget);
 
+#ifdef __mips_n32
+	KASSERT((gaddr & ~MIPS_PHYS_MASK) == 0);
+	gbuf = (uint64_t *)(uintptr_t)MIPS_PHYS_TO_KSEG0(gaddr);
+#else
 	gbuf = (uint64_t *)(uintptr_t)MIPS_PHYS_TO_XKPHYS_CACHED(gaddr);
+#endif
 
 	OCTEON_ETH_KASSERT(gbuf != NULL);
 
@@ -1312,7 +1330,12 @@ octeon_eth_recv_mbuf(struct octeon_eth_softc *sc, uint64_t *work,
 		vaddr_t addr;
 		vaddr_t start_buffer;
 
+#ifdef __mips_n32
+		KASSERT((word3 & ~MIPS_PHYS_MASK) == 0);
+		addr = MIPS_PHYS_TO_KSEG0(word3 & PIP_WQE_WORD3_ADDR);
+#else
 		addr = MIPS_PHYS_TO_XKPHYS_CACHED(word3 & PIP_WQE_WORD3_ADDR);
+#endif
 		start_buffer = addr & ~(2048 - 1);
 
 		ext_free = octeon_eth_buf_ext_free_ext;
@@ -1330,7 +1353,7 @@ octeon_eth_recv_mbuf(struct octeon_eth_softc *sc, uint64_t *work,
 
 	m->m_data = data;
 	m->m_len = m->m_pkthdr.len = (word1 & PIP_WQE_WORD1_LEN) >> 48;
-	m->m_pkthdr.rcvif = &sc->sc_ethercom.ec_if;
+	m_set_rcvif(m, &sc->sc_ethercom.ec_if);
 	/*
 	 * not readonly buffer
 	 */
@@ -1472,17 +1495,11 @@ octeon_eth_recv(struct octeon_eth_softc *sc, uint64_t *work)
 
 	octeon_ipd_offload(word2, m->m_data, &m->m_pkthdr.csum_flags);
 
-	/* count input packet */
-	ifp->if_ipackets++;
-
 	/* XXX XXX XXX */
 	if (sc->sc_soft_req_cnt > sc->sc_soft_req_thresh) {
 		octeon_eth_send_queue_flush_fetch(sc);
 		octeon_eth_send_queue_flush(sc);
 	}
-	/* XXX XXX XXX */
-
-	bpf_mtap(ifp, m);
 
 	/* XXX XXX XXX */
 	if (sc->sc_flush)

@@ -43,12 +43,11 @@
  */
 
 #include <sys/cdefs.h>
-/* __FBSDID("FreeBSD: head/sys/nfs/krpc_subr.c 248207 2013-03-12 13:42:47Z glebius "); */
-__RCSID("$NetBSD: krpc_subr.c,v 1.3 2015/02/07 12:50:25 mlelstv Exp $");
+/* __FBSDID("FreeBSD: head/sys/nfs/krpc_subr.c 298788 2016-04-29 16:07:25Z pfg "); */
+__RCSID("$NetBSD: krpc_subr.c,v 1.6 2016/11/18 22:37:50 pgoyette Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
-#include <sys/jail.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
 #include <sys/proc.h>
@@ -57,15 +56,11 @@ __RCSID("$NetBSD: krpc_subr.c,v 1.3 2015/02/07 12:50:25 mlelstv Exp $");
 #include <sys/uio.h>
 
 #include <net/if.h>
-#include <net/vnet.h>
 
 #include <netinet/in.h>
 
-#include <rpc/types.h>
-#include <rpc/auth.h>
-#include <rpc/rpc_msg.h>
-#include <nfs/krpc.h>
-#include <nfs/xdr_subs.h>
+#include <fs/nfs/common/krpc.h>
+#include <fs/nfs/common/xdr_subs.h>
 
 /*
  * Kernel support for Sun RPC
@@ -219,10 +214,10 @@ krpc_call(struct sockaddr_in *sa, u_int prog, u_int vers, u_int func,
 	from = NULL;
 
 	/*
-	 * Create socket and set its recieve timeout.
+	 * Create socket and set its receive timeout.
 	 */
 	if ((error = socreate(AF_INET, &so, SOCK_DGRAM, 0, td->td_ucred, td)))
-		goto out;
+		return error;
 
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
@@ -302,7 +297,7 @@ krpc_call(struct sockaddr_in *sa, u_int prog, u_int vers, u_int func,
 	 * Setup packet header
 	 */
 	m_fixhdr(mhead);
-	mhead->m_pkthdr.rcvif = NULL;
+	m_reset_rcvif(mhead);
 
 	/*
 	 * Send it, repeatedly, until a reply is received,

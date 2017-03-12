@@ -1,4 +1,4 @@
-/*	$NetBSD: if_cemac.c,v 1.8 2016/02/09 08:32:10 ozaki-r Exp $	*/
+/*	$NetBSD: if_cemac.c,v 1.10 2016/12/15 09:28:04 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 2015  Genetec Corporation.  All rights reserved.
@@ -40,7 +40,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_cemac.c,v 1.8 2016/02/09 08:32:10 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_cemac.c,v 1.10 2016/12/15 09:28:04 ozaki-r Exp $");
 
 #include <sys/types.h>
 #include <sys/param.h>
@@ -336,7 +336,7 @@ cemac_intr(void *arg)
 						MCLBYTES, BUS_DMASYNC_POSTREAD);
 				bus_dmamap_unload(sc->sc_dmat,
 					sc->rxq[bi].m_dmamap);
-				sc->rxq[bi].m->m_pkthdr.rcvif = ifp;
+				m_set_rcvif(sc->rxq[bi].m, ifp);
 				sc->rxq[bi].m->m_pkthdr.len =
 					sc->rxq[bi].m->m_len = fl;
 				switch (nfo & ETH_RDSC_I_CHKSUM) {
@@ -356,7 +356,6 @@ cemac_intr(void *arg)
 					break;
 				}
 				sc->rxq[bi].m->m_pkthdr.csum_flags = csum;
-				bpf_mtap(ifp, sc->rxq[bi].m);
 				DPRINTFN(2,("received %u bytes packet\n", fl));
                                 if_percpuq_enqueue(ifp->if_percpuq,
 						   sc->rxq[bi].m);

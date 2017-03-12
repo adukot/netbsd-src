@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.10 2015/07/19 10:16:55 martin Exp $
+#	$NetBSD: Makefile,v 1.12 2017/01/24 11:16:50 nonaka Exp $
 
 .include <bsd.own.mk>
 
@@ -8,12 +8,15 @@ SUBDIR+=	.WAIT
 SUBDIR+=	instkernel
 .if ${MKKMOD} != "no"
 SUBDIR+=	kmod
+.if ${MKCRYPTO} != "no"
 SUBDIR+=	kmod-cgdroot
+.endif
 .endif
 SUBDIR+=	.WAIT
 SUBDIR+=	cdroms
 SUBDIR+=	liveimage
 SUBDIR+=	installimage
+SUBDIR+=	uefi-installimage
 TARGETS+=	release 
 
 iso_image:
@@ -24,5 +27,6 @@ live_image:
 
 install_image:
 	${MAKEDIRTARGET} installimage install_image
+	${MAKEDIRTARGET} uefi-installimage install_image
 
 .include <bsd.subdir.mk>

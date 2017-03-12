@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.54 2015/09/28 17:12:46 christos Exp $
+#	$NetBSD: Makefile,v 1.56 2017/01/07 19:53:49 christos Exp $
 
 .include <bsd.own.mk>
 
@@ -32,12 +32,18 @@ SUBDIR+= libc++
 .if (${MKLLVM} != "no")
 SUBDIR+= llvm
 .endif
+.if (${MKNSD} != "no")
+SUBDIR+= nsd
+.endif
 .if (${MKPCC} != "no")
 SUBDIR+= pcc
 .endif
 .if (${MKDTRACE} != "no")
 SUBDIR+= libproc
 SUBDIR+= librtld_db
+.endif
+.if (${MKCRYPTO} != "no" && ${MKUNBOUND} != "no")
+SUBDIR+= unbound
 .endif
 
 SUBDIR+= blacklist pdisk dhcp nvi ppp smbfs

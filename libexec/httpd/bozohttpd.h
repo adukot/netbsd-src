@@ -1,9 +1,9 @@
-/*	$NetBSD: bozohttpd.h,v 1.45 2016/04/15 17:57:21 mrg Exp $	*/
+/*	$NetBSD: bozohttpd.h,v 1.47 2017/01/31 14:36:09 mrg Exp $	*/
 
 /*	$eterna: bozohttpd.h,v 1.39 2011/11/18 09:21:15 mrg Exp $	*/
 
 /*
- * Copyright (c) 1997-2015 Matthew R. Green
+ * Copyright (c) 1997-2017 Matthew R. Green
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -366,5 +366,7 @@ bozoheaders_t *addmerge_replheader(bozo_httpreq_t *, const char *,
 /* variables */
 int bozo_set_pref(bozohttpd_t *, bozoprefs_t *, const char *, const char *);
 char *bozo_get_pref(bozoprefs_t *, const char *);
+
+int bozo_get_version(char */*buf*/, size_t /*size*/);
 
 #endif	/* BOZOHTTOPD_H_ */

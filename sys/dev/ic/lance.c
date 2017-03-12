@@ -1,4 +1,4 @@
-/*	$NetBSD: lance.c,v 1.49 2016/02/09 08:32:10 ozaki-r Exp $	*/
+/*	$NetBSD: lance.c,v 1.52 2016/12/15 09:28:05 ozaki-r Exp $	*/
 
 /*-
  * Copyright (c) 1997, 1998 The NetBSD Foundation, Inc.
@@ -65,7 +65,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: lance.c,v 1.49 2016/02/09 08:32:10 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: lance.c,v 1.52 2016/12/15 09:28:05 ozaki-r Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -343,13 +343,13 @@ lance_put(struct lance_softc *sc, int boff, struct mbuf *m)
 	for (; m; m = n) {
 		len = m->m_len;
 		if (len == 0) {
-			MFREE(m, n);
+			n = m_free(m);
 			continue;
 		}
 		(*sc->sc_copytobuf)(sc, mtod(m, void *), boff, len);
 		boff += len;
 		tlen += len;
-		MFREE(m, n);
+		n = m_free(m);
 	}
 	if (tlen < LEMINSIZE) {
 		(*sc->sc_zerobuf)(sc, boff, LEMINSIZE - tlen);
@@ -373,7 +373,7 @@ lance_get(struct lance_softc *sc, int boff, int totlen)
 	MGETHDR(m0, M_DONTWAIT, MT_DATA);
 	if (m0 == 0)
 		return (0);
-	m0->m_pkthdr.rcvif = &sc->sc_ethercom.ec_if;
+	m_set_rcvif(m0, &sc->sc_ethercom.ec_if);
 	m0->m_pkthdr.len = totlen;
 	len = MHLEN;
 	m = m0;
@@ -444,8 +444,6 @@ lance_read(struct lance_softc *sc, int boff, int len)
 		return;
 	}
 
-	ifp->if_ipackets++;
-
 	eh = mtod(m, struct ether_header *);
 
 #ifdef LANCE_REVC_BUG
@@ -471,12 +469,6 @@ lance_read(struct lance_softc *sc, int boff, int len)
 		m_freem(m);
 		return;
 	}
-
-	/*
-	 * Check if there's a BPF listener on this interface.
-	 * If so, hand off the raw packet to BPF.
-	 */
-	bpf_mtap(ifp, m);
 
 	/* Pass the packet up. */
 	if_percpuq_enqueue(ifp->if_percpuq, m);

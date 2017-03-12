@@ -1,4 +1,4 @@
-/*	$NetBSD: if_vlan.c,v 1.88 2016/05/09 15:05:15 christos Exp $	*/
+/*	$NetBSD: if_vlan.c,v 1.95 2017/01/23 06:47:54 ozaki-r Exp $	*/
 
 /*-
  * Copyright (c) 2000, 2001 The NetBSD Foundation, Inc.
@@ -78,7 +78,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_vlan.c,v 1.88 2016/05/09 15:05:15 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_vlan.c,v 1.95 2017/01/23 06:47:54 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -95,6 +95,8 @@ __KERNEL_RCSID(0, "$NetBSD: if_vlan.c,v 1.88 2016/05/09 15:05:15 christos Exp $"
 #include <sys/proc.h>
 #include <sys/kauth.h>
 #include <sys/mutex.h>
+#include <sys/device.h>
+#include <sys/module.h>
 
 #include <net/bpf.h>
 #include <net/if.h>
@@ -196,9 +198,35 @@ void
 vlanattach(int n)
 {
 
+	/*
+	 * Nothing to do here, initialization is handled by the
+	 * module initialization code in vlaninit() below).
+	 */
+}
+
+static void
+vlaninit(void)
+{
+
 	LIST_INIT(&ifv_list);
 	mutex_init(&ifv_mtx, MUTEX_DEFAULT, IPL_NONE);
 	if_clone_attach(&vlan_cloner);
+}
+
+static int
+vlandetach(void)
+{
+	int error = 0;
+
+	if (!LIST_EMPTY(&ifv_list))
+		error = EBUSY;
+
+	if (error == 0) {
+		if_clone_detach(&vlan_cloner);
+		mutex_destroy(&ifv_mtx);
+	}
+
+	return error;
 }
 
 static void
@@ -285,10 +313,12 @@ vlan_config(struct ifvlan *ifv, struct ifnet *p)
 		ifv->ifv_encaplen = ETHER_VLAN_ENCAP_LEN;
 		ifv->ifv_mintu = ETHERMIN;
 
-		if (ec->ec_nvlans == 0) {
+		if (ec->ec_nvlans++ == 0) {
 			if ((error = ether_enable_vlan_mtu(p)) >= 0) {
-				if (error)
+				if (error) {
+					ec->ec_nvlans--;
 					return error;
+				}
 				ifv->ifv_mtufudge = 0;
 			} else {
 				/*
@@ -301,7 +331,6 @@ vlan_config(struct ifvlan *ifv, struct ifnet *p)
 				ifv->ifv_mtufudge = ifv->ifv_encaplen;
 			}
 		}
-		ec->ec_nvlans++;
 
 		/*
 		 * If the parent interface can do hardware-assisted
@@ -543,6 +572,10 @@ vlan_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 	case SIOCSIFCAP:
 		ifcr = data;
 		/* make sure caps are enabled on parent */
+		if (ifv->ifv_p == NULL) {
+			error = EINVAL;
+			break;
+		}
 		if ((ifv->ifv_p->if_capenable & ifcr->ifcr_capenable) !=
 		    ifcr->ifcr_capenable) {
 			error = EINVAL;
@@ -700,6 +733,10 @@ vlan_start(struct ifnet *ifp)
 
 #ifdef ALTQ
 		/*
+		 * KERNEL_LOCK is required for ALTQ even if NET_MPSAFE is defined.
+		 */
+		KERNEL_LOCK(1, NULL);
+		/*
 		 * If ALTQ is enabled on the parent interface, do
 		 * classification; the queueing discipline might
 		 * not require classification, but might require
@@ -716,6 +753,7 @@ vlan_start(struct ifnet *ifp)
 #endif
 			}
 		}
+		KERNEL_UNLOCK_ONE(NULL);
 #endif /* ALTQ */
 
 		bpf_mtap(ifp, m);
@@ -808,7 +846,7 @@ vlan_start(struct ifnet *ifp)
 		 * would have.  We are already running at splnet.
 		 */
 		if ((p->if_flags & IFF_RUNNING) != 0) {
-			error = (*p->if_transmit)(p, m);
+			error = if_transmit_lock(p, m);
 			if (error) {
 				/* mbuf is already freed */
 				ifp->if_oerrors++;
@@ -897,11 +935,16 @@ vlan_input(struct ifnet *ifp, struct mbuf *m)
 		m_adj(m, ifv->ifv_encaplen);
 	}
 
-	m->m_pkthdr.rcvif = &ifv->ifv_if;
+	m_set_rcvif(m, &ifv->ifv_if);
 	ifv->ifv_if.if_ipackets++;
-
-	bpf_mtap(&ifv->ifv_if, m);
 
 	m->m_flags &= ~M_PROMISC;
 	if_input(&ifv->ifv_if, m);
 }
+
+/*
+ * Module infrastructure
+ */
+#include "if_module.h"
+
+IF_MODULE(MODULE_CLASS_DRIVER, vlan, "")

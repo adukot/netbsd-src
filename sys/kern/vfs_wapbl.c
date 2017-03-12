@@ -1,4 +1,4 @@
-/*	$NetBSD: vfs_wapbl.c,v 1.77 2016/05/07 22:12:29 riastradh Exp $	*/
+/*	$NetBSD: vfs_wapbl.c,v 1.88 2017/03/05 20:45:49 mrg Exp $	*/
 
 /*-
  * Copyright (c) 2003, 2008, 2009 The NetBSD Foundation, Inc.
@@ -36,7 +36,7 @@
 #define WAPBL_INTERNAL
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: vfs_wapbl.c,v 1.77 2016/05/07 22:12:29 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: vfs_wapbl.c,v 1.88 2017/03/05 20:45:49 mrg Exp $");
 
 #include <sys/param.h>
 #include <sys/bitops.h>
@@ -60,6 +60,7 @@ __KERNEL_RCSID(0, "$NetBSD: vfs_wapbl.c,v 1.77 2016/05/07 22:12:29 riastradh Exp
 #include <sys/sysctl.h>
 #include <sys/uio.h>
 #include <sys/vnode.h>
+#include <sys/evcnt.h>
 
 #include <miscfs/specfs/specdev.h>
 
@@ -176,14 +177,21 @@ struct wapbl {
 	 * wl_count or wl_bufs or head or tail
 	 */
 
+#if _KERNEL
 	/*
 	 * Callback called from within the flush routine to flush any extra
 	 * bits.  Note that flush may be skipped without calling this if
 	 * there are no outstanding buffers in the transaction.
 	 */
-#if _KERNEL
 	wapbl_flush_fn_t wl_flush;	/* r	*/
 	wapbl_flush_fn_t wl_flush_abort;/* r	*/
+
+	/* Event counters */
+	char wl_ev_group[EVCNT_STRING_MAX];	/* r	*/
+	struct evcnt wl_ev_commit;		/* l	*/
+	struct evcnt wl_ev_journalwrite;	/* l	*/
+	struct evcnt wl_ev_metawrite;		/* lm	*/
+	struct evcnt wl_ev_cacheflush;		/* l	*/
 #endif
 
 	size_t wl_bufbytes;	/* m:	Byte count of pages in wl_bufs */
@@ -202,10 +210,13 @@ struct wapbl {
 	size_t wl_unsynced_bufbytes; /* Byte count of unsynced buffers */
 #endif
 
-	daddr_t *wl_deallocblks;/* lm:	address of block */
-	int *wl_dealloclens;	/* lm:	size of block */
-	int wl_dealloccnt;	/* lm:	total count */
-	int wl_dealloclim;	/* l:	max count */
+#if _KERNEL
+	int wl_brperjblock;	/* r Block records per journal block */
+#endif
+
+	TAILQ_HEAD(, wapbl_dealloc) wl_dealloclist;	/* lm:	list head */
+	int wl_dealloccnt;				/* lm:	total count */
+	int wl_dealloclim;				/* r:	max count */
 
 	/* hashtable of inode numbers for allocated but unlinked inodes */
 	/* synch ??? */
@@ -246,6 +257,7 @@ static inline size_t wapbl_space_used(size_t avail, off_t head,
 #ifdef _KERNEL
 
 static struct pool wapbl_entry_pool;
+static struct pool wapbl_dealloc_pool;
 
 #define	WAPBL_INODETRK_SIZE 83
 static int wapbl_ino_pool_refcount;
@@ -262,6 +274,12 @@ static struct wapbl_ino *wapbl_inodetrk_get(struct wapbl *wl, ino_t ino);
 
 static size_t wapbl_transaction_len(struct wapbl *wl);
 static inline size_t wapbl_transaction_inodes_len(struct wapbl *wl);
+
+static void wapbl_deallocation_free(struct wapbl *, struct wapbl_dealloc *,
+	bool);
+
+static void wapbl_evcnt_init(struct wapbl *);
+static void wapbl_evcnt_free(struct wapbl *);
 
 #if 0
 int wapbl_replay_verify(struct wapbl_replay *, struct vnode *);
@@ -326,6 +344,8 @@ wapbl_init(void)
 
 	pool_init(&wapbl_entry_pool, sizeof(struct wapbl_entry), 0, 0, 0,
 	    "wapblentrypl", &pool_allocator_kmem, IPL_VM);
+	pool_init(&wapbl_dealloc_pool, sizeof(struct wapbl_dealloc), 0, 0, 0,
+	    "wapbldealloc", &pool_allocator_nointr, IPL_NONE);
 
 	wapbl_sysctl_init();
 }
@@ -337,9 +357,38 @@ wapbl_fini(void)
 	if (wapbl_sysctl != NULL)
 		 sysctl_teardown(&wapbl_sysctl);
 
+	pool_destroy(&wapbl_dealloc_pool);
 	pool_destroy(&wapbl_entry_pool);
 
 	return 0;
+}
+
+static void
+wapbl_evcnt_init(struct wapbl *wl)
+{
+	snprintf(wl->wl_ev_group, sizeof(wl->wl_ev_group),
+	    "wapbl fsid 0x%x/0x%x",
+	    wl->wl_mount->mnt_stat.f_fsidx.__fsid_val[0],
+	    wl->wl_mount->mnt_stat.f_fsidx.__fsid_val[1]
+	);
+
+	evcnt_attach_dynamic(&wl->wl_ev_commit, EVCNT_TYPE_MISC,
+	    NULL, wl->wl_ev_group, "commit");
+	evcnt_attach_dynamic(&wl->wl_ev_journalwrite, EVCNT_TYPE_MISC,
+	    NULL, wl->wl_ev_group, "journal sync block write");
+	evcnt_attach_dynamic(&wl->wl_ev_metawrite, EVCNT_TYPE_MISC,
+	    NULL, wl->wl_ev_group, "metadata finished block write");
+	evcnt_attach_dynamic(&wl->wl_ev_cacheflush, EVCNT_TYPE_MISC,
+	    NULL, wl->wl_ev_group, "cache flush");
+}
+
+static void
+wapbl_evcnt_free(struct wapbl *wl)
+{
+	evcnt_detach(&wl->wl_ev_commit);
+	evcnt_detach(&wl->wl_ev_journalwrite);
+	evcnt_detach(&wl->wl_ev_metawrite);
+	evcnt_detach(&wl->wl_ev_cacheflush);
 }
 
 static int
@@ -498,18 +547,21 @@ wapbl_start(struct wapbl ** wlp, struct mount *mp, struct vnode *vp,
 	/* XXX fix actual number of buffers reserved per filesystem. */
 	wl->wl_bufcount_max = (nbuf / 2) * 1024;
 
+	wl->wl_brperjblock = ((1<<wl->wl_log_dev_bshift)
+	    - offsetof(struct wapbl_wc_blocklist, wc_blocks)) /
+	    sizeof(((struct wapbl_wc_blocklist *)0)->wc_blocks[0]);
+	KASSERT(wl->wl_brperjblock > 0);
+
 	/* XXX tie this into resource estimation */
 	wl->wl_dealloclim = wl->wl_bufbytes_max / mp->mnt_stat.f_bsize / 2;
+	TAILQ_INIT(&wl->wl_dealloclist);
 	
-	wl->wl_deallocblks = wapbl_alloc(sizeof(*wl->wl_deallocblks) *
-	    wl->wl_dealloclim);
-	wl->wl_dealloclens = wapbl_alloc(sizeof(*wl->wl_dealloclens) *
-	    wl->wl_dealloclim);
-
 	wl->wl_buffer = wapbl_alloc(MAXPHYS);
 	wl->wl_buffer_used = 0;
 
 	wapbl_inodetrk_init(wl, WAPBL_INODETRK_SIZE);
+
+	wapbl_evcnt_init(wl);
 
 	/* Initialize the commit header */
 	{
@@ -553,10 +605,6 @@ wapbl_start(struct wapbl ** wlp, struct mount *mp, struct vnode *vp,
 	wapbl_discard(wl);
 	wapbl_free(wl->wl_wc_scratch, wl->wl_wc_header->wc_len);
 	wapbl_free(wl->wl_wc_header, wl->wl_wc_header->wc_len);
-	wapbl_free(wl->wl_deallocblks,
-	    sizeof(*wl->wl_deallocblks) * wl->wl_dealloclim);
-	wapbl_free(wl->wl_dealloclens,
-	    sizeof(*wl->wl_dealloclens) * wl->wl_dealloclim);
 	wapbl_free(wl->wl_buffer, MAXPHYS);
 	wapbl_inodetrk_free(wl);
 	wapbl_free(wl, sizeof(*wl));
@@ -573,6 +621,7 @@ void
 wapbl_discard(struct wapbl *wl)
 {
 	struct wapbl_entry *we;
+	struct wapbl_dealloc *wd;
 	struct buf *bp;
 	int i;
 
@@ -581,8 +630,7 @@ wapbl_discard(struct wapbl *wl)
 	 * if we want to call flush from inside a transaction
 	 */
 	rw_enter(&wl->wl_rwlock, RW_WRITER);
-	wl->wl_flush(wl->wl_mount, wl->wl_deallocblks, wl->wl_dealloclens,
-	    wl->wl_dealloccnt);
+	wl->wl_flush(wl->wl_mount, TAILQ_FIRST(&wl->wl_dealloclist));
 
 #ifdef WAPBL_DEBUG_PRINT
 	{
@@ -684,7 +732,9 @@ wapbl_discard(struct wapbl *wl)
 	}
 
 	/* Discard list of deallocs */
-	wl->wl_dealloccnt = 0;
+	while ((wd = TAILQ_FIRST(&wl->wl_dealloclist)) != NULL)
+		wapbl_deallocation_free(wl, wd, true);
+
 	/* XXX should we clear wl_reserved_bytes? */
 
 	KASSERT(wl->wl_bufbytes == 0);
@@ -693,6 +743,8 @@ wapbl_discard(struct wapbl *wl)
 	KASSERT(LIST_EMPTY(&wl->wl_bufs));
 	KASSERT(SIMPLEQ_EMPTY(&wl->wl_entries));
 	KASSERT(wl->wl_inohashcnt == 0);
+	KASSERT(TAILQ_EMPTY(&wl->wl_dealloclist));
+	KASSERT(wl->wl_dealloccnt == 0);
 
 	rw_exit(&wl->wl_rwlock);
 }
@@ -727,15 +779,15 @@ wapbl_stop(struct wapbl *wl, int force)
 	KASSERT(wl->wl_dealloccnt == 0);
 	KASSERT(SIMPLEQ_EMPTY(&wl->wl_entries));
 	KASSERT(wl->wl_inohashcnt == 0);
+	KASSERT(TAILQ_EMPTY(&wl->wl_dealloclist));
+	KASSERT(wl->wl_dealloccnt == 0);
 
 	wapbl_free(wl->wl_wc_scratch, wl->wl_wc_header->wc_len);
 	wapbl_free(wl->wl_wc_header, wl->wl_wc_header->wc_len);
-	wapbl_free(wl->wl_deallocblks,
-	    sizeof(*wl->wl_deallocblks) * wl->wl_dealloclim);
-	wapbl_free(wl->wl_dealloclens,
-	    sizeof(*wl->wl_dealloclens) * wl->wl_dealloclim);
 	wapbl_free(wl->wl_buffer, MAXPHYS);
 	wapbl_inodetrk_free(wl);
+
+	wapbl_evcnt_free(wl);
 
 	cv_destroy(&wl->wl_reclaimable_cv);
 	mutex_destroy(&wl->wl_mtx);
@@ -848,6 +900,8 @@ wapbl_buffered_flush(struct wapbl *wl)
 	error = wapbl_doio(wl->wl_buffer, wl->wl_buffer_used,
 	    wl->wl_devvp, wl->wl_buffer_dblk, B_WRITE);
 	wl->wl_buffer_used = 0;
+
+	wl->wl_ev_journalwrite.ev_count++;
 
 	return error;
 }
@@ -1431,44 +1485,18 @@ wapbl_biodone(struct buf *bp)
 #endif
 
 	if (bp->b_error) {
-#ifdef notyet /* Can't currently handle possible dirty buffer reuse */
 		/*
-		 * XXXpooka: interfaces not fully updated
-		 * Note: this was not enabled in the original patch
-		 * against netbsd4 either.  I don't know if comment
-		 * above is true or not.
+		 * If an error occurs, it would be nice to leave the buffer
+		 * as a delayed write on the LRU queue so that we can retry
+		 * it later. But buffercache(9) can't handle dirty buffer
+		 * reuse, so just mark the log permanently errored out.
 		 */
-
-		/*
-		 * If an error occurs, report the error and leave the
-		 * buffer as a delayed write on the LRU queue.
-		 * restarting the write would likely result in
-		 * an error spinloop, so let it be done harmlessly
-		 * by the syncer.
-		 */
-		bp->b_flags &= ~(B_DONE);
-		simple_unlock(&bp->b_interlock);
-
-		if (we->we_error == 0) {
-			mutex_enter(&wl->wl_mtx);
-			wl->wl_error_count++;
-			mutex_exit(&wl->wl_mtx);
-			cv_broadcast(&wl->wl_reclaimable_cv);
-		}
-		we->we_error = bp->b_error;
-		bp->b_error = 0;
-		brelse(bp);
-		return;
-#else
-		/* For now, just mark the log permanently errored out */
-
 		mutex_enter(&wl->wl_mtx);
 		if (wl->wl_error_count == 0) {
 			wl->wl_error_count++;
 			cv_broadcast(&wl->wl_reclaimable_cv);
 		}
 		mutex_exit(&wl->wl_mtx);
-#endif
 	}
 
 	/*
@@ -1488,6 +1516,7 @@ wapbl_biodone(struct buf *bp)
 	KASSERT(wl->wl_unsynced_bufbytes >= bufsize);
 	wl->wl_unsynced_bufbytes -= bufsize;
 #endif
+	wl->wl_ev_metawrite.ev_count++;
 
 	/*
 	 * If the current transaction can be reclaimed, start
@@ -1578,8 +1607,7 @@ wapbl_flush(struct wapbl *wl, int waitfor)
 	 * if we want to call flush from inside a transaction
 	 */
 	rw_enter(&wl->wl_rwlock, RW_WRITER);
-	wl->wl_flush(wl->wl_mount, wl->wl_deallocblks, wl->wl_dealloclens,
-	    wl->wl_dealloccnt);
+	wl->wl_flush(wl->wl_mount, TAILQ_FIRST(&wl->wl_dealloclist));
 
 	/*
 	 * Now that we are exclusively locked and the file system has
@@ -1700,7 +1728,7 @@ wapbl_flush(struct wapbl *wl, int waitfor)
 	wl->wl_tail = tail;
 	KASSERT(wl->wl_reclaimable_bytes >= delta);
 	wl->wl_reclaimable_bytes -= delta;
-	wl->wl_dealloccnt = 0;
+	KDASSERT(wl->wl_dealloccnt == 0);
 #ifdef WAPBL_DEBUG_BUFBYTES
 	wl->wl_unsynced_bufbytes += wl->wl_bufbytes;
 #endif
@@ -1756,8 +1784,8 @@ wapbl_flush(struct wapbl *wl, int waitfor)
 
  out:
 	if (error) {
-		wl->wl_flush_abort(wl->wl_mount, wl->wl_deallocblks,
-		    wl->wl_dealloclens, wl->wl_dealloccnt);
+		wl->wl_flush_abort(wl->wl_mount,
+		    TAILQ_FIRST(&wl->wl_dealloclist));
 	}
 
 #ifdef WAPBL_DEBUG_PRINT
@@ -1894,12 +1922,12 @@ wapbl_print(struct wapbl *wl,
 
 		(*pr)("dealloced blks = ");
 		{
-			int i;
+			struct wapbl_dealloc *wd;
 			cnt = 0;
-			for (i = 0; i < wl->wl_dealloccnt; i++) {
+			TAILQ_FOREACH(wd, &wl->wl_dealloclist, wd_entries) {
 				(*pr)(" %"PRId64":%d,",
-				      wl->wl_deallocblks[i],
-				      wl->wl_dealloclens[i]);
+				      wd->wd_blkno,
+				      wd->wd_len);
 				if ((++cnt % 4) == 0) {
 					(*pr)("\n\t");
 				}
@@ -1947,28 +1975,84 @@ wapbl_dump(struct wapbl *wl)
 
 /****************************************************************/
 
-void
-wapbl_register_deallocation(struct wapbl *wl, daddr_t blk, int len)
+int
+wapbl_register_deallocation(struct wapbl *wl, daddr_t blk, int len, bool force,
+    void **cookiep)
 {
+	struct wapbl_dealloc *wd;
+	int error = 0;
 
 	wapbl_jlock_assert(wl);
 
 	mutex_enter(&wl->wl_mtx);
-	/* XXX should eventually instead tie this into resource estimation */
-	/*
-	 * XXX this panic needs locking/mutex analysis and the
-	 * ability to cope with the failure.
-	 */
-	/* XXX this XXX doesn't have enough XXX */
-	if (__predict_false(wl->wl_dealloccnt >= wl->wl_dealloclim))
-		panic("wapbl_register_deallocation: out of resources");
 
-	wl->wl_deallocblks[wl->wl_dealloccnt] = blk;
-	wl->wl_dealloclens[wl->wl_dealloccnt] = len;
+	if (__predict_false(wl->wl_dealloccnt >= wl->wl_dealloclim)) {
+		if (!force) {
+			error = EAGAIN;
+			goto out;
+		}
+
+		/*
+		 * Forced registration can only be used when:
+		 * 1) the caller can't cope with failure
+		 * 2) the path can be triggered only bounded, small
+		 *    times per transaction
+		 * If this is not fullfilled, and the path would be triggered
+		 * many times, this could overflow maximum transaction size
+		 * and panic later.
+		 */
+		printf("%s: forced dealloc registration over limit: %d >= %d\n",
+			wl->wl_mount->mnt_stat.f_mntonname,
+			wl->wl_dealloccnt, wl->wl_dealloclim);
+	}
+
 	wl->wl_dealloccnt++;
-	WAPBL_PRINTF(WAPBL_PRINT_ALLOC,
-	    ("wapbl_register_deallocation: blk=%"PRId64" len=%d\n", blk, len));
 	mutex_exit(&wl->wl_mtx);
+
+	wd = pool_get(&wapbl_dealloc_pool, PR_WAITOK);
+	wd->wd_blkno = blk;
+	wd->wd_len = len;
+
+	mutex_enter(&wl->wl_mtx);
+	TAILQ_INSERT_TAIL(&wl->wl_dealloclist, wd, wd_entries);
+
+	if (cookiep)
+		*cookiep = wd;
+
+ out:
+	mutex_exit(&wl->wl_mtx);
+
+	WAPBL_PRINTF(WAPBL_PRINT_ALLOC,
+	    ("wapbl_register_deallocation: blk=%"PRId64" len=%d error=%d\n",
+	    blk, len, error));
+
+	return error;
+}
+
+static void
+wapbl_deallocation_free(struct wapbl *wl, struct wapbl_dealloc *wd,
+	bool locked)
+{
+	KASSERT(!locked
+	    || rw_lock_held(&wl->wl_rwlock) || mutex_owned(&wl->wl_mtx));
+
+	if (!locked)
+		mutex_enter(&wl->wl_mtx);
+
+	TAILQ_REMOVE(&wl->wl_dealloclist, wd, wd_entries);
+	wl->wl_dealloccnt--;
+
+	if (!locked)
+		mutex_exit(&wl->wl_mtx);
+
+	pool_put(&wapbl_dealloc_pool, wd);
+}
+
+void
+wapbl_unregister_deallocation(struct wapbl *wl, void *cookie)
+{
+	KASSERT(cookie != NULL);
+	wapbl_deallocation_free(wl, cookie, false);
 }
 
 /****************************************************************/
@@ -2091,17 +2175,11 @@ wapbl_transaction_len(struct wapbl *wl)
 {
 	int blocklen = 1<<wl->wl_log_dev_bshift;
 	size_t len;
-	int bph;
 
 	/* Calculate number of blocks described in a blocklist header */
-	bph = (blocklen - offsetof(struct wapbl_wc_blocklist, wc_blocks)) /
-	    sizeof(((struct wapbl_wc_blocklist *)0)->wc_blocks[0]);
-
-	KASSERT(bph > 0);
-
 	len = wl->wl_bcount;
-	len += howmany(wl->wl_bufcount, bph) * blocklen;
-	len += howmany(wl->wl_dealloccnt, bph) * blocklen;
+	len += howmany(wl->wl_bufcount, wl->wl_brperjblock) * blocklen;
+	len += howmany(wl->wl_dealloccnt, wl->wl_brperjblock) * blocklen;
 	len += wapbl_transaction_inodes_len(wl);
 
 	return len;
@@ -2147,6 +2225,9 @@ wapbl_cache_sync(struct wapbl *wl, const char *msg)
 		    msg, (uintmax_t)wl->wl_devvp->v_rdev,
 		    (uintmax_t)ts.tv_sec, ts.tv_nsec);
 	}
+
+	wl->wl_ev_cacheflush.ev_count++;
+
 	return error;
 }
 
@@ -2237,6 +2318,9 @@ wapbl_write_commit(struct wapbl *wl, off_t head, off_t tail)
 			panic("wapbl_write_commit: error writing duplicate "
 			      "log header: %d", error);
 	}
+
+	wl->wl_ev_commit.ev_count++;
+
 	return 0;
 }
 
@@ -2254,16 +2338,12 @@ wapbl_write_blocks(struct wapbl *wl, off_t *offp)
 	struct wapbl_wc_blocklist *wc =
 	    (struct wapbl_wc_blocklist *)wl->wl_wc_scratch;
 	int blocklen = 1<<wl->wl_log_dev_bshift;
-	int bph;
 	struct buf *bp;
 	off_t off = *offp;
 	int error;
 	size_t padding;
 
 	KASSERT(rw_write_held(&wl->wl_rwlock));
-
-	bph = (blocklen - offsetof(struct wapbl_wc_blocklist, wc_blocks)) /
-	    sizeof(((struct wapbl_wc_blocklist *)0)->wc_blocks[0]);
 
 	bp = LIST_FIRST(&wl->wl_bufs);
 
@@ -2276,7 +2356,7 @@ wapbl_write_blocks(struct wapbl *wl, off_t *offp)
 		wc->wc_type = WAPBL_WC_BLOCKS;
 		wc->wc_len = blocklen;
 		wc->wc_blkcount = 0;
-		while (bp && (wc->wc_blkcount < bph)) {
+		while (bp && (wc->wc_blkcount < wl->wl_brperjblock)) {
 			/*
 			 * Make sure all the physical block numbers are up to
 			 * date.  If this is not always true on a given
@@ -2315,7 +2395,7 @@ wapbl_write_blocks(struct wapbl *wl, off_t *offp)
 			return error;
 		bp = obp;
 		cnt = 0;
-		while (bp && (cnt++ < bph)) {
+		while (bp && (cnt++ < wl->wl_brperjblock)) {
 			error = wapbl_circ_write(wl, bp->b_data,
 			    bp->b_bcount, &off);
 			if (error)
@@ -2350,30 +2430,26 @@ wapbl_write_revocations(struct wapbl *wl, off_t *offp)
 {
 	struct wapbl_wc_blocklist *wc =
 	    (struct wapbl_wc_blocklist *)wl->wl_wc_scratch;
-	int i;
+	struct wapbl_dealloc *wd, *lwd;
 	int blocklen = 1<<wl->wl_log_dev_bshift;
-	int bph;
 	off_t off = *offp;
 	int error;
 
 	if (wl->wl_dealloccnt == 0)
 		return 0;
 
-	bph = (blocklen - offsetof(struct wapbl_wc_blocklist, wc_blocks)) /
-	    sizeof(((struct wapbl_wc_blocklist *)0)->wc_blocks[0]);
-
-	i = 0;
-	while (i < wl->wl_dealloccnt) {
+	while ((wd = TAILQ_FIRST(&wl->wl_dealloclist)) != NULL) {
 		wc->wc_type = WAPBL_WC_REVOCATIONS;
 		wc->wc_len = blocklen;
 		wc->wc_blkcount = 0;
-		while ((i < wl->wl_dealloccnt) && (wc->wc_blkcount < bph)) {
+		while (wd && (wc->wc_blkcount < wl->wl_brperjblock)) {
 			wc->wc_blocks[wc->wc_blkcount].wc_daddr =
-			    wl->wl_deallocblks[i];
+			    wd->wd_blkno;
 			wc->wc_blocks[wc->wc_blkcount].wc_dlen =
-			    wl->wl_dealloclens[i];
+			    wd->wd_len;
 			wc->wc_blkcount++;
-			i++;
+
+			wd = TAILQ_NEXT(wd, wd_entries);
 		}
 		WAPBL_PRINTF(WAPBL_PRINT_WRITE,
 		    ("wapbl_write_revocations: len = %u off = %"PRIdMAX"\n",
@@ -2381,6 +2457,14 @@ wapbl_write_revocations(struct wapbl *wl, off_t *offp)
 		error = wapbl_circ_write(wl, wc, blocklen, &off);
 		if (error)
 			return error;
+
+		/* free all successfully written deallocs */
+		lwd = wd;
+		while ((wd = TAILQ_FIRST(&wl->wl_dealloclist)) != NULL) {
+			if (wd == lwd)
+				break;
+			wapbl_deallocation_free(wl, wd, true);
+		}
 	}
 	*offp = off;
 	return 0;

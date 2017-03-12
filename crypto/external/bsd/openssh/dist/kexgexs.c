@@ -1,5 +1,5 @@
-/*	$NetBSD: kexgexs.c,v 1.10 2016/03/11 01:55:00 christos Exp $	*/
-/* $OpenBSD: kexgexs.c,v 1.26 2015/12/04 16:41:28 markus Exp $ */
+/*	$NetBSD: kexgexs.c,v 1.12 2016/12/25 00:07:47 christos Exp $	*/
+/* $OpenBSD: kexgexs.c,v 1.30 2016/09/12 01:22:38 deraadt Exp $ */
 
 /*
  * Copyright (c) 2000 Niels Provos.  All rights reserved.
@@ -27,9 +27,9 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: kexgexs.c,v 1.10 2016/03/11 01:55:00 christos Exp $");
-#include <sys/param.h>	/* MIN MAX */
+__RCSID("$NetBSD: kexgexs.c,v 1.12 2016/12/25 00:07:47 christos Exp $");
 
+#include <sys/param.h>	/* MIN MAX */
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
@@ -52,6 +52,7 @@ __RCSID("$NetBSD: kexgexs.c,v 1.10 2016/03/11 01:55:00 christos Exp $");
 #include "dispatch.h"
 #include "ssherr.h"
 #include "sshbuf.h"
+#include "misc.h"
 
 static int input_kex_dh_gex_request(int, u_int32_t, void *);
 static int input_kex_dh_gex_init(int, u_int32_t, void *);
@@ -82,13 +83,13 @@ input_kex_dh_gex_request(int type, u_int32_t seq, void *ctxt)
 	kex->nbits = nbits;
 	kex->min = min;
 	kex->max = max;
-	min = MAX(DH_GRP_MIN, min);
-	max = MIN(DH_GRP_MAX, max);
-	nbits = MAX(DH_GRP_MIN, nbits);
-	nbits = MIN(DH_GRP_MAX, nbits);
+	min = MAXIMUM(DH_GRP_MIN, min);
+	max = MINIMUM(DH_GRP_MAX, max);
+	nbits = MAXIMUM(DH_GRP_MIN, nbits);
+	nbits = MINIMUM(DH_GRP_MAX, nbits);
 
 	if (kex->max < kex->min || kex->nbits < kex->min ||
-	    kex->max < kex->nbits) {
+	    kex->max < kex->nbits || kex->max < DH_GRP_MIN) {
 		r = SSH_ERR_DH_GEX_OUT_OF_RANGE;
 		goto out;
 	}

@@ -1,4 +1,4 @@
-/*	$NetBSD: machdep.c,v 1.18 2016/02/01 17:37:39 christos Exp $	*/
+/*	$NetBSD: machdep.c,v 1.20 2016/12/22 14:47:56 cherry Exp $	*/
 
 /*
  * Copyright 2001, 2002 Wasabi Systems, Inc.
@@ -74,7 +74,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.18 2016/02/01 17:37:39 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.20 2016/12/22 14:47:56 cherry Exp $");
 
 #include "opt_ddb.h"
 #include "opt_execfmt.h"
@@ -235,8 +235,7 @@ mach_init(int argc, char **argv, char **envp32, void *callvec)
 	 */
 	mips_vector_init(NULL, false);
 
-	/* set the VM page size */
-	uvm_setpagesize();
+	uvm_md_init();
 
 	memsize = 256*1024*1024;
 	physmem = btoc(memsize);
@@ -255,7 +254,7 @@ mach_init(int argc, char **argv, char **envp32, void *callvec)
 	/*
 	 * Disable the 2nd PCI window since we don't need it.
 	 */
-	mips3_sd((uint64_t *)MIPS_PHYS_TO_KSEG1(BONITO_REGBASE + 0x158), 0xe);
+	mips3_sd(MIPS_PHYS_TO_KSEG1(BONITO_REGBASE + 0x158), 0xe);
 	pci_conf_write(&gc->gc_pc, pci_make_tag(&gc->gc_pc, 0, 0, 0), 18, 0);
 
 	/*

@@ -1,4 +1,4 @@
-/* $NetBSD: gpiosim.c,v 1.18 2015/08/20 14:40:18 christos Exp $ */
+/* $NetBSD: gpiosim.c,v 1.20 2017/01/20 12:25:07 maya Exp $ */
 /*      $OpenBSD: gpiosim.c,v 1.1 2008/11/23 18:46:49 mbalmer Exp $	*/
 
 /*
@@ -121,7 +121,8 @@ gpiosim_attach(device_t parent, device_t self, void *aux)
 	gba.gba_pins = sc->sc_gpio_pins;
 	gba.gba_npins = GPIOSIM_NPINS;
 
-	pmf_device_register(self, NULL, NULL);
+	if (!pmf_device_register(self, NULL, NULL))
+		aprint_error_dev(self, "couldn't establish power handler\n");
 
         sysctl_createv(&sc->sc_log, 0, NULL, &node,
             0,
@@ -131,7 +132,7 @@ gpiosim_attach(device_t parent, device_t self, void *aux)
             CTL_HW, CTL_CREATE, CTL_EOL);
 
         if (node == NULL) {
-		printf(": can't create sysctl node\n");
+		aprint_error(": can't create sysctl node\n");
                 return;
 	}
 
@@ -142,7 +143,7 @@ gpiosim_attach(device_t parent, device_t self, void *aux)
             gpiosim_sysctl, 0, (void *)sc, 0,
 	    CTL_CREATE, CTL_EOL);
 
-	printf(": simulating %d pins\n", GPIOSIM_NPINS);
+	aprint_normal(": simulating %d pins\n", GPIOSIM_NPINS);
 	sc->sc_gdev = config_found_ia(self, "gpiobus", &gba, gpiobus_print);
 }
 

@@ -1,4 +1,4 @@
-/* $NetBSD: dhcpcd.h,v 1.17 2016/05/09 10:15:59 roy Exp $ */
+/* $NetBSD: dhcpcd.h,v 1.20 2016/10/09 09:18:26 roy Exp $ */
 
 /*
  * dhcpcd - DHCP client daemon
@@ -77,11 +77,8 @@ struct interface {
 	struct dhcpcd_ctx *ctx;
 	TAILQ_ENTRY(interface) next;
 	char name[IF_NAMESIZE];
-#ifdef __linux__
-	char alias[IF_NAMESIZE];
-#endif
 	unsigned int index;
-	int active;
+	unsigned int active;
 	unsigned int flags;
 	sa_family_t family;
 	unsigned char hwaddr[HWADDR_LEN];
@@ -126,6 +123,7 @@ struct dhcpcd_ctx {
 	int link_fd;
 	int seq;	/* route message sequence no */
 	int sseq;	/* successful seq no sent */
+	struct iovec iov[1];	/* generic iovec buffer */
 
 #ifdef USE_SIGNALS
 	sigset_t sigset;
@@ -200,7 +198,7 @@ int dhcpcd_handleargs(struct dhcpcd_ctx *, struct fd_list *, int, char **);
 void dhcpcd_handlecarrier(struct dhcpcd_ctx *, int, unsigned int, const char *);
 int dhcpcd_handleinterface(void *, int, const char *);
 void dhcpcd_handlehwaddr(struct dhcpcd_ctx *, const char *,
-    const unsigned char *, uint8_t);
+    const void *, uint8_t);
 void dhcpcd_dropinterface(struct interface *, const char *);
 int dhcpcd_selectprofile(struct interface *, const char *);
 

@@ -1,4 +1,4 @@
-/*	$NetBSD: smc90cx6.c,v 1.66 2016/02/09 08:32:10 ozaki-r Exp $ */
+/*	$NetBSD: smc90cx6.c,v 1.68 2016/12/15 09:28:05 ozaki-r Exp $ */
 
 /*-
  * Copyright (c) 1994, 1995, 1998 The NetBSD Foundation, Inc.
@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: smc90cx6.c,v 1.66 2016/02/09 08:32:10 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: smc90cx6.c,v 1.68 2016/12/15 09:28:05 ozaki-r Exp $");
 
 /* #define BAHSOFTCOPY */
 #define BAHRETRANSMIT /**/
@@ -525,7 +525,7 @@ bah_srint(void *vsc)
 		goto cleanup;
 	}
 
-	m->m_pkthdr.rcvif = ifp;
+	m_set_rcvif(m, ifp);
 
 	/*
 	 * Align so that IP packet will be longword aligned. Here we
@@ -596,12 +596,9 @@ bah_srint(void *vsc)
 		len -= len1;
 	}
 
-	bpf_mtap(ifp, head);
-
 	if_percpuq_enqueue((&sc->sc_arccom.ac_if)->if_percpuq, head);
 
 	head = NULL;
-	ifp->if_ipackets++;
 
 cleanup:
 

@@ -1,4 +1,4 @@
-/*	$NetBSD: msdosfs_vfsops.c,v 1.118 2015/03/28 19:24:05 maxv Exp $	*/
+/*	$NetBSD: msdosfs_vfsops.c,v 1.124 2017/03/01 10:41:28 hannken Exp $	*/
 
 /*-
  * Copyright (C) 1994, 1995, 1997 Wolfgang Solfrank.
@@ -48,7 +48,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: msdosfs_vfsops.c,v 1.118 2015/03/28 19:24:05 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: msdosfs_vfsops.c,v 1.124 2017/03/01 10:41:28 hannken Exp $");
 
 #if defined(_KERNEL_OPT)
 #include "opt_compat_netbsd.h"
@@ -69,7 +69,6 @@ __KERNEL_RCSID(0, "$NetBSD: msdosfs_vfsops.c,v 1.118 2015/03/28 19:24:05 maxv Ex
 #include <sys/device.h>
 #include <sys/disklabel.h>
 #include <sys/disk.h>
-#include <sys/fstrans.h>
 #include <sys/ioctl.h>
 #include <sys/malloc.h>
 #include <sys/dirent.h>
@@ -136,7 +135,7 @@ struct vfsops msdosfs_vfsops = {
 	.vfs_mountroot = msdosfs_mountroot,
 	.vfs_snapshot = (void *)eopnotsupp,
 	.vfs_extattrctl = vfs_stdextattrctl,
-	.vfs_suspendctl = msdosfs_suspendctl,
+	.vfs_suspendctl = genfs_suspendctl,
 	.vfs_renamelock_enter = genfs_renamelock_enter,
 	.vfs_renamelock_exit = genfs_renamelock_exit,
 	.vfs_fsync = (void *)eopnotsupp,
@@ -477,10 +476,6 @@ msdosfs_mountfs(struct vnode *devvp, struct mount *mp, struct lwp *l, struct msd
 
 	bp  = NULL; /* both used in error_exit */
 	pmp = NULL;
-
-	error = fstrans_mount(mp);
-	if (error)
-		goto error_exit;
 
 	error = getdisksize(devvp, &psize, &secsize);
 	if (error) {
@@ -858,7 +853,6 @@ msdosfs_mountfs(struct vnode *devvp, struct mount *mp, struct lwp *l, struct msd
 	return (0);
 
 error_exit:
-	fstrans_unmount(mp);
 	if (bp)
 		brelse(bp, BC_AGE);
 	if (pmp) {
@@ -904,9 +898,6 @@ msdosfs_unmount(struct mount *mp, int mntflags)
 		    vp->v_writecount, vp->v_holdcnt);
 		printf("mount %p, op %p\n",
 		    vp->v_mount, vp->v_op);
-		printf("freef %p, freeb %p, mount %p\n",
-		    vp->v_freelist.tqe_next, vp->v_freelist.tqe_prev,
-		    vp->v_mount);
 		printf("cleanblkhd %p, dirtyblkhd %p, numoutput %d, type %d\n",
 		    vp->v_cleanblkhd.lh_first,
 		    vp->v_dirtyblkhd.lh_first,
@@ -926,7 +917,6 @@ msdosfs_unmount(struct mount *mp, int mntflags)
 	free(pmp, M_MSDOSFSMNT);
 	mp->mnt_data = NULL;
 	mp->mnt_flag &= ~MNT_LOCAL;
-	fstrans_unmount(mp);
 	return (0);
 }
 
@@ -1011,7 +1001,6 @@ msdosfs_sync(struct mount *mp, int waitfor, kauth_cred_t cred)
 			/* update FATs here */
 		}
 	}
-	fstrans_start(mp, FSTRANS_SHARED);
 	/*
 	 * Write back each (modified) denode.
 	 */
@@ -1035,10 +1024,11 @@ msdosfs_sync(struct mount *mp, int waitfor, kauth_cred_t cred)
 	/*
 	 * Force stale file system control information to be flushed.
 	 */
+	vn_lock(pmp->pm_devvp, LK_EXCLUSIVE | LK_RETRY);
 	if ((error = VOP_FSYNC(pmp->pm_devvp, cred,
 	    waitfor == MNT_WAIT ? FSYNC_WAIT : 0, 0, 0)) != 0)
 		allerror = error;
-	fstrans_done(mp);
+	VOP_UNLOCK(pmp->pm_devvp);
 	return (allerror);
 }
 
@@ -1109,31 +1099,4 @@ msdosfs_vget(struct mount *mp, ino_t ino,
 {
 
 	return (EOPNOTSUPP);
-}
-
-int
-msdosfs_suspendctl(struct mount *mp, int cmd)
-{
-	int error;
-	struct lwp *l = curlwp;
-
-	switch (cmd) {
-	case SUSPEND_SUSPEND:
-		if ((error = fstrans_setstate(mp, FSTRANS_SUSPENDING)) != 0)
-			return error;
-		error = msdosfs_sync(mp, MNT_WAIT, l->l_proc->p_cred);
-		if (error == 0)
-			error = fstrans_setstate(mp, FSTRANS_SUSPENDED);
-		if (error != 0) {
-			(void) fstrans_setstate(mp, FSTRANS_NORMAL);
-			return error;
-		}
-		return 0;
-
-	case SUSPEND_RESUME:
-		return fstrans_setstate(mp, FSTRANS_NORMAL);
-
-	default:
-		return EINVAL;
-	}
 }

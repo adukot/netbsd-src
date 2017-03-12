@@ -1,4 +1,4 @@
-/* $NetBSD: dksubr.c,v 1.86 2016/01/04 10:02:15 mlelstv Exp $ */
+/* $NetBSD: dksubr.c,v 1.96 2017/03/05 23:07:12 mlelstv Exp $ */
 
 /*-
  * Copyright (c) 1996, 1997, 1998, 1999, 2002, 2008 The NetBSD Foundation, Inc.
@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: dksubr.c,v 1.86 2016/01/04 10:02:15 mlelstv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: dksubr.c,v 1.96 2017/03/05 23:07:12 mlelstv Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -122,6 +122,7 @@ int
 dk_open(struct dk_softc *dksc, dev_t dev,
     int flags, int fmt, struct lwp *l)
 {
+	const struct dkdriver *dkd = dksc->sc_dkdev.dk_driver;
 	struct	disklabel *lp = dksc->sc_dkdev.dk_label;
 	int	part = DISKPART(dev);
 	int	pmask = 1 << part;
@@ -140,6 +141,15 @@ dk_open(struct dk_softc *dksc, dev_t dev,
 	if (dk->dk_nwedges != 0 && part != RAW_PART) {
 		ret = EBUSY;
 		goto done;
+	}
+
+	/*
+	 * initialize driver for the first opener
+	 */
+	if (dk->dk_openmask == 0 && dkd->d_firstopen != NULL) {
+		ret = (*dkd->d_firstopen)(dksc->sc_dev, dev, flags, fmt);
+		if (ret)
+			goto done;
 	}
 
 	/*
@@ -286,7 +296,8 @@ dk_strategy1(struct dk_softc *dksc, struct buf *bp)
 
 	if (!(dksc->sc_flags & DKF_INITED)) {
 		DPRINTF_FOLLOW(("%s: not inited\n", __func__));
-		bp->b_error  = ENXIO;
+		bp->b_error = ENXIO;
+		bp->b_resid = bp->b_bcount;
 		biodone(bp);
 		return 1;
 	}
@@ -328,6 +339,7 @@ dk_strategy_defer(struct dk_softc *dksc, struct buf *bp)
 	 * Queue buffer only
 	 */
 	mutex_enter(&dksc->sc_iolock);
+	disk_wait(&dksc->sc_dkdev);
 	bufq_put(dksc->sc_bufq, bp);
 	mutex_exit(&dksc->sc_iolock);
 
@@ -364,12 +376,21 @@ dk_start(struct dk_softc *dksc, struct buf *bp)
 
 	mutex_enter(&dksc->sc_iolock);
 
-	if (bp != NULL)
+	if (bp != NULL) {
+		disk_wait(&dksc->sc_dkdev);
 		bufq_put(dksc->sc_bufq, bp);
+	}
 
-	if (dksc->sc_busy)
+	/*
+	 * If another thread is running the queue, increment
+	 * busy counter to 2 so that the queue is retried,
+	 * because the driver may now accept additional
+	 * requests.
+	 */
+	if (dksc->sc_busy < 2)
+		dksc->sc_busy++;
+	if (dksc->sc_busy > 1)
 		goto done;
-	dksc->sc_busy = true;
 
 	/*
 	 * Peeking at the buffer queue and committing the operation
@@ -382,34 +403,38 @@ dk_start(struct dk_softc *dksc, struct buf *bp)
 	 * This keeps order of I/O operations, unlike bufq_put.
 	 */
 
-	bp = dksc->sc_deferred;
-	dksc->sc_deferred = NULL;
+	while (dksc->sc_busy > 0) {
 
-	if (bp == NULL)
-		bp = bufq_get(dksc->sc_bufq);
+		bp = dksc->sc_deferred;
+		dksc->sc_deferred = NULL;
 
-	while (bp != NULL) {
+		if (bp == NULL)
+			bp = bufq_get(dksc->sc_bufq);
 
-		disk_busy(&dksc->sc_dkdev);
-		mutex_exit(&dksc->sc_iolock);
-		error = dkd->d_diskstart(dksc->sc_dev, bp);
-		mutex_enter(&dksc->sc_iolock);
-		if (error == EAGAIN) {
-			dksc->sc_deferred = bp;
-			disk_unbusy(&dksc->sc_dkdev, 0, (bp->b_flags & B_READ));
-			break;
+		while (bp != NULL) {
+
+			disk_busy(&dksc->sc_dkdev);
+			mutex_exit(&dksc->sc_iolock);
+			error = dkd->d_diskstart(dksc->sc_dev, bp);
+			mutex_enter(&dksc->sc_iolock);
+			if (error == EAGAIN) {
+				dksc->sc_deferred = bp;
+				disk_unbusy(&dksc->sc_dkdev, 0, (bp->b_flags & B_READ));
+				disk_wait(&dksc->sc_dkdev);
+				break;
+			}
+
+			if (error != 0) {
+				bp->b_error = error;
+				bp->b_resid = bp->b_bcount;
+				dk_done1(dksc, bp, false);
+			}
+
+			bp = bufq_get(dksc->sc_bufq);
 		}
 
-		if (error != 0) {
-			bp->b_error = error;
-			bp->b_resid = bp->b_bcount;
-			dk_done1(dksc, bp, false);
-		}
-
-		bp = bufq_get(dksc->sc_bufq);
+		dksc->sc_busy--;
 	}
-
-	dksc->sc_busy = false;
 done:
 	mutex_exit(&dksc->sc_iolock);
 }
@@ -658,12 +683,15 @@ dk_ioctl(struct dk_softc *dksc, dev_t dev,
 		struct disk_strategy *dks = (void *)data;
 
 		mutex_enter(&dksc->sc_iolock);
-		strlcpy(dks->dks_name, bufq_getstrategyname(dksc->sc_bufq),
-		    sizeof(dks->dks_name));
+		if (dksc->sc_bufq != NULL)
+			strlcpy(dks->dks_name,
+			    bufq_getstrategyname(dksc->sc_bufq),
+			    sizeof(dks->dks_name));
+		else
+			error = EINVAL;
 		mutex_exit(&dksc->sc_iolock);
 		dks->dks_paramlen = 0;
-
-		return 0;
+		break;
 	    }
 
 	case DIOCSSTRATEGY:
@@ -683,12 +711,13 @@ dk_ioctl(struct dk_softc *dksc, dev_t dev,
 		}
 		mutex_enter(&dksc->sc_iolock);
 		old = dksc->sc_bufq;
-		bufq_move(new, old);
+		if (old)
+			bufq_move(new, old);
 		dksc->sc_bufq = new;
 		mutex_exit(&dksc->sc_iolock);
-		bufq_free(old);
-
-		return 0;
+		if (old)
+			bufq_free(old);
+		break;
 	    }
 
 	default:
@@ -800,6 +829,7 @@ dk_dump(struct dk_softc *dksc, dev_t dev,
 void
 dk_getdefaultlabel(struct dk_softc *dksc, struct disklabel *lp)
 {
+	const struct dkdriver *dkd = dksc->sc_dkdev.dk_driver;
 	struct disk_geom *dg = &dksc->sc_dkdev.dk_geom;
 
 	memset(lp, 0, sizeof(*lp));
@@ -828,7 +858,11 @@ dk_getdefaultlabel(struct dk_softc *dksc, struct disklabel *lp)
 
 	lp->d_magic = DISKMAGIC;
 	lp->d_magic2 = DISKMAGIC;
-	lp->d_checksum = dkcksum(dksc->sc_dkdev.dk_label);
+
+	if (dkd->d_label)
+		dkd->d_label(dksc->sc_dev, lp);
+
+	lp->d_checksum = dkcksum(lp);
 }
 
 /* ARGSUSED */
@@ -858,13 +892,16 @@ dk_getdisklabel(struct dk_softc *dksc, dev_t dev)
 		return;
 
 	/* Sanity check */
-	if (lp->d_secperunit < UINT32_MAX ?
-		lp->d_secperunit != dg->dg_secperunit :
-		lp->d_secperunit > dg->dg_secperunit)
+	if (lp->d_secperunit > dg->dg_secperunit)
 		printf("WARNING: %s: total sector size in disklabel (%ju) "
 		    "!= the size of %s (%ju)\n", dksc->sc_xname,
 		    (uintmax_t)lp->d_secperunit, dksc->sc_xname,
 		    (uintmax_t)dg->dg_secperunit);
+	else if (lp->d_secperunit < UINT32_MAX &&
+	         lp->d_secperunit < dg->dg_secperunit)
+		printf("%s: %ju trailing sectors not covered by disklabel\n",
+		    dksc->sc_xname,
+		    (uintmax_t)dg->dg_secperunit - lp->d_secperunit);
 
 	for (i=0; i < lp->d_npartitions; i++) {
 		pp = &lp->d_partitions[i];

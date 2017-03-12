@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap.h,v 1.57 2015/11/11 08:20:22 skrll Exp $	*/
+/*	$NetBSD: pmap.h,v 1.63 2017/03/05 09:08:18 maxv Exp $	*/
 
 /*
  * Copyright (c) 1997 Charles D. Cranor and Washington University.
@@ -180,15 +180,7 @@ struct pmap {
 	((pmap)->pm_pdirpa[0] + (index) * sizeof(pd_entry_t))
 #endif
 
-/* 
- * flag to be used for kernel mappings: PG_u on Xen/amd64, 
- * 0 otherwise.
- */
-#if defined(XEN) && defined(__x86_64__)
-#define PG_k PG_u
-#else
 #define PG_k 0
-#endif
 
 /*
  * MD flags that we use for pmap_enter and pmap_kenter_pa:
@@ -208,7 +200,8 @@ struct pmap {
  */
 extern u_long PDPpaddr;
 
-extern int pmap_pg_g;			/* do we support PG_G? */
+extern pd_entry_t pmap_pg_g;			/* do we support PG_G? */
+extern pd_entry_t pmap_pg_nx;			/* do we support PG_NX? */
 extern long nkptp[PTP_LEVELS];
 
 /*
@@ -254,6 +247,7 @@ void		pmap_write_protect(struct pmap *, vaddr_t, vaddr_t, vm_prot_t);
 void		pmap_load(void);
 paddr_t		pmap_init_tmp_pgtbl(paddr_t);
 void		pmap_remove_all(struct pmap *);
+void		pmap_ldt_cleanup(struct lwp *);
 void		pmap_ldt_sync(struct pmap *);
 void		pmap_kremove_local(vaddr_t, vsize_t);
 
@@ -275,6 +269,10 @@ int		pmap_pdes_invalid(vaddr_t, pd_entry_t * const *, pd_entry_t *);
 u_int		x86_mmap_flags(paddr_t);
 
 bool		pmap_is_curpmap(struct pmap *);
+
+#ifndef __HAVE_DIRECT_MAP
+void		pmap_vpage_cpu_init(struct cpu_info *);
+#endif
 
 vaddr_t reserve_dumppages(vaddr_t); /* XXX: not a pmap fn */
 
@@ -480,6 +478,7 @@ void	pmap_kenter_ma(vaddr_t, paddr_t, vm_prot_t, u_int);
 int	pmap_enter_ma(struct pmap *, vaddr_t, paddr_t, paddr_t,
 	    vm_prot_t, u_int, int);
 bool	pmap_extract_ma(pmap_t, vaddr_t, paddr_t *);
+void	pmap_free_ptps(struct vm_page *);
 
 /*
  * Hooks for the pool allocator.

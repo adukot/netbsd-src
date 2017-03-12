@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2016, Intel Corp.
+ * Copyright (C) 2000 - 2017, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,7 +42,6 @@
  */
 
 #include "acpisrc.h"
-#include "acapps.h"
 
 /* Local prototypes */
 
@@ -322,7 +321,7 @@ AsConvertFile (
         ConditionalTable    = ConversionTable->SourceConditionalTable;
         StructTable         = ConversionTable->SourceStructTable;
         SpecialMacroTable   = ConversionTable->SourceSpecialMacroTable;
-       break;
+        break;
 
     case FILE_TYPE_HEADER:
 
@@ -549,7 +548,8 @@ AsProcessOneFile (
     ACPI_NATIVE_INT         FileType)
 {
     char                    *Pathname;
-    char                    *OutPathname = NULL;
+    char                    *OutPathname;
+    int                     Status = 0;
 
 
     /* Allocate a file pathname buffer for both source and target */
@@ -575,8 +575,8 @@ AsProcessOneFile (
 
     if (AsGetFile (Pathname, &Gbl_FileBuffer, &Gbl_FileSize))
     {
-        free (Pathname);
-        return (-1);
+        Status = -1;
+        goto Exit1;
     }
 
     Gbl_HeaderSize = 0;
@@ -619,7 +619,8 @@ AsProcessOneFile (
             if (!OutPathname)
             {
                 printf ("Could not allocate buffer for file pathnames\n");
-                return (-1);
+                Status = -1;
+                goto Exit2;
             }
 
             strcpy (OutPathname, TargetPath);
@@ -630,17 +631,16 @@ AsProcessOneFile (
             }
 
             AsPutFile (OutPathname, Gbl_FileBuffer, ConversionTable->Flags);
+            free (OutPathname);
         }
     }
 
+Exit2:
     free (Gbl_FileBuffer);
-    free (Pathname);
-    if (OutPathname)
-    {
-        free (OutPathname);
-    }
 
-    return (0);
+Exit1:
+    free (Pathname);
+    return (Status);
 }
 
 

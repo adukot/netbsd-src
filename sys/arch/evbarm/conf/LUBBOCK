@@ -46,6 +46,7 @@ file-system	PTYFS		# /dev/pts/N support
 # File system options
 #options 	QUOTA		# legacy UFS quotas
 #options 	QUOTA2		# new, in-filesystem UFS quotas
+#options 	DISKLABEL_EI	# disklabel Endian Independent support
 #options 	FFS_EI		# FFS Endian Independent support
 #options 	NFSSERVER
 options 	WAPBL		# File system journaling support
@@ -159,6 +160,8 @@ options 	PXA2X0_DMAC_DMOVER_CONCURRENCY=4 # Enable dmover(9) backend
 # AC97 Audio support
 pxaacu0 	at pxaip? addr 0x40500000 intr 14
 audio*		at audiobus?
+
+spkr*		at audio?			# PC speaker (synthesized)
 
 # On-board device support
 obio0		at pxaip? intr 8

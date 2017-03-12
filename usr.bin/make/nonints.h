@@ -1,4 +1,4 @@
-/*	$NetBSD: nonints.h,v 1.72 2016/02/18 20:25:08 sjg Exp $	*/
+/*	$NetBSD: nonints.h,v 1.74 2016/09/05 00:40:29 sevan Exp $	*/
 
 /*-
  * Copyright (c) 1988, 1989, 1990, 1993
@@ -107,7 +107,6 @@ void JobReapChild(pid_t, int, Boolean);
 /* main.c */
 void Main_ParseArgLine(const char *);
 void MakeMode(const char *);
-int main(int, char **);
 char *Cmd_Exec(const char *, const char **);
 void Error(const char *, ...) MAKE_ATTR_PRINTFLIKE(1, 2);
 void Fatal(const char *, ...) MAKE_ATTR_PRINTFLIKE(1, 2) MAKE_ATTR_DEAD;
@@ -120,6 +119,7 @@ void execError(const char *, const char *);
 char *getTmpdir(void);
 Boolean s2Boolean(const char *, Boolean);
 Boolean getBoolean(const char *, Boolean);
+char *cached_realpath(const char *, char *);
 
 /* parse.c */
 void Parse_Error(int, const char *, ...) MAKE_ATTR_PRINTFLIKE(2, 3);

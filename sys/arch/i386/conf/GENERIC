@@ -1,4 +1,4 @@
-# $NetBSD: GENERIC,v 1.1135 2016/04/23 10:15:29 skrll Exp $
+# $NetBSD: GENERIC,v 1.1152 2017/02/26 12:41:50 rin Exp $
 #
 # GENERIC machine description file
 #
@@ -22,7 +22,7 @@ include 	"arch/i386/conf/std.i386"
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-#ident 		"GENERIC-$Revision: 1.1135 $"
+#ident		"GENERIC-$Revision: 1.1152 $"
 
 maxusers	64		# estimated number of users
 
@@ -42,8 +42,7 @@ viac7temp*	at cpu?		# VIA C7 temperature sensor
 vmt0		at cpu0		# VMware Tools
 
 options 	MTRR		# memory-type range register syscall support
-# doesn't work with MP just yet..
-#options 	PERFCTRS	# performance-monitoring counters support
+#options 	PMC		# performance-monitoring counters support
 
 options 	MULTIBOOT	# Multiboot support (see multiboot(8))
 
@@ -157,7 +156,8 @@ options 	DKWEDGE_AUTODISCOVER	# Automatically add dk(4) instances
 options 	DKWEDGE_METHOD_GPT	# Supports GPT partitions as wedges
 #options 	DKWEDGE_METHOD_BSDLABEL	# Support disklabel entries as wedges
 #options 	DKWEDGE_METHOD_MBR	# Support MBR partitions as wedges
-options		DKWEDGE_METHOD_APPLE    # Support Apple partitions as wedges
+options 	DKWEDGE_METHOD_APPLE	# Support Apple partitions as wedges
+#options 	DKWEDGE_METHOD_RDB	# Support RDB partitions as wedges
 
 file-system	FFS		# UFS
 file-system	NFS		# Network File System client
@@ -203,7 +203,7 @@ options 	INET		# IP + ICMP + TCP + UDP
 options 	INET6		# IPv6
 options 	IPSEC		# IP security
 #options 	IPSEC_DEBUG	# debug for IP security
-#options 	MPLS		# MultiProtocol Label Switching (needs ifmpls)
+#options 	MPLS		# MultiProtocol Label Switching (needs mpls)
 #options 	MROUTING	# IP multicast routing
 #options 	PIM		# Protocol Independent Multicast
 options 	NETATALK	# AppleTalk networking protocols
@@ -360,7 +360,7 @@ attimer*	at acpi?		# AT Timer
 #fdc*		at acpi?		# Floppy disk controller
 fujbp*		at acpi?		# Fujitsu Brightness & Pointer
 fujhk*		at acpi?		# Fujitsu Hotkeys
-#hpacel*	at acpi?		# HP 3D DriveGuard accelerometer
+#hpacel* 	at acpi?		# HP 3D DriveGuard accelerometer
 #hpqlb*		at acpi?		# HP Quick Launch Buttons
 hpet*		at acpihpetbus?		# High Precision Event Timer (table)
 hpet*		at acpinodebus?		# High Precision Event Timer (device)
@@ -369,6 +369,7 @@ joy*		at acpi?		# Joystick/Game port
 mpu*		at acpi?		# Roland MPU-401 MIDI UART
 pckbc*		at acpi?		# PC keyboard controller
 pcppi*		at acpi?		# AT-style speaker sound
+sdhc*		at acpi?		# SD Host Controller
 sony*		at acpi?		# Sony Miscellaneous Controller
 thinkpad*	at acpi?		# IBM/Lenovo Thinkpad hotkeys
 #tpm*		at acpi?		# ACPI TPM (Experimental)
@@ -572,8 +573,8 @@ sysbeep0	at pcppi?
 #viadrm* 	at drm?		# VIA DRM driver
 
 # DRMKMS drivers
-i915drmkms* 	at pci? dev ? function ?
-intelfb* 	at intelfbbus?
+i915drmkms*	at pci? dev ? function ?
+intelfb*	at intelfbbus?
 
 radeon* 	at pci? dev ? function ?
 radeondrmkmsfb* at radeonfbbus?
@@ -582,7 +583,7 @@ nouveau*	at pci? dev ? function ?
 nouveaufb*	at nouveaufbbus?
 
 # DRMUMS drivers
-#viadrmums* 	at drm?
+#viadrmums*	at drm?
 
 # Serial Devices
 
@@ -718,6 +719,14 @@ nsclpcsio*	at isa?
 #spdmem* at iic? addr 0x55
 #spdmem* at iic? addr 0x56
 #spdmem* at iic? addr 0x57
+#sdtemp* at iic? addr 0x18
+#sdtemp* at iic? addr 0x19
+#sdtemp* at iic? addr 0x1a
+#sdtemp* at iic? addr 0x1b
+#sdtemp* at iic? addr 0x1c
+#sdtemp* at iic? addr 0x1d
+#sdtemp* at iic? addr 0x1e
+#sdtemp* at iic? addr 0x1f
 
 # I2O devices
 iop*	at pci? dev ? function ?	# I/O processor
@@ -826,6 +835,9 @@ ses*	at scsibus? target ? lun ?	# SCSI Enclosure Services devices
 ss*	at scsibus? target ? lun ?	# SCSI scanners
 uk*	at scsibus? target ? lun ?	# SCSI unknown
 
+# NVM Express controllers and devices
+nvme*	at pci? dev ? function ?
+ld*	at nvme? nsid ?
 
 # RAID controllers and devices
 aac*	at pci? dev ? function ?	# Adaptec AAC family
@@ -1454,7 +1466,8 @@ midi*	at midibus?
 midi*	at pcppi?		# MIDI interface to the PC speaker
 
 # The spkr driver provides a simple tone interface to the built in speaker.
-#spkr0	at pcppi?		# PC speaker
+#spkr*	at pcppi?		# PC speaker
+#spkr*	at audio?		# PC speaker (synthesized)
 
 
 # FM-Radio devices
@@ -1560,11 +1573,11 @@ hifn*	at pci? dev ? function ?	# Hifn 7755/7811/795x
 ubsec*	at pci? dev ? function ?	# Broadcom 5501/5601/580x/582x
 
 # Trusted Platform Module
-tpm*   at isa? iomem 0xfed40000 irq 7
-#tpm*  at isa? port 0x02e
-#tpm*  at isa? port 0x04e
-#tpm*  at isa? port 0x07e
-#tpm*  at isa? port 0x0ee
+tpm*	at isa? iomem 0xfed40000 irq 7
+#tpm*	at isa? port 0x02e
+#tpm*	at isa? port 0x04e
+#tpm*	at isa? port 0x07e
+#tpm*	at isa? port 0x0ee
 
 # Joysticks
 
@@ -1607,7 +1620,7 @@ cinclude "arch/i386/conf/GENERIC.local"
 
 # Pseudo-Devices
 
-pseudo-device 	crypto			# /dev/crypto device
+pseudo-device	crypto			# /dev/crypto device
 pseudo-device	swcrypto		# software crypto implementation
 
 # disk/mass storage pseudo-devices
@@ -1639,7 +1652,7 @@ pseudo-device	bpfilter		# Berkeley packet filter
 #pseudo-device	carp			# Common Address Redundancy Protocol
 pseudo-device	ipfilter		# IP filter (firewall) and NAT
 pseudo-device	loop			# network loopback
-#pseudo-device	ifmpls			# MPLS pseudo-interface
+#pseudo-device	mpls			# MPLS pseudo-interface
 pseudo-device	ppp			# Point-to-Point Protocol
 pseudo-device	pppoe			# PPP over Ethernet (RFC 2516)
 #options 	PPPOE_SERVER		# Enable PPPoE server via link0
@@ -1660,7 +1673,7 @@ pseudo-device	agr			# IEEE 802.3ad link aggregation
 #pseudo-device	pflog			# PF log if
 #pseudo-device	pfsync			# PF sync if
 #pseudo-device	npf			# NPF packet filter
-#pseudo-device 	etherip 		# Tunnel Ethernet over IP
+#pseudo-device	etherip 		# Tunnel Ethernet over IP
 # srt is EXPERIMENTAL
 #pseudo-device	srt			# source-address-based routing
 
@@ -1698,6 +1711,7 @@ pseudo-device	cmos
 pseudo-device	drvctl
 
 options 	FILEASSOC		# fileassoc(9) - required for Veriexec
+					# and PAX_SEGVGUARD
 
 # Veriexec
 pseudo-device	veriexec
@@ -1713,5 +1727,8 @@ options 	VERIFIED_EXEC_FP_SHA512
 options 	VERIFIED_EXEC_FP_SHA1
 options 	VERIFIED_EXEC_FP_MD5
 
-options 	PAX_MPROTECT=0		# PaX mprotect(2) restrictions
-options 	PAX_ASLR=0		# PaX Address Space Layout Randomization
+options 	PAX_ASLR_DEBUG=1	# PaX ASLR debug
+options 	PAX_SEGVGUARD=0		# PaX Segmentation fault guard
+options 	PAX_MPROTECT=1		# PaX mprotect(2) restrictions
+options 	PAX_MPROTECT_DEBUG=1	# PaX mprotect debug
+options 	PAX_ASLR=1		# PaX Address Space Layout Randomization

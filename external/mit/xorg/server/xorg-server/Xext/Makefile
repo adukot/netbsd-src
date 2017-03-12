@@ -1,16 +1,37 @@
-#	$NetBSD: Makefile,v 1.5 2008/08/09 06:48:17 rtr Exp $
+#	$NetBSD: Makefile,v 1.7 2016/08/20 01:03:34 mrg Exp $
 
 LIBISPRIVATE=	yes
 LIB=		Xext
 
 .include "../Makefile.serverlib"
 
-.include "Makefile.Xextbuiltin"
-.include "Makefile.Xextmodule"
+SRCS=	bigreq.c geext.c shape.c sleepuntil.c \
+	sync.c xcmisc.c xtest.c
+SRCS+=	shm.c
+SRCS+=	xvmain.c xvdisp.c xvmc.c
+SRCS+=	hashtable.c xres.c
+SRCS+=	saver.c
+SRCS+=	panoramiX.c panoramiXprocs.c panoramiXSwap.c
+SRCS+=	xace.c
+SRCS+=	security.c
+SRCS+=	xf86bigfont.c
+SRCS+=	dpms.c
+# XXX not really
+SRCS+=	vidmode.c
 
-SRCS=	${SRCS.Xextbuiltin} ${SRCS.Xextmodule}
+CPPFLAGS+=	-I${X11SRCDIR.xorg-server}/include
+CPPFLAGS+=	-I${X11SRCDIR.xorg-server}/Xext
+CPPFLAGS+=	-I${DESTDIR}${X11INCDIR}/pixman-1
+CPPFLAGS+=	-I${DESTDIR}${X11INCDIR}/xorg
+CPPFLAGS+=	-I${X11SRCDIR.xorg-server}/Xi
+CPPFLAGS+=	-I${X11SRCDIR.xorg-server}/xfixes
+CPPFLAGS+=	-I${X11SRCDIR.xorg-server}/miext/sync
+CPPFLAGS+=	-I${X11SRCDIR.xorg-server}/composite
+CPPFLAGS+=	-I${X11SRCDIR.xorg-server}/damageext
+#CPPFLAGS+=	-DHAVE_DIX_CONFIG_H
+CPPFLAGS+=	-I${X11SRCDIR.xorg-server}/../include ${X11FLAGS.DIX}
 
-SUBDIR=	Xextbuiltin Xextmodule
+.PATH:		${X11SRCDIR.xorg-server}/Xext
 
-.include <bsd.subdir.mk>
-.include "Makefile.Xext"
+.include <bsd.x11.mk>
+.include <bsd.lib.mk>

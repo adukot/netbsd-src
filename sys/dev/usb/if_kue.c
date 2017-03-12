@@ -1,4 +1,4 @@
-/*	$NetBSD: if_kue.c,v 1.84 2016/04/23 10:15:31 skrll Exp $	*/
+/*	$NetBSD: if_kue.c,v 1.89 2017/01/12 18:26:08 maya Exp $	*/
 
 /*
  * Copyright (c) 1997, 1998, 1999, 2000
@@ -71,10 +71,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_kue.c,v 1.84 2016/04/23 10:15:31 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_kue.c,v 1.89 2017/01/12 18:26:08 maya Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
+#include "opt_usb.h"
 #endif
 
 #include <sys/param.h>
@@ -499,7 +500,7 @@ kue_attach(device_t parent, device_t self, void *aux)
 	ifp->if_ioctl = kue_ioctl;
 	ifp->if_start = kue_start;
 	ifp->if_watchdog = kue_watchdog;
-	strncpy(ifp->if_xname, device_xname(sc->kue_dev), IFNAMSIZ);
+	strlcpy(ifp->if_xname, device_xname(sc->kue_dev), IFNAMSIZ);
 
 	IFQ_SET_READY(&ifp->if_snd);
 
@@ -512,8 +513,7 @@ kue_attach(device_t parent, device_t self, void *aux)
 	sc->kue_attached = true;
 	splx(s);
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->kue_udev,
-			   sc->kue_dev);
+	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->kue_udev, sc->kue_dev);
 
 	return;
 }
@@ -706,19 +706,10 @@ kue_rxeof(struct usbd_xfer *xfer, void *priv, usbd_status status)
 	/* copy data to mbuf */
 	memcpy(mtod(m, uint8_t *), c->kue_buf + 2, pktlen);
 
-	ifp->if_ipackets++;
 	m->m_pkthdr.len = m->m_len = pktlen;
-	m->m_pkthdr.rcvif = ifp;
+	m_set_rcvif(m, ifp);
 
 	s = splnet();
-
-	/*
-	 * Handle BPF listeners. Let the BPF user see the packet, but
-	 * don't pass it up to the ether_input() layer unless it's
-	 * a broadcast packet, multicast packet, matches our ethernet
-	 * address or the interface is in promiscuous mode.
-	 */
-	bpf_mtap(ifp, m);
 
 	DPRINTFN(10,("%s: %s: deliver %d\n", device_xname(sc->kue_dev),
 		    __func__, m->m_len));

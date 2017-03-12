@@ -1,5 +1,5 @@
 #include <sys/cdefs.h>
- __RCSID("$NetBSD: ipv6nd.c,v 1.29 2016/04/20 08:53:01 roy Exp $");
+ __RCSID("$NetBSD: ipv6nd.c,v 1.34 2016/10/09 19:38:08 christos Exp $");
 
 /*
  * dhcpcd - DHCP client daemon
@@ -258,15 +258,6 @@ ipv6nd_makersprobe(struct interface *ifp)
 	return 0;
 }
 
-static void ipv6nd_dropdhcp6(struct interface *ifp)
-{
-	const struct dhcp6_state *d6;
-
-	/* Don't drop DHCP6 if the interface is delegated to. */
-	if ((d6 = D6_CSTATE(ifp)) != NULL && d6->state != DH6S_DELEGATED)
-		dhcp6_drop(ifp, "EXPIRE6");
-}
-
 static void
 ipv6nd_sendrsprobe(void *arg)
 {
@@ -330,7 +321,7 @@ ipv6nd_sendrsprobe(void *arg)
 		logger(ifp->ctx, LOG_WARNING,
 		    "%s: no IPv6 Routers available", ifp->name);
 		ipv6nd_drop(ifp);
-		ipv6nd_dropdhcp6(ifp);
+		dhcp6_dropnondelegates(ifp);
 	}
 }
 
@@ -660,9 +651,9 @@ ipv6nd_dadcallback(void *arg)
 			}
 			logger(ifp->ctx, LOG_INFO, "%s: deleting address %s",
 				ifp->name, ap->saddr);
-			if (if_deladdress6(ap) == -1 &&
+			if (if_address6(RTM_DELADDR, ap) == -1 &&
 			    errno != EADDRNOTAVAIL && errno != ENXIO)
-				logger(ifp->ctx, LOG_ERR, "if_deladdress6: %m");
+				logger(ifp->ctx, LOG_ERR, "if_address6: %m");
 			dadcounter = ap->dadcounter;
 			if (ipv6_makestableprivate(&ap->addr,
 			    &ap->prefix, ap->prefix_len,
@@ -723,6 +714,19 @@ try_script:
 		}
 	}
 }
+
+#ifndef DHCP6
+/* If DHCPv6 is compiled out, supply a shim to provide an error message
+ * if IPv6RA requests DHCPv6. */
+#undef dhcp6_start
+static int
+dhcp6_start(__unused struct interface *ifp, __unused enum DH6S init_state)
+{
+
+	errno = ENOTSUP;
+	return -1;
+}
+#endif
 
 static void
 ipv6nd_handlera(struct dhcpcd_ctx *dctx, struct interface *ifp,
@@ -1102,7 +1106,7 @@ ipv6nd_handlera(struct dhcpcd_ctx *dctx, struct interface *ifp,
 	/* Find any freshly added routes, such as the subnet route.
 	 * We do this because we cannot rely on recieving the kernel
 	 * notification right now via our link socket. */
-	if_initrt6(ifp);
+	if_initrt6(ifp->ctx);
 
 	ipv6_buildroutes(ifp->ctx);
 	if (ipv6nd_scriptrun(rap))
@@ -1114,13 +1118,19 @@ ipv6nd_handlera(struct dhcpcd_ctx *dctx, struct interface *ifp,
 handle_flag:
 	if (!(ifp->options->options & DHCPCD_DHCP6))
 		goto nodhcp6;
+/* Only log a DHCPv6 start error if compiled in or debugging is enabled. */
+#ifdef DHCP6
+#define LOG_DHCP6	LOG_ERR
+#else
+#define LOG_DHCP6	LOG_DEBUG
+#endif
 	if (rap->flags & ND_RA_FLAG_MANAGED) {
 		if (new_data && dhcp6_start(ifp, DH6S_INIT) == -1)
-			logger(ifp->ctx, LOG_ERR,
+			logger(ifp->ctx, LOG_DHCP6,
 			    "dhcp6_start: %s: %m", ifp->name);
 	} else if (rap->flags & ND_RA_FLAG_OTHER) {
 		if (new_data && dhcp6_start(ifp, DH6S_INFORM) == -1)
-			logger(ifp->ctx, LOG_ERR,
+			logger(ifp->ctx, LOG_DHCP6,
 			    "dhcp6_start: %s: %m", ifp->name);
 	} else {
 		if (new_data)
@@ -1318,17 +1328,19 @@ ipv6nd_env(char **env, const char *prefix, const struct interface *ifp)
 }
 
 void
-ipv6nd_handleifa(struct dhcpcd_ctx *ctx, int cmd, const char *ifname,
-    const struct in6_addr *addr, int flags)
+ipv6nd_handleifa(int cmd, struct ipv6_addr *addr)
 {
 	struct ra *rap;
 
-	if (ctx->ipv6 == NULL)
+	/* IPv6 init may not have happened yet if we are learning
+	 * existing addresses when dhcpcd starts. */
+	if (addr->iface->ctx->ipv6 == NULL)
 		return;
-	TAILQ_FOREACH(rap, ctx->ipv6->ra_routers, next) {
-		if (strcmp(rap->iface->name, ifname))
+
+	TAILQ_FOREACH(rap, addr->iface->ctx->ipv6->ra_routers, next) {
+		if (rap->iface != addr->iface)
 			continue;
-		ipv6_handleifa_addrs(cmd, &rap->addrs, addr, flags);
+		ipv6_handleifa_addrs(cmd, &rap->addrs, addr);
 	}
 }
 
@@ -1339,6 +1351,7 @@ ipv6nd_expirera(void *arg)
 	struct ra *rap, *ran;
 	struct timespec now, lt, expire, next;
 	uint8_t expired, valid, validone;
+	struct ipv6_addr *ia;
 
 	ifp = arg;
 	clock_gettime(CLOCK_MONOTONIC, &now);
@@ -1372,6 +1385,39 @@ ipv6nd_expirera(void *arg)
 			}
 		}
 
+		/* Not every prefix is tied to an address which
+		 * the kernel can expire, so we need to handle it ourself.
+		 * Also, some OS don't support address lifetimes (Solaris). */
+		TAILQ_FOREACH(ia, &rap->addrs, next) {
+			if (ia->prefix_vltime == ND6_INFINITE_LIFETIME ||
+			    ia->prefix_vltime == 0)
+				continue;
+			lt.tv_sec = (time_t)ia->prefix_vltime;
+			lt.tv_nsec = 0;
+			timespecadd(&ia->acquired, &lt, &expire);
+			if (timespeccmp(&now, &expire, >)) {
+				if (ia->flags & IPV6_AF_ADDED) {
+					logger(ia->iface->ctx, LOG_WARNING,
+					    "%s: expired address %s",
+					    ia->iface->name, ia->saddr);
+					if (if_address6(RTM_DELADDR, ia)== -1 &&
+					    errno != EADDRNOTAVAIL &&
+					    errno != ENXIO)
+						logger(ia->iface->ctx, LOG_ERR,
+						    "if_address6: %m");
+				}
+				ia->prefix_vltime = ia->prefix_pltime = 0;
+				ia->flags &=
+				    ~(IPV6_AF_ADDED | IPV6_AF_DADCOMPLETED);
+				expired = 1;
+			} else {
+				timespecsub(&expire, &now, &lt);
+				if (!timespecisset(&next) ||
+				    timespeccmp(&next, &lt, >))
+					next = lt;
+			}
+		}
+
 		/* XXX FixMe!
 		 * We need to extract the lifetime from each option and check
 		 * if that has expired or not.
@@ -1395,7 +1441,7 @@ ipv6nd_expirera(void *arg)
 
 	/* No valid routers? Kill any DHCPv6. */
 	if (!validone)
-		ipv6nd_dropdhcp6(ifp);
+		dhcp6_dropnondelegates(ifp);
 }
 
 void
@@ -1441,8 +1487,8 @@ ipv6nd_handlena(struct dhcpcd_ctx *dctx, struct interface *ifp,
 
 	if (ifp == NULL) {
 #ifdef DEBUG_NS
-		logger(ctx, LOG_DEBUG, "NA for unexpected interface from %s",
-		    dctx->sfrom);
+		logger(dctx, LOG_DEBUG, "NA for unexpected interface from %s",
+		    ctx->sfrom);
 #endif
 		return;
 	}
@@ -1527,7 +1573,7 @@ ipv6nd_handledata(void *arg)
 	ctx = dctx->ipv6;
 	ctx->rcvhdr.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo)) +
 	    CMSG_SPACE(sizeof(int));
-	len = recvmsg(ctx->nd_fd, &ctx->rcvhdr, 0);
+	len = recvmsg_realloc(ctx->nd_fd, &ctx->rcvhdr, 0);
 	if (len == -1) {
 		logger(dctx, LOG_ERR, "recvmsg: %m");
 		eloop_event_delete(dctx->eloop, ctx->nd_fd);

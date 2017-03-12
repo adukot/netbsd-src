@@ -1,5 +1,5 @@
-/*	$NetBSD: packet.h,v 1.12 2016/03/11 01:55:00 christos Exp $	*/
-/* $OpenBSD: packet.h,v 1.70 2016/02/08 10:57:07 djm Exp $ */
+/*	$NetBSD: packet.h,v 1.14 2016/12/25 00:07:47 christos Exp $	*/
+/* $OpenBSD: packet.h,v 1.74 2016/10/11 21:47:45 djm Exp $ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -43,9 +43,11 @@ struct ssh {
 	/* Key exchange */
 	struct kex *kex;
 
-	/* cached remote ip address and port*/
+	/* cached local and remote ip addresses and ports */
 	char *remote_ipaddr;
 	int remote_port;
+	char *local_ipaddr;
+	int local_port;
 
 	/* Dispatcher table */
 	dispatch_fn *dispatch[DISPATCH_MAX];
@@ -63,6 +65,9 @@ struct ssh {
 	void *app_data;
 };
 
+typedef int (ssh_packet_hook_fn)(struct ssh *, struct sshbuf *,
+    u_char *, void *);
+
 struct ssh *ssh_alloc_session_state(void);
 struct ssh *ssh_packet_set_connection(struct ssh *, int, int);
 void     ssh_packet_set_timeout(struct ssh *, int, int);
@@ -73,6 +78,8 @@ int      ssh_packet_get_connection_in(struct ssh *);
 int      ssh_packet_get_connection_out(struct ssh *);
 void     ssh_packet_close(struct ssh *);
 void	 ssh_packet_set_encryption_key(struct ssh *, const u_char *, u_int, int);
+void	 ssh_packet_set_input_hook(struct ssh *, ssh_packet_hook_fn *, void *);
+
 int	 ssh_packet_is_rekeying(struct ssh *);
 void     ssh_packet_set_protocol_flags(struct ssh *, u_int);
 u_int	 ssh_packet_get_protocol_flags(struct ssh *);
@@ -82,6 +89,10 @@ void     ssh_packet_set_interactive(struct ssh *, int, int, int);
 int      ssh_packet_is_interactive(struct ssh *);
 void     ssh_packet_set_server(struct ssh *);
 void     ssh_packet_set_authenticated(struct ssh *);
+void     ssh_packet_set_mux(struct ssh *);
+int	 ssh_packet_get_mux(struct ssh *);
+
+int	 ssh_packet_log_type(u_char);
 
 int	 ssh_packet_send1(struct ssh *);
 int	 ssh_packet_send2_wrapped(struct ssh *);
@@ -107,11 +118,6 @@ void     ssh_packet_send_debug(struct ssh *, const char *fmt, ...) __attribute__
 int	 ssh_set_newkeys(struct ssh *, int mode);
 void	 ssh_packet_get_bytes(struct ssh *, u_int64_t *, u_int64_t *);
 
-typedef void *(ssh_packet_comp_alloc_func)(void *, u_int, u_int);
-typedef void (ssh_packet_comp_free_func)(void *, void *);
-void	 ssh_packet_set_compress_hooks(struct ssh *, void *,
-    ssh_packet_comp_alloc_func *, ssh_packet_comp_free_func *);
-
 int	 ssh_packet_write_poll(struct ssh *);
 int	 ssh_packet_write_wait(struct ssh *);
 int      ssh_packet_have_data_to_write(struct ssh *);
@@ -134,6 +140,8 @@ int	 ssh_packet_set_state(struct ssh *, struct sshbuf *);
 
 const char *ssh_remote_ipaddr(struct ssh *);
 int	 ssh_remote_port(struct ssh *);
+const char *ssh_local_ipaddr(struct ssh *);
+int	 ssh_local_port(struct ssh *);
 
 void	 ssh_packet_set_rekey_limits(struct ssh *, u_int64_t, time_t);
 time_t	 ssh_packet_get_rekey_timeout(struct ssh *);

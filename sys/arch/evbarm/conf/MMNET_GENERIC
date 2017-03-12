@@ -1,4 +1,4 @@
-# $NetBSD: MMNET_GENERIC,v 1.22 2015/10/25 22:48:23 khorben Exp $
+# $NetBSD: MMNET_GENERIC,v 1.27 2017/02/19 07:47:00 rin Exp $
 #
 # GENERIC machine description file
 #
@@ -22,7 +22,7 @@ include		"arch/evbarm/conf/std.mmnet"
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-#ident 		"GENERIC-$Revision: 1.22 $"
+#ident 		"GENERIC-$Revision: 1.27 $"
 
 maxusers	32		# estimated number of users
 
@@ -146,6 +146,7 @@ file-system	TMPFS		# Efficient memory file-system
 
 # File system options
 #options 	QUOTA		# UFS quotas
+#options 	DISKLABEL_EI	# disklabel Endian Independent support
 #options 	FFS_EI		# FFS Endian Independent support
 options 	WAPBL		# File system journaling support
 # Note that UFS_DIRHASH is suspected of causing kernel memory corruption.
@@ -519,6 +520,8 @@ ucom*	at uvscom? portno ?
 # Audio support
 #audio*	at audiobus?
 
+#spkr*	at audio?		# PC speaker (synthesized)
+
 # MIDI support
 #midi*	at midibus?
 #midi*	at pcppi?		# MIDI interface to the PC speaker
@@ -621,6 +624,7 @@ pseudo-device	ksyms			# /dev/ksyms
 #pseudo-device	wsfont
 
 #options 	FILEASSOC		# fileassoc(9) - required for Veriexec
+					# and PAX_SEGVGUARD
 
 # Veriexec
 #pseudo-device	veriexec

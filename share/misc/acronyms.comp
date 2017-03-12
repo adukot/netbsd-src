@@ -1,4 +1,4 @@
-$NetBSD: acronyms.comp,v 1.163 2016/05/07 12:22:57 pgoyette Exp $
+$NetBSD: acronyms.comp,v 1.177 2017/03/07 16:40:16 dholland Exp $
 3WHS	three-way handshake
 8VSB	8-state vestigial side band modulation
 AA	anti-aliasing
@@ -42,6 +42,7 @@ AM	access method
 AM	alignment mask
 AM	amplitude modulation
 AMI	alternate mark inversion
+AMP	asymmetric multiprocessing
 AMQP	advanced message queuing protocol
 AMT	active management technology
 AN	Arabic number
@@ -109,6 +110,7 @@ BFS	breadth-first search
 BFT	binary file transfer
 BGA	ball grid array
 BGP	Border Gateway Protocol
+BGPSEC	BGP Security
 BIND	Berkeley Internet Name Daemon
 BIOS	Basic Input/Output System
 BIOS	built-in operating system
@@ -130,6 +132,7 @@ BOM	byte order mark
 BP	base pointer
 BP	boot processor
 BPB	BIOS parameter block
+BPDU	bridge protocol data unit
 BPF	Berkeley Packet Filter
 BPI	bits per inch
 BPM	business process modelling
@@ -155,7 +158,7 @@ BT	bit test
 BTC	bit test [and] complement
 BTR	bit test [and] reset
 BTS	bit test [and] set
-BTS	bits per second
+BTS	bug tracking system
 BW	bandwidth
 BWM	block-write mode
 CA	certificate authority
@@ -179,9 +182,11 @@ CD	cache disable
 CD	compact disc
 CDDA	compact disc digital audio
 CDMA	code division multiple access
+CDP	Cisco Discovery Protocol
 CDRAM	cache dynamic random access memory
 CER	canonical encoding rules
 CF	compact flash
+CFB	cipher feedback
 CFG	context-free grammar
 CFG	control-flow graph
 CG	control gate
@@ -252,10 +257,12 @@ CSRG	Computer Systems Research Group
 CSS	cascading style sheets
 CSV	comma-separated values
 CTM	close to metal
+CTR	counter [mode]
 CTS	clear to send
 CUA	common user access
 CUT	coordinated universal time
 CV	control voltage
+CVE	common vulnerabilities and exposures
 CVS	Concurrent Versions System
 DA	destination address
 DAA	distributed application architecture
@@ -343,11 +350,13 @@ DPL	descriptor privilege level
 DPS	Display PostScript
 DPST	display power savings technology
 DRAM	dynamic random access memory
+DRBG	deterministic random bit generator
 DRI	direct rendering infrastructure
 DRM	digital rights management
 DRRS	display refresh rate switching
 DS	debug store
 DSA	digital signature algorithm
+DSAP	destination service access point
 DSB	double-sideband modulation
 DSDT	differentiated system descriptor table
 DSL	digital subscriber line
@@ -376,18 +385,23 @@ EABI	embedded-application binary interface
 EAI	Email Address Internationalization
 EAI	Enterprise Application Integration
 EAP	Extensible Authentication Protocol
+EAPOL	EAP over Lan
 EBCDIC	Extended Binary Coded Decimal Interchange Code
 EBR	extended boot record
-EC	elliptical curve
+EC	elliptic curve
+ECC	elliptic curve cryptography
 ECC	error correction code
-ECDL	elliptical curve discrete logarithm
-ECDSA	elliptical curve digital signature algorithm
+ECDH	elliptic curve Diffie-Hellman
+ECDL	elliptic curve discrete logarithm
+ECDLP	elliptic curve discrete logarithm problem
+ECDSA	elliptic curve digital signature algorithm
 ECL	emitter-coupled logic
 ECN	explicit congestion notification
 ECP	enhanced capability port
 ECS	enhanced chip set
 ECS	extended configuration space
 EDAT	enhanced dynamic acceleration technology
+EdDSA	Edwards curve digital signature algorithm
 EDGE	explicit data graph execution
 EDID	extended display identification data
 EDO	extended data out
@@ -436,7 +450,9 @@ FDE	full disk encryption
 FEA	finite element analysis
 FEC	forward error correction
 FET	field-effect transistor
+FF	finite field
 FF	form feed
+FFDH	finite-field Diffie-Hellman
 FFH	functional fixed hardware
 FFI	foreign function interface
 FFM	focus follows mouse
@@ -448,6 +464,7 @@ FHSS	frequency hop spread spectrum
 FID	frequency identifier
 FIFO	first in, first out
 FILO	first in, last out
+FIPS	Federal Information Processing Standards
 FIR	fast infrared
 FLOPS	floating [point] operations per second
 FLOSS	free/libre/open source software
@@ -477,6 +494,7 @@ FWS	folding white space
 GAL	generic array logic
 GAS	generic address structure
 GC	garbage collector
+GCM	Galois counter mode
 GCR	group-coded recording
 GDT	global descriptor table
 GEM	graphics environment manager
@@ -618,6 +636,8 @@ IST	interrupt stack table
 ISV	independent software vendor
 IT	information technology
 ITB	Intel Turbo Boost
+ITIL	information technology infrastructure library
+ITSM	IT service management
 IV	initialization vector
 IVT	interrupt vector table
 JBOD	just a bunch of disks
@@ -752,6 +772,7 @@ ML	maximum likelihood
 MLC	multi-level cell
 MLD	multicast listener discovery
 MLHP	micro loop heat pipe
+MMF	multi-mode fiber
 MMIC	monolithic microwave integrated circuit
 MMIO	memory mapped input/output
 MMORPG	massive multiplayer online role playing game
@@ -783,6 +804,7 @@ MSI	message signaled interrupt
 MSI	modified, shared, invalid
 MSR	machine state register
 MSS	maximum segment size
+MSTP	Multiple Spanning Tree Protocol
 MT	machine translation
 MTA	mail transfer agent
 MTBF	mean time between failures
@@ -810,6 +832,7 @@ NDFA	nondeterministic finite automaton
 NE	numeric error
 NFA	nondeterministic finite automaton
 NFC	near-field communication
+NFCI	no functional change intended
 NFS	network file system
 NIA	next instruction address
 NIC	network information center
@@ -818,6 +841,7 @@ NIDS	network intrusion detection system
 NIP	network interface protocol
 NIPS	network intrusion prevention system
 NIS	network information service
+NIST	National Institute of Standards and Technology
 NLS	native language support
 NMI	non-maskable interrupt
 NNTP	Network News Transfer Protocol
@@ -826,6 +850,8 @@ NOP	no operation
 NOS	network operating system
 NP	nondeterministic polynomial time
 NRZ	non-return to zero
+NSA	nation-state adversary
+NSA	no such agency
 NSA	National Security Agency
 NTM	non-deterministic Turing machine
 NTP	Network Time Protocol
@@ -841,6 +867,7 @@ OCR	optical character recognition
 ODCM	on-demand clock modulation
 ODT	on-die termination
 OEM	original equipment manufacturer
+OFB	output feedback
 OFDM	orthogonal frequency division multiplexing
 OFET	organic field-effect transistor
 OLAP	online analytical processing
@@ -896,6 +923,7 @@ PBE	programming by example
 PC	personal computer
 PC	program counter
 PCB	printed circuit board
+PCB	process control block
 PCC	Portable C Compiler
 PCD	page-level cache disable
 PCE	performance-monitor counter enable
@@ -916,6 +944,7 @@ PDP	page {descriptor,directory} page
 PDS	product data sheet
 PDU	protocol data unit
 PE	protection enable
+PEAP	Protected EAP
 PECI	platform environment control interface
 PEP	protocol extension protocol
 PER	packed encoding rules
@@ -969,11 +998,14 @@ PPP	Point-to-Point Protocol
 PPPOA	Point-to-Point Protocol over ATM
 PPPOE	Point-to-Point Protocol over Ethernet
 PPU	physics processing unit
-PRBS	pseudo-random bit sequence
+PRBS	pseudorandom bit sequence
+PRG	pseudorandom generator
+PRF	pseudorandom function [family]
 PRML	partial response, maximum likelihood
-PRN	pseudo random {noise,number}
-PRNG	pseudo random number generator
+PRN	pseudorandom {noise,number}
+PRNG	pseudorandom number generator
 PROM	programmable read only memory
+PRP	pseudorandom permutation
 PSD	power spectral density
 PSE	page size extensions
 PSK	phase shift keying
@@ -989,6 +1021,7 @@ PUN	physical unit number
 PV	physical volume
 PVG	physical volume group
 PVI	protected-mode virtual interrupt
+PVST	Per-VLAN Spanning Tree
 PWM	pulse width modulation
 PXE	preboot execution environment
 QA	quality assurance
@@ -998,6 +1031,7 @@ QBE	query by example
 QC	quality control
 QDI	quasi delay insensitive
 QOS	quality of service
+QVL	qualified vendor list
 R/O	read only
 R/W	read/write
 RA	receiver address
@@ -1050,16 +1084,20 @@ RMW	read, modify, write
 RNG	random number generator
 ROM	read only memory
 RPC	remote procedure call
+RPKI	resource PKI
 RPL	requested privilege level
 RPM	revolutions per minute
 RPN	reverse Polish notation
+RPVST	Rapid Per-VLAN Spanning Tree
 RR	random replacement
 RR	round robin
 RS	relay station
 RSA	Rivest, Shamir, [and] Adleman
 RSIP	Realm Specific IP
+RSN	Robust Secure Network
 RSS	really simple syndication
 RSS	residual sum of squares
+RSTP	Rapid Spanning Tree Protocol
 RT	real time
 RTC	real time clock
 RTC	real time computing
@@ -1071,6 +1109,7 @@ RTOS	real time operating system
 RTS	request to send
 RTT	round trip time
 RUP	rational unified process
+RW	Rabin-Williams
 RWM	read-write memory
 RX	{receive,receiver}
 S/PDIF	Sony/Philips Digital Interface Format
@@ -1085,6 +1124,7 @@ SAL	system abstraction layer
 SAM	serial access memory
 SAM	sum addressed memory
 SAN	storage area network
+SAP	service access point
 SAPIC	streamlined advanced programmable interrupt controller
 SASD	structured analysis, structured design
 SASI	Shugart Associates System Interface
@@ -1121,6 +1161,9 @@ SFTP	SSH File Transfer Protocol
 SFTP	Serial File Transfer Protocol
 SFTP	Simple File Transfer Protocol
 SGRAM	synchronous graphics random access memory
+SHA	secure hash algorithm
+SIDH	supersingular isogeny Diffie-Hellman
+SIEM	security information and event management
 SIFS	short inter-frame space
 SIMD	single instruction, multiple data
 SIMM	single inline memory module
@@ -1137,9 +1180,12 @@ SLOC	source lines of code
 SLRU	segmented LRU
 SMA	smart memory access
 SMAF	system management action field
+SMAP	Simple Mail Access Protocol
+SMAP	supervisor mode access prevention
 SMART	self-monitoring analysis and reporting technology
 SMBIOS	System Management BIOS
 SMC	system management controller
+SMF	single mode fiber
 SMI	structure of management information
 SMI	system management interrupt
 SMM	system management mode
@@ -1147,6 +1193,7 @@ SMP	symmetric multiprocessing
 SMT	simultaneous multithreading
 SMTP	Simple Mail Transfer Protocol
 SMU	system management unit
+SNAP	Sub-Network Access Protocol
 SNMP	Simple Network Management Protocol
 SNR	signal-to-noise ratio
 SOA	service oriented architecture
@@ -1174,6 +1221,8 @@ SRAM	static random access memory
 SRC	sample rate conversion
 SS	self-snoop
 SS	stack segment
+SSA	static single assignment
+SSAP	source service access point
 SSB	single-sideband modulation
 SSD	solid state drive
 SSE	streaming SIMD extensions
@@ -1339,8 +1388,11 @@ VOD	video on demand
 VPN	virtual private network
 VR	virtual reality
 VRAM	video random access memory
+VRF	virtual routing and forwarding
 VRM	voltage regulator module
 VRRP	Virtual Router Redundancy Protocol
+VSTP	VLAN Spanning Tree Protocol
+VTP	VLAN Trunking Protocol
 W	watt
 W3C	World Wide Web Consortium
 WAN	wide area network

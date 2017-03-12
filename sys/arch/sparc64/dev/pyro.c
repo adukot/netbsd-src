@@ -1,4 +1,4 @@
-/*	$NetBSD: pyro.c,v 1.16 2015/10/02 05:22:52 msaitoh Exp $	*/
+/*	$NetBSD: pyro.c,v 1.18 2016/11/10 06:44:35 macallan Exp $	*/
 /*	from: $OpenBSD: pyro.c,v 1.20 2010/12/05 15:15:14 kettenis Exp $	*/
 
 /*
@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pyro.c,v 1.16 2015/10/02 05:22:52 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pyro.c,v 1.18 2016/11/10 06:44:35 macallan Exp $");
 
 #include <sys/param.h>
 #include <sys/device.h>
@@ -495,6 +495,12 @@ pyro_bus_map(bus_space_tag_t t, bus_addr_t offset,
 	    (unsigned long long)size,
 	    flags));
 
+	/*
+	 * BUS_SPACE_MAP_PREFETCHABLE causes hard hangs on schizo, so weed it
+	 * out for now until someone can verify wether it works on pyro
+	 */
+	flags &= ~BUS_SPACE_MAP_PREFETCHABLE;
+
 	ss = sparc_pci_childspace(t->type);
 	DPRINTF(PDB_BUSMAP, (" cspace %d", ss));
 
@@ -526,6 +532,12 @@ pyro_bus_mmap(bus_space_tag_t t, bus_addr_t paddr,
 	struct pyro_pbm *pbm = t->cookie;
 	struct pyro_softc *sc = pbm->pp_sc;
 	int i, ss;
+
+	/*
+	 * BUS_SPACE_MAP_PREFETCHABLE causes hard hangs on schizo, so weed it
+	 * out for now until someone can verify wether it works on pyro
+	 */
+	flags &= ~BUS_SPACE_MAP_PREFETCHABLE;
 
 	ss = sparc_pci_childspace(t->type);
 
@@ -580,9 +592,7 @@ pyro_intr_establish(bus_space_tag_t t, int ihandle, int level,
 
 	ino |= INTVEC(ihandle);
 
-	ih = malloc(sizeof *ih, M_DEVBUF, M_NOWAIT);
-	if (ih == NULL)
-		return (NULL);
+	ih = intrhand_alloc();
 
 	/* Register the map and clear intr registers */
 	ih->ih_map = intrmapptr;

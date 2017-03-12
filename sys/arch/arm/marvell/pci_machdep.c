@@ -1,4 +1,4 @@
-/*	$NetBSD: pci_machdep.c,v 1.9 2015/10/02 05:22:50 msaitoh Exp $	*/
+/*	$NetBSD: pci_machdep.c,v 1.11 2017/03/10 15:44:24 skrll Exp $	*/
 /*
  * Copyright (c) 2008 KIYOHARA Takashi
  * All rights reserved.
@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pci_machdep.c,v 1.9 2015/10/02 05:22:50 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pci_machdep.c,v 1.11 2017/03/10 15:44:24 skrll Exp $");
 
 #include "opt_mvsoc.h"
 #include "gtpci.h"
@@ -245,6 +245,29 @@ struct arm32_pci_chipset arm32_mvpex5_chipset = {
 #endif
 	mvpex_conf_interrupt,
 };
+struct arm32_pci_chipset arm32_mvpex6_chipset = {
+	NULL,	/* conf_v */
+	mvpex_attach_hook,
+	mvpex_bus_maxdevs,
+	mvpex_make_tag,
+	mvpex_decompose_tag,
+#if NMVPEX_MBUS > 0
+	mvpex_mbus_conf_read,		/* XXXX: always this functions */
+#else
+	mvpex_conf_read,
+#endif
+	mvpex_conf_write,
+	NULL,	/* intr_v */
+	mvpex_intr_map,
+	mvpex_intr_string,
+	mvpex_intr_evcnt,
+	mvpex_intr_establish,
+	mvpex_intr_disestablish,
+#ifdef __HAVE_PCI_CONF_HOOK
+	mvpex_conf_hook,
+#endif
+	mvpex_conf_interrupt,
+};
 #endif /* NMVPEX > 0 */
 
 #if NGTPCI > 0
@@ -352,7 +375,8 @@ gtpci_gpp_intr_establish(void *v, pci_intr_handle_t int_pin, int ipl,
 	int2gpp = prop_dictionary_get(device_properties(sc->sc_dev), "int2gpp");
 	gpp = prop_array_get(int2gpp, int_pin);
 	gpp_pin = prop_number_integer_value(gpp);
-	return mvsocgpp_intr_establish(gpp_pin, ipl, 0, intrhand, intrarg);
+	return mvsocgpp_intr_establish(gpp_pin, ipl, IST_LEVEL_LOW, intrhand,
+	    intrarg);
 }
 
 static void

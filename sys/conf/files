@@ -1,4 +1,4 @@
-#	$NetBSD: files,v 1.1158 2016/05/01 10:21:02 nonaka Exp $
+#	$NetBSD: files,v 1.1171 2017/02/26 11:56:49 rin Exp $
 #	@(#)files.newconf	7.5 (Berkeley) 5/10/93
 
 version 	20150846
@@ -19,10 +19,9 @@ devclass bus
 #
 defparam opt_param.h		MAXUSERS
 defflag				INSECURE
-defflag				KMEMSTATS
 defflag				KTRACE
 defflag				MBUFTRACE
-defflag				PTRACE
+defflag	opt_ptrace.h		PTRACE PTRACE_HOOKS
 defflag				COREDUMP
 defflag	opt_modular.h		MODULAR
 defflag	opt_modular.h		MODULAR_DEFAULT_AUTOLOAD
@@ -40,6 +39,7 @@ defflag	opt_pipe.h		PIPE_SOCKETPAIR PIPE_NODIRECT
 
 defflag				AIO
 defflag				MQUEUE
+defflag				SEMAPHORE
 
 defflag				BUFQ_DISKSORT
 defflag				BUFQ_FCFS
@@ -90,6 +90,7 @@ defflag	opt_dkwedge.h		DKWEDGE_AUTODISCOVER
 				DKWEDGE_METHOD_GPT
 				DKWEDGE_METHOD_MBR
 				DKWEDGE_METHOD_APPLE
+				DKWEDGE_METHOD_RDB
 
 defflag	opt_veriexec.h		VERIFIED_EXEC_FP_SHA1
 				VERIFIED_EXEC_FP_SHA256
@@ -119,6 +120,8 @@ defparam opt_pax.h		PAX_MPROTECT
 defflag	opt_fileassoc.h		FILEASSOC
 
 defflag	opt_gre.h		GRE_DEBUG
+
+defparam opt_l2tp.h		L2TP_ID_HASH_SIZE
 
 # Write Ahead Physical Block Logging
 defflag opt_wapbl.h		WAPBL WAPBL_DEBUG
@@ -150,12 +153,12 @@ defflag				COMPAT_OSSAUDIO
 defflag				COMPAT_FREEBSD: COMPAT_30
 defflag				COMPAT_IBCS2
 defflag				COMPAT_LINUX: COMPAT_16
-defflag				COMPAT_LINUX32 : COMPAT_LINUX
 defflag				COMPAT_OSF1
 defflag				COMPAT_SUNOS: COMPAT_30
 defflag	opt_compat_svr4.h	COMPAT_SVR4 COMPAT_SVR4_32 SVR4_COMPAT_SOLARIS2
 defflag				COMPAT_ULTRIX: COMPAT_50
 defflag				COMPAT_NETBSD32
+defflag				COMPAT_LINUX32 : COMPAT_LINUX, COMPAT_NETBSD32
 defflag				COMPAT_AOUT_M68K: COMPAT_40
 defflag				COMPAT_M68K4K
 defflag				COMPAT_VAX1K
@@ -192,6 +195,21 @@ include "crypto/cprng_fast/files.cprng_fast"
 defflag opt_kernhist.h			KERNHIST KERNHIST_PRINT
 defparam opt_kernhist.h			KERNHIST_DELAY
 file	kern/kern_history.c		kernhist
+
+#
+# These are here for the benefit of kern_history.c so that
+# UVMHIST can be built in kernels without usb.
+#
+# top level usb debug defines
+defflag	opt_usb.h			USB_DEBUG: KERNHIST
+defparam opt_usb.h			USBHIST_SIZE
+
+#
+# Options for BIOHIST
+#
+defflag opt_biohist.h           BIOHIST: KERNHIST
+defflag opt_biohist.h           BIOHIST_PRINT: KERNHIST_PRINT
+defparam opt_biohist.h          BIOHIST_SIZE
 
 #
 # System monitoring framework
@@ -238,7 +256,7 @@ defflag	opt_ppp.h		PPP_DEFLATE PPP_BSDCOMP PPP_FILTER
 						# Include deflate or bsd
 						# compression, enable pppd
 						# packet filtering support
-defflag opt_pppoe.h		PPPOE_SERVER PPPOE_TERM_UNKNOWN_SESSIONS
+defflag opt_pppoe.h		PPPOE_SERVER PPPOE_DEBUG
 
 # networking options
 #
@@ -323,6 +341,10 @@ define	onewirebus	{ }
 define 	pckbport	{[slot = -1]}
 define	pckbport_machdep_cnattach
 define	firmload
+
+# speaker devices, attaches to audio or pcppi drivers
+device	spkr
+file	dev/spkr.c			spkr
 
 include "dev/files.audio"
 
@@ -870,7 +892,7 @@ defflag	opt_com.h		COM_DEBUG
 # XXX In a perfect world, this would be done with attributes
 defflag	opt_com.h		COM_16650 COM_16750
 				COM_HAYESP COM_PXA2X0 COM_AU1X00
-				COM_REGMAP COM_FUNCMAP
+				COM_REGMAP COM_FUNCMAP COM_AWIN
 defparam opt_com.h		COM_TOLERANCE
 device	com { } : tty
 file	dev/ic/com.c			com			needs-flag
@@ -1194,7 +1216,7 @@ device	igsfb: wsemuldisplaydev, rasops8, vcons, videomode
 file	dev/ic/igsfb.c			igsfb			needs-flag
 file	dev/ic/igsfb_subr.c		igsfb
 
-device	chipsfb: wsemuldisplaydev, rasops8, vcons, videomode
+device	chipsfb: wsemuldisplaydev, rasops8, vcons, videomode, glyphcache
 file	dev/ic/ct65550.c		chipsfb
 defflag	opt_chipsfb.h	CHIPSFB_DEBUG
 defflag	opt_chipsfb.h	CHIPSFB_WAIT
@@ -1402,7 +1424,6 @@ defpseudo loop:		ifnet
 defpseudo sl:		ifnet
 defpseudo ppp:		ifnet, bpf_filter
 defpseudo pppoe:	ifnet, ether, sppp
-defpseudo sppp:		ifnet
 defpseudo tun:		ifnet
 defpseudo vlan:		ifnet, ether
 defpseudo bridge:	ifnet, ether
@@ -1411,12 +1432,13 @@ defpseudo strip:	ifnet
 defpseudo gre:		ifnet
 defpseudo gif:		ifnet
 defpseudo faith:	ifnet
-defpseudo ifmpls:	ifnet
+defpseudo mpls:		ifnet
 defpseudo srt:		ifnet
 defpseudo stf:		ifnet
 defpseudodev tap:	ifnet, ether, arp
 defpseudo carp:		ifnet, ether, arp
 defpseudodev etherip:	ifnet, ether, arp
+defpseudodev l2tp:	ifnet, ether, arp
 
 defpseudo sequencer
 defpseudo clockctl
@@ -1497,6 +1519,7 @@ include "miscfs/procfs/files.procfs"
 include "miscfs/umapfs/files.umapfs"
 include "nfs/files.nfs"
 include "ufs/files.ufs"
+include "fs/nfs/files.newnfs"
 
 #
 # UVM (virtual memory)

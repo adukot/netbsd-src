@@ -1,4 +1,4 @@
-/*	$NetBSD: socketvar.h,v 1.139 2015/05/09 15:22:47 rtr Exp $	*/
+/*	$NetBSD: socketvar.h,v 1.144 2017/02/03 16:06:45 christos Exp $	*/
 
 /*-
  * Copyright (c) 2008, 2009 The NetBSD Foundation, Inc.
@@ -184,15 +184,6 @@ struct socket {
 	kauth_cred_t	so_cred;	/* socket credentials */
 };
 
-#define	SB_EMPTY_FIXUP(sb)						\
-do {									\
-	KASSERT(solocked((sb)->sb_so));					\
-	if ((sb)->sb_mb == NULL) {					\
-		(sb)->sb_mbtail = NULL;					\
-		(sb)->sb_lastrecord = NULL;				\
-	}								\
-} while (/*CONSTCOND*/0)
-
 /*
  * Socket state bits.
  */
@@ -237,6 +228,15 @@ struct sockopt {
 	uint8_t		sopt_buf[sizeof(int)];	/* internal storage */
 };
 
+#define	SB_EMPTY_FIXUP(sb)						\
+do {									\
+	KASSERT(solocked((sb)->sb_so));					\
+	if ((sb)->sb_mb == NULL) {					\
+		(sb)->sb_mbtail = NULL;					\
+		(sb)->sb_lastrecord = NULL;				\
+	}								\
+} while (/*CONSTCOND*/0)
+
 extern u_long		sb_max;
 extern int		somaxkva;
 extern int		sock_loan_thresh;
@@ -247,6 +247,7 @@ struct lwp;
 struct msghdr;
 struct stat;
 struct knote;
+struct sockaddr_big;
 
 struct	mbuf *getsombuf(struct socket *, int);
 
@@ -346,13 +347,23 @@ int	sockopt_setmbuf(struct sockopt *, struct mbuf *);
 struct mbuf *sockopt_getmbuf(const struct sockopt *);
 
 int	copyout_sockname(struct sockaddr *, unsigned int *, int, struct mbuf *);
+int	copyout_sockname_sb(struct sockaddr *, unsigned int *,
+    int , struct sockaddr_big *);
 int	copyout_msg_control(struct lwp *, struct msghdr *, struct mbuf *);
 void	free_control_mbuf(struct lwp *, struct mbuf *, struct mbuf *);
 
 int	do_sys_getpeername(int, struct sockaddr *);
 int	do_sys_getsockname(int, struct sockaddr *);
-int	do_sys_sendmsg(struct lwp *, int, struct msghdr *, int, register_t *);
-int	do_sys_recvmsg(struct lwp *, int, struct msghdr *, struct mbuf **,
+
+int	do_sys_sendmsg(struct lwp *, int, struct msghdr *, int,
+	    const void *, size_t, register_t *);
+int	do_sys_sendmsg_so(struct lwp *, int, struct socket *, file_t *,
+	    struct msghdr *, int, const void *, size_t, register_t *);
+
+int	do_sys_recvmsg(struct lwp *, int, struct msghdr *,
+	    const void *, size_t, struct mbuf **, struct mbuf **, register_t *);
+int	do_sys_recvmsg_so(struct lwp *, int, struct socket *,
+	    struct msghdr *mp, const void *, size_t, struct mbuf **,
 	    struct mbuf **, register_t *);
 
 int	do_sys_bind(struct lwp *, int, struct sockaddr *);

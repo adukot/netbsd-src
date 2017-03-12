@@ -1,4 +1,4 @@
-/*	$NetBSD: rtld.h,v 1.124 2014/09/19 17:43:33 matt Exp $	 */
+/*	$NetBSD: rtld.h,v 1.126 2016/11/30 19:43:32 christos Exp $	 */
 
 /*
  * Copyright 1996 John D. Polstra.
@@ -276,6 +276,12 @@ typedef struct Struct_Obj_Entry {
 	size_t		tlsalign;	/* Needed alignment for static TLS */
 #endif
 
+#ifdef GNU_RELRO
+	/* relocation readonly */
+	void		*relro_page;
+	size_t		relro_size;
+#endif
+
 	/* symbol versioning */
 	const Elf_Verneed *verneed;	/* Required versions. */
 	Elf_Word	verneednum;	/* Number of entries in verneed table */
@@ -410,6 +416,7 @@ Elf_Addr _rtld_resolve_ifunc(const Obj_Entry *, const Elf_Sym *);
 Obj_Entry *_rtld_load_library(const char *, const Obj_Entry *, int);
 
 /* symbol.c */
+bool _rtld_is_exported(const Elf_Sym *);
 unsigned long _rtld_elf_hash(const char *);
 const Elf_Sym *_rtld_symlook_obj(const char *, unsigned long,
     const Obj_Entry *, u_int, const Ver_Entry *);

@@ -1,4 +1,4 @@
-/*      $NetBSD: if_atmsubr.c,v 1.58 2016/04/28 00:16:56 ozaki-r Exp $       */
+/*      $NetBSD: if_atmsubr.c,v 1.61 2017/01/11 13:08:29 ozaki-r Exp $       */
 
 /*
  * Copyright (c) 1996 Charles D. Cranor and Washington University.
@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_atmsubr.c,v 1.58 2016/04/28 00:16:56 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_atmsubr.c,v 1.61 2017/01/11 13:08:29 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -43,8 +43,6 @@ __KERNEL_RCSID(0, "$NetBSD: if_atmsubr.c,v 1.58 2016/04/28 00:16:56 ozaki-r Exp 
 #include <sys/kernel.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
-#include <sys/protosw.h>
-#include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <sys/errno.h>
 #include <sys/syslog.h>
@@ -214,17 +212,18 @@ atm_input(struct ifnet *ifp, struct atm_pseudohdr *ah, struct mbuf *m,
 		splx(s);
 		isr = NETISR_NATM;
 		inq = &natmintrq;
-		m->m_pkthdr.rcvif = rxhand; /* XXX: overload */
+		m_set_rcvif(m, rxhand); /* XXX: overload */
 
-		s = splnet();
+		IFQ_LOCK(inq);
 		if (IF_QFULL(inq)) {
 			IF_DROP(inq);
+			IFQ_UNLOCK(inq);
 			m_freem(m);
 		} else {
 			IF_ENQUEUE(inq, m);
+			IFQ_UNLOCK(inq);
 			schednetisr(isr);
 		}
-		splx(s);
 #else
 		printf("%s: NATM detected but not configured in kernel\n",
 		    __func__);

@@ -1,5 +1,5 @@
 /* $KAME: sctp_pcb.c,v 1.39 2005/06/16 18:29:25 jinmei Exp $ */
-/* $NetBSD: sctp_pcb.c,v 1.4 2016/04/25 21:21:02 rjs Exp $ */
+/* $NetBSD: sctp_pcb.c,v 1.8 2016/12/08 05:16:33 ozaki-r Exp $ */
 
 /*
  * Copyright (c) 2001, 2002, 2003, 2004 Cisco Systems, Inc.
@@ -33,7 +33,7 @@
  * SUCH DAMAGE.
  */
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: sctp_pcb.c,v 1.4 2016/04/25 21:21:02 rjs Exp $");
+__KERNEL_RCSID(0, "$NetBSD: sctp_pcb.c,v 1.8 2016/12/08 05:16:33 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -2061,6 +2061,7 @@ sctp_inpcb_free(struct sctp_inpcb *inp, int immediate)
 	struct socket *so;
 	struct sctp_socket_q_list *sq;
 	int s, cnt;
+	struct rtentry *rt;
 
 	s = splsoftnet();
 	SCTP_ASOC_CREATE_LOCK(inp);
@@ -2173,7 +2174,9 @@ sctp_inpcb_free(struct sctp_inpcb *inp, int immediate)
 #endif
 	inp->sctp_flags |= SCTP_PCB_FLAGS_SOCKET_ALLGONE;
 
-	rtcache_validate(&ip_pcb->inp_route);
+	/* XXX */
+	rt = rtcache_validate(&ip_pcb->inp_route);
+	rtcache_unref(rt, &ip_pcb->inp_route);
 
 	callout_stop(&inp->sctp_ep.signature_change.timer);
 	callout_destroy(&inp->sctp_ep.signature_change.timer);
@@ -2338,8 +2341,11 @@ sctp_is_address_on_local_host(struct sockaddr *addr)
 {
 	struct ifnet *ifn;
 	struct ifaddr *ifa;
-	IFNET_FOREACH(ifn) {
-		IFADDR_FOREACH(ifa, ifn) {
+	int s;
+
+	s = pserialize_read_enter();
+	IFNET_READER_FOREACH(ifn) {
+		IFADDR_READER_FOREACH(ifa, ifn) {
 			if (addr->sa_family == ifa->ifa_addr->sa_family) {
 				/* same family */
 				if (addr->sa_family == AF_INET) {
@@ -2350,6 +2356,7 @@ sctp_is_address_on_local_host(struct sockaddr *addr)
 					if (sin->sin_addr.s_addr ==
 					    sin_c->sin_addr.s_addr) {
 						/* we are on the same machine */
+						pserialize_read_exit(s);
 						return (1);
 					}
 				} else if (addr->sa_family == AF_INET6) {
@@ -2360,12 +2367,15 @@ sctp_is_address_on_local_host(struct sockaddr *addr)
 					if (SCTP6_ARE_ADDR_EQUAL(&sin6->sin6_addr,
 					    &sin_c6->sin6_addr)) {
 						/* we are on the same machine */
+						pserialize_read_exit(s);
 						return (1);
 					}
 				}
 			}
 		}
 	}
+	pserialize_read_exit(s);
+
 	return (0);
 }
 
@@ -2601,6 +2611,7 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 		 */
 		TAILQ_INSERT_HEAD(&stcb->asoc.nets, net, sctp_next);
 	} else if (rt->rt_ifp != netfirst_rt->rt_ifp) {
+		rtcache_unref(netfirst_rt, &netfirst->ro);
 		/*
 		 * This one has a different interface than the one at the
 		 * top of the list. Place it ahead.
@@ -2628,13 +2639,16 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 				TAILQ_INSERT_BEFORE(netfirst, net, sctp_next);
 				break;
 			} else if (netlook_rt->rt_ifp != rt->rt_ifp) {
+				rtcache_unref(netlook_rt, &netlook->ro);
 				TAILQ_INSERT_AFTER(&stcb->asoc.nets, netlook,
 				    net, sctp_next);
 				break;
 			}
+			rtcache_unref(netlook_rt, &netlook->ro);
 			/* Shift forward */
 			netfirst = netlook;
 		} while (netlook != NULL);
+		rtcache_unref(netfirst_rt, &netfirst->ro);
 	}
 	/* got to have a primary set */
 	if (stcb->asoc.primary_destination == 0) {
@@ -2892,6 +2906,7 @@ sctp_free_remote_addr(struct sctp_nets *net)
 		callout_destroy(&net->rxt_timer.timer);
 		callout_destroy(&net->pmtu_timer.timer);
 		net->dest_state = SCTP_ADDR_NOT_REACHABLE;
+		rtcache_free(&net->ro);
 		SCTP_ZONE_FREE(sctppcbinfo.ipi_zone_net, net);
 		sctppcbinfo.ipi_count_raddr--;
 	}
@@ -3153,6 +3168,7 @@ sctp_free_assoc(struct sctp_inpcb *inp, struct sctp_tcb *stcb)
 		}
 		prev = net;
 		TAILQ_REMOVE(&asoc->nets, net, sctp_next);
+		rtcache_free(&net->ro);
 		/* free it */
 		net->ref_count = 0;
 		SCTP_ZONE_FREE(sctppcbinfo.ipi_zone_net, net);

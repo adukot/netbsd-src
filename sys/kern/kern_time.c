@@ -1,4 +1,4 @@
-/*	$NetBSD: kern_time.c,v 1.186 2016/04/23 23:08:26 christos Exp $	*/
+/*	$NetBSD: kern_time.c,v 1.189 2016/11/11 15:29:36 njoly Exp $	*/
 
 /*-
  * Copyright (c) 2000, 2004, 2005, 2007, 2008, 2009 The NetBSD Foundation, Inc.
@@ -61,7 +61,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: kern_time.c,v 1.186 2016/04/23 23:08:26 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: kern_time.c,v 1.189 2016/11/11 15:29:36 njoly Exp $");
 
 #include <sys/param.h>
 #include <sys/resourcevar.h>
@@ -97,6 +97,7 @@ CTASSERT(ITIMER_VIRTUAL == CLOCK_VIRTUAL);
 CTASSERT(ITIMER_PROF == CLOCK_PROF);
 CTASSERT(ITIMER_MONOTONIC == CLOCK_MONOTONIC);
 
+#define	DELAYTIMER_MAX	32
 
 /*
  * Initialize timekeeping.
@@ -318,7 +319,8 @@ sys_clock_nanosleep(struct lwp *l, const struct sys_clock_nanosleep_args *uap,
 	if (SCARG(uap, rmtp) == NULL || (error != 0 && error != EINTR))
 		goto out;
 
-	if ((error1 = copyout(&rmt, SCARG(uap, rmtp), sizeof(rmt))) != 0)
+	if ((SCARG(uap, flags) & TIMER_ABSTIME) == 0 &&
+	    (error1 = copyout(&rmt, SCARG(uap, rmtp), sizeof(rmt))) != 0)
 		error = error1;
 out:
 	*retval = error;
@@ -395,7 +397,7 @@ sys_clock_getcpuclockid2(struct lwp *l,
 
 	switch (SCARG(uap, idtype)) {
 	case P_PID:
-		pid = id == 0 ? l->l_proc->p_pid : id; 
+		pid = id == 0 ? l->l_proc->p_pid : id;
 		clock_id = CLOCK_PROCESS_CPUTIME_ID | pid;
 		break;
 	case P_LWPID:
@@ -980,6 +982,8 @@ sys_timer_getoverrun(struct lwp *l, const struct sys_timer_getoverrun_args *uap,
 		return (EINVAL);
 	}
 	*retval = pt->pt_poverruns;
+	if (*retval >= DELAYTIMER_MAX)
+		*retval = DELAYTIMER_MAX;
 	mutex_spin_exit(&timer_lock);
 
 	return (0);
@@ -1089,7 +1093,7 @@ dogetitimer(struct proc *p, int which, struct itimerval *itvp)
 		TIMESPEC_TO_TIMEVAL(&itvp->it_value, &its.it_value);
 		TIMESPEC_TO_TIMEVAL(&itvp->it_interval, &its.it_interval);
 	}
-	mutex_spin_exit(&timer_lock);	
+	mutex_spin_exit(&timer_lock);
 
 	return 0;
 }

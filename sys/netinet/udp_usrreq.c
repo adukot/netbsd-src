@@ -1,4 +1,4 @@
-/*	$NetBSD: udp_usrreq.c,v 1.225 2016/04/26 08:44:45 ozaki-r Exp $	*/
+/*	$NetBSD: udp_usrreq.c,v 1.231 2017/03/03 07:13:06 ozaki-r Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -66,7 +66,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: udp_usrreq.c,v 1.225 2016/04/26 08:44:45 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: udp_usrreq.c,v 1.231 2017/03/03 07:13:06 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -75,6 +75,7 @@ __KERNEL_RCSID(0, "$NetBSD: udp_usrreq.c,v 1.225 2016/04/26 08:44:45 ozaki-r Exp
 #include "opt_inet_csum.h"
 #include "opt_ipkdb.h"
 #include "opt_mbuftrace.h"
+#include "opt_net_mpsafe.h"
 #endif
 
 #include <sys/param.h>
@@ -276,7 +277,7 @@ udp4_input_checksum(struct mbuf *m, const struct udphdr *uh,
 		return 0;
 
 	switch (m->m_pkthdr.csum_flags &
-	    ((m->m_pkthdr.rcvif->if_csum_flags_rx & M_CSUM_UDPv4) |
+	    ((m_get_rcvif_NOMPSAFE(m)->if_csum_flags_rx & M_CSUM_UDPv4) |
 	    M_CSUM_TCP_UDP_BAD | M_CSUM_DATA)) {
 	case M_CSUM_UDPv4|M_CSUM_TCP_UDP_BAD:
 		UDP_CSUM_COUNTER_INCR(&udp_hwcsum_bad);
@@ -309,7 +310,7 @@ udp4_input_checksum(struct mbuf *m, const struct udphdr *uh,
 		 * Need to compute it ourselves.  Maybe skip checksum
 		 * on loopback interfaces.
 		 */
-		if (__predict_true(!(m->m_pkthdr.rcvif->if_flags &
+		if (__predict_true(!(m_get_rcvif_NOMPSAFE(m)->if_flags &
 				     IFF_LOOPBACK) ||
 				   udp_do_loopback_cksum)) {
 			UDP_CSUM_COUNTER_INCR(&udp_swcsum);
@@ -354,6 +355,19 @@ udp_input(struct mbuf *m, ...)
 	if (uh == NULL) {
 		UDP_STATINC(UDP_STAT_HDROPS);
 		return;
+	}
+	/*
+	 * Enforce alignment requirements that are violated in
+	 * some cases, see kern/50766 for details.
+	 */
+	if (UDP_HDR_ALIGNED_P(uh) == 0) {
+		m = m_copyup(m, iphlen + sizeof(struct udphdr), 0);
+		if (m == NULL) {
+			UDP_STATINC(UDP_STAT_HDROPS);
+			return;
+		}
+		ip = mtod(m, struct ip *);
+		uh = (struct udphdr *)(mtod(m, char *) + iphlen);
 	}
 	KASSERT(UDP_HDR_ALIGNED_P(uh));
 
@@ -529,7 +543,7 @@ udp4_realinput(struct sockaddr_in *src, struct sockaddr_in *dst,
 	dport = &dst->sin_port;
 
 	if (IN_MULTICAST(dst4->s_addr) ||
-	    in_broadcast(*dst4, m->m_pkthdr.rcvif)) {
+	    in_broadcast(*dst4, m_get_rcvif_NOMPSAFE(m))) {
 		/*
 		 * Deliver a multicast or broadcast datagram to *all* sockets
 		 * for which the local and remote addresses and ports match
@@ -834,7 +848,7 @@ udp_output(struct mbuf *m, struct inpcb *inp)
 
 	return (ip_output(m, inp->inp_options, ro,
 	    inp->inp_socket->so_options & (SO_DONTROUTE | SO_BROADCAST),
-	    inp->inp_moptions, inp->inp_socket));
+	    inp->inp_moptions, inp));
 
 release:
 	m_freem(m);
@@ -1128,7 +1142,13 @@ udp_purgeif(struct socket *so, struct ifnet *ifp)
 	s = splsoftnet();
 	mutex_enter(softnet_lock);
 	in_pcbpurgeif0(&udbtable, ifp);
+#ifdef NET_MPSAFE
+	mutex_exit(softnet_lock);
+#endif
 	in_purgeif(ifp);
+#ifdef NET_MPSAFE
+	mutex_enter(softnet_lock);
+#endif
 	in_pcbpurgeif(&udbtable, ifp);
 	mutex_exit(softnet_lock);
 	splx(s);
@@ -1339,13 +1359,9 @@ udp4_espinudp(struct mbuf **mp, int off, struct sockaddr *src,
 	((u_int16_t *)(tag + 1))[1] = dport;
 	m_tag_prepend(m, tag);
 
-#ifdef IPSEC
 	if (ipsec_used)
 		ipsec4_common_input(m, iphdrlen, IPPROTO_ESP);
 	/* XXX: else */
-#else
-	esp4_input(m, iphdrlen);
-#endif
 
 	/* We handled it, it shouldn't be handled by UDP */
 	*mp = NULL; /* avoid free by caller ... */

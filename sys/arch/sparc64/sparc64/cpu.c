@@ -1,4 +1,4 @@
-/*	$NetBSD: cpu.c,v 1.128 2016/04/17 14:32:03 martin Exp $ */
+/*	$NetBSD: cpu.c,v 1.130 2017/02/10 23:26:23 palle Exp $ */
 
 /*
  * Copyright (c) 1996
@@ -52,7 +52,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: cpu.c,v 1.128 2016/04/17 14:32:03 martin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: cpu.c,v 1.130 2017/02/10 23:26:23 palle Exp $");
 
 #include "opt_multiprocessor.h"
 
@@ -355,7 +355,7 @@ alloc_cpuinfo(u_int cpu_node)
 	cpi->ci_paddr = pa0;
 	cpi->ci_self = cpi;
 	if (CPU_ISSUN4V)
-		cpi->ci_mmfsa = pa0;
+		cpi->ci_mmufsa = pa0;
 	cpi->ci_node = cpu_node;
 	cpi->ci_idepth = -1;
 	memset(cpi->ci_intrpending, -1, sizeof(cpi->ci_intrpending));
@@ -720,8 +720,9 @@ cpu_hatch(void)
 	char *v = (char*)CPUINFO_VA;
 	int i;
 
+	/* XXX - why flush the icache here? but should be harmless */
 	for (i = 0; i < 4*PAGE_SIZE; i += sizeof(long))
-		flush(v + i);
+		sparc_flush_icache(v + i);
 
 	cpu_pmap_init(curcpu());
 	CPUSET_ADD(cpus_active, cpu_number());

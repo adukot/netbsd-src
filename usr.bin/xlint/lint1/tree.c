@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.82 2015/10/14 18:31:52 christos Exp $	*/
+/*	$NetBSD: tree.c,v 1.84 2017/03/06 21:01:39 christos Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: tree.c,v 1.82 2015/10/14 18:31:52 christos Exp $");
+__RCSID("$NetBSD: tree.c,v 1.84 2017/03/06 21:01:39 christos Exp $");
 #endif
 
 #include <stdlib.h>
@@ -3012,6 +3012,26 @@ bldszof(type_t *tp)
 	return getinode(st, tsize(tp) / CHAR_BIT);
 }
 
+/*
+ * Create a constant node for offsetof.
+ */
+tnode_t *
+bldoffsetof(type_t *tp, sym_t *sym)
+{
+	tspec_t	st;
+#if SIZEOF_IS_ULONG
+	st = ULONG;
+#else
+	st = UINT;
+#endif
+	tspec_t t = tp->t_tspec;
+	if (t != STRUCT && t != UNION)
+		error(111, "offsetof");
+		
+	// XXX: wrong size, no checking for sym fixme
+	return getinode(st, tsize(tp) / CHAR_BIT);
+}
+
 int64_t
 tsize(type_t *tp)
 {
@@ -3143,7 +3163,28 @@ cast(tnode_t *tn, type_t *tp)
 		 * XXX ANSI C requires scalar types or void (Plauger&Brodie).
 		 * But this seams really questionable.
 		 */
-	} else if (nt == STRUCT || nt == UNION || nt == ARRAY || nt == FUNC) {
+	} else if (nt == UNION) {
+		char buf[256], buf1[256];
+		sym_t *m;
+		str_t *str = tp->t_str;
+		if (!Sflag) {
+			error(328);
+			return NULL;
+		}
+		for (m = str->memb; m != NULL; m = m->s_nxt) {
+			if (sametype(m->s_type, tn->tn_type)) {
+				tn = getnode();
+				tn->tn_op = CVT;
+				tn->tn_type = tp;
+				tn->tn_cast = 1;
+				tn->tn_right = NULL;
+				return tn;
+			}
+		}
+		error(329, tyname(buf, sizeof(buf), tn->tn_type),
+		    tyname(buf1, sizeof(buf1), tp));
+		return NULL;
+	} else if (nt == STRUCT || nt == ARRAY || nt == FUNC) {
 		/* invalid cast expression */
 		error(147);
 		return (NULL);

@@ -1,4 +1,4 @@
-/*	$NetBSD: if_ecosubr.c,v 1.46 2016/04/20 09:01:04 knakahara Exp $	*/
+/*	$NetBSD: if_ecosubr.c,v 1.51 2017/01/31 17:13:36 maxv Exp $	*/
 
 /*-
  * Copyright (c) 2001 Ben Harris
@@ -58,7 +58,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_ecosubr.c,v 1.46 2016/04/20 09:01:04 knakahara Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_ecosubr.c,v 1.51 2017/01/31 17:13:36 maxv Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -194,12 +194,11 @@ eco_output(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
 #ifdef INET
 	case AF_INET:
 		if (m->m_flags & M_BCAST)
-                	memcpy(ehdr.eco_dhost, eco_broadcastaddr,
-			    ECO_ADDR_LEN);
+			memcpy(ehdr.eco_dhost, eco_broadcastaddr, ECO_ADDR_LEN);
+		else if ((error = arpresolve(ifp, rt, m, dst, ehdr.eco_dhost,
+		    sizeof(ehdr.eco_dhost))) != 0)
+			return error == EWOULDBLOCK ? 0 : error;
 
-		else if (!arpresolve(ifp, rt, m, dst, ehdr.eco_dhost,
-		    sizeof(ehdr.eco_dhost)))
-			return (0);	/* if not yet resolved */
 		/* If broadcasting on a simplex interface, loopback a copy */
 		if ((m->m_flags & M_BCAST) && (ifp->if_flags & IFF_SIMPLEX))
 			mcopy = m_copy(m, 0, (int)M_COPYALL);
@@ -210,8 +209,10 @@ eco_output(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
 	case AF_ARP:
 		ah = mtod(m, struct arphdr *);
 
-		if (ntohs(ah->ar_pro) != ETHERTYPE_IP)
-			return EAFNOSUPPORT;
+		if (ntohs(ah->ar_pro) != ETHERTYPE_IP) {
+			error = EAFNOSUPPORT;
+			goto bad;
+		}
 		ehdr.eco_port = ECO_PORT_IP;
 		switch (ntohs(ah->ar_op)) {
 		case ARPOP_REQUEST:
@@ -221,7 +222,8 @@ eco_output(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
 			ehdr.eco_control = ECO_CTL_ARP_REPLY;
 			break;
 		default:
-			return EOPNOTSUPP;
+			error = EOPNOTSUPP;
+			goto bad;
 		}
 
 		if (m->m_flags & M_BCAST)
@@ -229,8 +231,10 @@ eco_output(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
 			    ECO_ADDR_LEN);
 		else {
 			tha = ar_tha(ah);
-			if (tha == NULL)
+			if (tha == NULL) {
+				m_freem(m);
 				return 0;
+			}
 			memcpy(ehdr.eco_dhost, tha, ECO_ADDR_LEN);
 		}
 
@@ -326,7 +330,6 @@ eco_input(struct ifnet *ifp, struct mbuf *m)
 	struct ifqueue *inq;
 	struct eco_header ehdr, *eh;
 	int isr = 0;
-	int s;
 #ifdef INET
 	int i;
 	struct arphdr *ah;
@@ -410,7 +413,7 @@ eco_input(struct ifnet *ifp, struct mbuf *m)
 			/* dst->sa_len??? */
 			dst->sa_family = AF_UNSPEC;
 			memcpy(dst->sa_data, eh, ECO_HDR_LEN);
-			ifp->if_output(ifp, m, dst, NULL);
+			if_output_lock(ifp, ifp, m, dst, NULL);
 			return;
 		}
 		default:
@@ -449,15 +452,15 @@ eco_input(struct ifnet *ifp, struct mbuf *m)
 		return;
 	}
 
-	s = splnet();
+	IFQ_LOCK(inq);
 	if (IF_QFULL(inq)) {
-		IF_DROP(inq);
+		IFQ_UNLOCK(inq);
 		m_freem(m);
 	} else {
 		IF_ENQUEUE(inq, m);
+		IFQ_UNLOCK(inq);
 		schednetisr(isr);
 	}
-	splx(s);
 }
 
 static void
@@ -782,7 +785,7 @@ eco_inputidle(struct ifnet *ifp)
 		break;
 	}
 	ec->ec_state = ECO_IDLE;
-	ifp->if_start(ifp);
+	if_start_lock(ifp);
 }
 
 /*

@@ -1,4 +1,4 @@
-/*	$NetBSD: uipc_syscalls.c,v 1.181 2015/11/01 17:23:36 christos Exp $	*/
+/*	$NetBSD: uipc_syscalls.c,v 1.186 2017/02/03 16:06:45 christos Exp $	*/
 
 /*-
  * Copyright (c) 2008, 2009 The NetBSD Foundation, Inc.
@@ -61,7 +61,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: uipc_syscalls.c,v 1.181 2015/11/01 17:23:36 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: uipc_syscalls.c,v 1.186 2017/02/03 16:06:45 christos Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_pipe.h"
@@ -94,8 +94,6 @@ __KERNEL_RCSID(0, "$NetBSD: uipc_syscalls.c,v 1.181 2015/11/01 17:23:36 christos
 extern const struct fileops socketops;
 
 static int	sockargs_sb(struct sockaddr_big *, const void *, socklen_t);
-static int	copyout_sockname_sb(struct sockaddr *, unsigned int *,
-		    int , struct sockaddr_big *);
 
 int
 sys___socket30(struct lwp *l, const struct sys___socket30_args *uap,
@@ -273,7 +271,7 @@ sys_accept(struct lwp *l, const struct sys_accept_args *uap, register_t *retval)
 		syscallarg(unsigned int *)	anamelen;
 	} */
 	int error, fd;
-	struct sockaddr_big name; 
+	struct sockaddr_big name;
 
 	name.sb_len = UCHAR_MAX;
 	error = do_sys_accept(l, SCARG(uap, s), (struct sockaddr *)&name,
@@ -505,7 +503,8 @@ sys_sendto(struct lwp *l, const struct sys_sendto_args *uap,
 	msg.msg_flags = 0;
 	aiov.iov_base = __UNCONST(SCARG(uap, buf)); /* XXXUNCONST kills const */
 	aiov.iov_len = SCARG(uap, len);
-	return do_sys_sendmsg(l, SCARG(uap, s), &msg, SCARG(uap, flags), retval);
+	return do_sys_sendmsg(l, SCARG(uap, s), &msg, SCARG(uap, flags),
+	    NULL, 0, retval);
 }
 
 int
@@ -525,12 +524,14 @@ sys_sendmsg(struct lwp *l, const struct sys_sendmsg_args *uap,
 		return (error);
 
 	msg.msg_flags = MSG_IOVUSRSPACE;
-	return do_sys_sendmsg(l, SCARG(uap, s), &msg, SCARG(uap, flags), retval);
+	return do_sys_sendmsg(l, SCARG(uap, s), &msg, SCARG(uap, flags),
+	    NULL, 0, retval);
 }
 
-static int
+int
 do_sys_sendmsg_so(struct lwp *l, int s, struct socket *so, file_t *fp,
-    struct msghdr *mp, int flags, register_t *retsize)
+    struct msghdr *mp, int flags, const void *kthdr, size_t ktsize,
+    register_t *retsize)
 {
 
 	struct iovec	aiov[UIO_SMALLIOV], *iov = aiov, *tiov, *ktriov = NULL;
@@ -540,7 +541,12 @@ do_sys_sendmsg_so(struct lwp *l, int s, struct socket *so, file_t *fp,
 	size_t		len, iovsz;
 	int		i, error;
 
-	ktrkuser("msghdr", mp, sizeof *mp);
+	if (__predict_false(kthdr == NULL && ktsize == 0)) {
+		kthdr = mp;
+		ktsize = sizeof(*mp);
+	}
+	if (__predict_true(kthdr != NULL))
+		ktrkuser("msghdr", kthdr, ktsize);
 
 	/* If the caller passed us stuff in mbufs, we must free them. */
 	to = (mp->msg_flags & MSG_NAMEMBUF) ? mp->msg_name : NULL;
@@ -656,7 +662,7 @@ bad:
 
 int
 do_sys_sendmsg(struct lwp *l, int s, struct msghdr *mp, int flags,
-    register_t *retsize)
+    const void *kthdr, size_t ktsize, register_t *retsize)
 {
 	int		error;
 	struct socket	*so;
@@ -670,7 +676,8 @@ do_sys_sendmsg(struct lwp *l, int s, struct msghdr *mp, int flags,
 			m_freem(mp->msg_control);
 		return error;
 	}
-	error = do_sys_sendmsg_so(l, s, so, fp, mp, flags, retsize);
+	error = do_sys_sendmsg_so(l, s, so, fp, mp, flags, kthdr, ktsize,
+	    retsize);
 	/* msg_name and msg_control freed */
 	fd_putfile(s);
 	return error;
@@ -701,7 +708,8 @@ sys_recvfrom(struct lwp *l, const struct sys_recvfrom_args *uap,
 	msg.msg_control = NULL;
 	msg.msg_flags = SCARG(uap, flags) & MSG_USERFLAGS;
 
-	error = do_sys_recvmsg(l, SCARG(uap, s), &msg, &from, NULL, retval);
+	error = do_sys_recvmsg(l, SCARG(uap, s), &msg, NULL, 0, &from,
+	    NULL, retval);
 	if (error != 0)
 		return error;
 
@@ -731,7 +739,7 @@ sys_recvmsg(struct lwp *l, const struct sys_recvmsg_args *uap,
 
 	msg.msg_flags = (SCARG(uap, flags) & MSG_USERFLAGS) | MSG_IOVUSRSPACE;
 
-	error = do_sys_recvmsg(l, SCARG(uap, s), &msg, &from,
+	error = do_sys_recvmsg(l, SCARG(uap, s), &msg, NULL, 0, &from,
 	    msg.msg_control != NULL ? &control : NULL, retval);
 	if (error != 0)
 		return error;
@@ -786,7 +794,8 @@ sys_sendmmsg(struct lwp *l, const struct sys_sendmmsg_args *uap,
 
 		msg->msg_flags = flags;
 
-		error = do_sys_sendmsg_so(l, s, so, fp, msg, flags, retval);
+		error = do_sys_sendmsg_so(l, s, so, fp, msg, flags,
+		    &msg, sizeof(msg), retval);
 		if (error)
 			break;
 
@@ -911,16 +920,22 @@ copyout_msg_control(struct lwp *l, struct msghdr *mp, struct mbuf *control)
 	return error;
 }
 
-static int
+int
 do_sys_recvmsg_so(struct lwp *l, int s, struct socket *so, struct msghdr *mp,
-    struct mbuf **from, struct mbuf **control, register_t *retsize)
+    const void *ktrhdr, size_t ktsize, struct mbuf **from,
+    struct mbuf **control, register_t *retsize)
 {
 	struct iovec	aiov[UIO_SMALLIOV], *iov = aiov, *tiov, *ktriov = NULL;
 	struct uio	auio;
 	size_t		len, iovsz;
 	int		i, error;
 
-	ktrkuser("msghdr", mp, sizeof *mp);
+	if (__predict_false(ktrhdr == NULL && ktsize == 0)) {
+		ktrhdr = mp;
+		ktsize = sizeof *mp;
+	}
+	if (__predict_true(ktrhdr != NULL))
+		ktrkuser("msghdr", ktrhdr, ktsize);
 
 	*from = NULL;
 	if (control != NULL)
@@ -1002,15 +1017,17 @@ do_sys_recvmsg_so(struct lwp *l, int s, struct socket *so, struct msghdr *mp,
 
 
 int
-do_sys_recvmsg(struct lwp *l, int s, struct msghdr *mp, struct mbuf **from,
-    struct mbuf **control, register_t *retsize)
+do_sys_recvmsg(struct lwp *l, int s, struct msghdr *mp,
+    const void *ktrhdr, size_t ktrsize,
+    struct mbuf **from, struct mbuf **control, register_t *retsize)
 {
 	int error;
 	struct socket *so;
 
 	if ((error = fd_getsock(s, &so)) != 0)
 		return error;
-	error = do_sys_recvmsg_so(l, s, so, mp, from, control, retsize);
+	error = do_sys_recvmsg_so(l, s, so, mp, ktrhdr, ktrsize, from,
+	    control, retsize);
 	fd_putfile(s);
 	return error;
 }
@@ -1064,7 +1081,7 @@ sys_recvmmsg(struct lwp *l, const struct sys_recvmmsg_args *uap,
 			from = NULL;
 		}
 
-		error = do_sys_recvmsg_so(l, s, so, msg, &from,
+		error = do_sys_recvmsg_so(l, s, so, msg, NULL, 0, &from,
 		    msg->msg_control != NULL ? &control : NULL, retval);
 		if (error) {
 			if (error == EAGAIN && dg > 0)
@@ -1492,6 +1509,7 @@ sockargs_sb(struct sockaddr_big *sb, const void *name, socklen_t buflen)
 	if (error)
 		return error;
 
+	ktrkuser(mbuftypes[MT_SONAME], sb, buflen);
 #if BYTE_ORDER != BIG_ENDIAN
 	/*
 	 * 4.3BSD compat thing - need to stay, since bind(2),

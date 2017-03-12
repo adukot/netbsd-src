@@ -1,4 +1,4 @@
-.\"	$NetBSD: main,v 1.528 2016/05/06 10:48:53 hiroshi Exp $
+.\"	$NetBSD: main,v 1.534 2017/03/10 04:13:43 salazar Exp $
 .\"
 .\" Copyright (c) 1999-2012 The NetBSD Foundation, Inc.
 .\" All rights reserved.
@@ -1144,6 +1144,7 @@ If you're one of them, and would like to be mentioned, tell us!)
 .It Ta Mihai Chelaru Ta Mt kefren@NetBSD.org
 .It Ta Aleksey Cheusov Ta Mt cheusov@NetBSD.org
 .It Ta Bill Coldwell Ta Mt billc@NetBSD.org
+.It Ta Sean Cole Ta Mt scole@NetBSD.org
 .It Ta Julian Coleman Ta Mt jdc@NetBSD.org
 .It Ta Marcus Comstedt Ta Mt marcus@NetBSD.org
 .It Ta Jeremy Cooper Ta Mt jeremy@NetBSD.org
@@ -1156,6 +1157,7 @@ If you're one of them, and would like to be mentioned, tell us!)
 .It Ta Jed Davis Ta Mt jld@NetBSD.org
 .It Ta Matt DeBergalis Ta Mt deberg@NetBSD.org
 .It Ta Arnaud Degroote Ta Mt degroote@NetBSD.org
+.It Ta Felix Deichmann Ta Mt flxd@NetBSD.org
 .It Ta Rob Deker Ta Mt deker@NetBSD.org
 .It Ta Chris G. Demetriou Ta Mt cgd@NetBSD.org
 .It Ta Tracy Di Marco White Ta Mt gendalia@NetBSD.org
@@ -1326,6 +1328,7 @@ If you're one of them, and would like to be mentioned, tell us!)
 .It Ta Tatoku Ogaito Ta Mt tacha@NetBSD.org
 .It Ta OKANO Takayoshi Ta Mt kano@NetBSD.org
 .It Ta Masaru Oki Ta Mt oki@NetBSD.org
+.It Ta Rin Okuyama Ta Mt rin@NetBSD.org
 .It Ta Ryo ONODERA Ta Mt ryoon@NetBSD.org
 .It Ta Atsushi Onoe Ta Mt onoe@NetBSD.org
 .It Ta Greg Oster Ta Mt oster@NetBSD.org
@@ -1338,6 +1341,7 @@ If you're one of them, and would like to be mentioned, tell us!)
 .It Ta Adrian Portelli Ta Mt adrianp@NetBSD.org
 .It Ta Pierre Pronchery Ta Mt khorben@NetBSD.org
 .It Ta Chris Provenzano Ta Mt proven@NetBSD.org
+.It Ta Maya Rashish Ta Mt maya@NetBSD.org
 .It Ta Mindaugas Rasiukevicius Ta Mt rmind@NetBSD.org
 .It Ta Nils Ratusznik Ta Mt nils@NetBSD.org
 .It Ta Michael Rauch Ta Mt mrauch@NetBSD.org
@@ -1359,6 +1363,7 @@ If you're one of them, and would like to be mentioned, tell us!)
 .It Ta David Sainty Ta Mt dsainty@NetBSD.org
 .It Ta SAITOH Masanobu Ta Mt msaitoh@NetBSD.org
 .It Ta Kazuki Sakamoto Ta Mt sakamoto@NetBSD.org
+.It Ta Guilherme Salazar Ta Mt salazar@NetBSD.org
 .It Ta Curt Sampson Ta Mt cjs@NetBSD.org
 .It Ta Wilfredo Sanchez Ta Mt wsanchez@NetBSD.org
 .It Ta Ty Sarna Ta Mt tsarna@NetBSD.org
@@ -1434,6 +1439,7 @@ If you're one of them, and would like to be mentioned, tell us!)
 .It Ta Colin Wood Ta Mt ender@NetBSD.org
 .It Ta Steve Woodford Ta Mt scw@NetBSD.org
 .It Ta YAMAMOTO Takashi Ta Mt yamt@NetBSD.org
+.It Ta Abhinav Upadhyay Ta Mt abhinav@NetBSD.org	
 .It Ta Yuji Yamano Ta Mt yyamano@NetBSD.org
 .It Ta David Young Ta Mt dyoung@NetBSD.org
 .It Ta Arnaud Ysmal Ta Mt stacktic@NetBSD.org

@@ -1,4 +1,4 @@
-#	$NetBSD: NetBSD.dist.Xorg,v 1.16 2015/09/19 23:00:44 wiz Exp $
+#	$NetBSD: NetBSD.dist.Xorg,v 1.21 2017/02/13 04:23:19 snj Exp $
 ./usr/X11R7
 ./usr/X11R7/bin
 ./usr/X11R7/include
@@ -20,13 +20,12 @@
 ./usr/X11R7/include/X11/fonts
 ./usr/X11R7/include/X11/pixmaps
 ./usr/X11R7/include/X11/pixmaps/ctwm
+./usr/X11R7/include/epoxy
 ./usr/X11R7/include/fontconfig
 ./usr/X11R7/include/freetype2
-./usr/X11R7/include/freetype2
-./usr/X11R7/include/freetype2/cache
-./usr/X11R7/include/freetype2/config
-./usr/X11R7/include/freetype2/internal
-./usr/X11R7/include/freetype2/internal/services
+./usr/X11R7/include/freetype2/freetype
+./usr/X11R7/include/freetype2/freetype/cache
+./usr/X11R7/include/freetype2/freetype/config
 ./usr/X11R7/include/libdrm
 ./usr/X11R7/include/libkms
 ./usr/X11R7/include/pixman-1
@@ -95,6 +94,7 @@
 ./usr/X11R7/lib/X11/locale/mulelao-1
 ./usr/X11R7/lib/X11/locale/nokhchi-1
 ./usr/X11R7/lib/X11/locale/pt_BR.UTF-8
+./usr/X11R7/lib/X11/locale/pt_PT.UTF-8
 ./usr/X11R7/lib/X11/locale/ru_RU.UTF-8
 ./usr/X11R7/lib/X11/locale/sr_CS.UTF-8
 ./usr/X11R7/lib/X11/locale/tatar-cyr
@@ -130,6 +130,7 @@
 ./usr/X11R7/lib/X11/xkb/symbols/digital_vndr
 ./usr/X11R7/lib/X11/xkb/symbols/fujitsu_vndr
 ./usr/X11R7/lib/X11/xkb/symbols/hp_vndr
+./usr/X11R7/lib/X11/xkb/symbols/jolla_vndr
 ./usr/X11R7/lib/X11/xkb/symbols/macintosh_vndr
 ./usr/X11R7/lib/X11/xkb/symbols/nec_vndr
 ./usr/X11R7/lib/X11/xkb/symbols/nokia_vndr
@@ -138,7 +139,6 @@
 ./usr/X11R7/lib/X11/xkb/symbols/sony_vndr
 ./usr/X11R7/lib/X11/xkb/symbols/sun_vndr
 ./usr/X11R7/lib/X11/xkb/symbols/xfree68_vndr
-./usr/X11R7/lib/X11/xkb/torture
 ./usr/X11R7/lib/X11/xkb/types
 ./usr/X11R7/lib/modules
 ./usr/X11R7/lib/modules/dri
