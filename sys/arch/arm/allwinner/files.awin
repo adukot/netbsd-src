@@ -1,4 +1,4 @@
-#	$NetBSD: files.awin,v 1.29 2014/12/21 17:40:59 jmcneill Exp $
+#	$NetBSD: files.awin,v 1.35 2016/04/25 20:15:46 bouyer Exp $
 #
 # Configuration info for Allwinner ARM Peripherals
 #
@@ -12,7 +12,7 @@ file	arch/arm/arm32/arm32_reboot.c
 file	arch/arm/arm32/irq_dispatch.S
 
 file	arch/arm/allwinner/awin_board.c
-file	arch/arm/allwinner/awin_space.c
+file	arch/arm/arm32/armv7_generic_space.c
 file	arch/arm/arm/bus_space_a4x.S
 
 # Console parameters
@@ -23,10 +23,10 @@ defparam opt_allwinner.h			MEMSIZE
 defparam opt_allwinner.h			AWIN_WDT_DEFAULT_PERIOD
 defflag opt_allwinner.h				AWIN_CONSOLE_EARLY
 defflag opt_allwinner.h				AWINETH_COUNTERS
-defflag opt_allwinner.h				ALLWINNER_A10
-defflag opt_allwinner.h				ALLWINNER_A20
-defflag opt_allwinner.h				ALLWINNER_A31
-defflag opt_allwinner.h				ALLWINNER_A80
+defflag opt_allwinner.h				ALLWINNER_A10: CPU_CORTEXA8
+defflag opt_allwinner.h				ALLWINNER_A20: CPU_CORTEXA7
+defflag opt_allwinner.h				ALLWINNER_A31: CPU_CORTEXA7
+defflag opt_allwinner.h				ALLWINNER_A80: CPU_CORTEXA7
 defflag opt_allwinner.h				AWIN_GPIO_IGNORE_FW
 defflag opt_allwinner.h				AWIN_HDMI_DEBUG
 defflag opt_allwinner.h				AWIN_TCON_DEBUG
@@ -140,9 +140,14 @@ attach	awinac at awinio with awin_ac
 file	arch/arm/allwinner/awin_ac.c		awin_ac
 
 # A20/A31 HDMI
-device	awinhdmi: edid, ddc_read_edid, videomode
+device	awinhdmi: edid, videomode
 attach	awinhdmi at awinio with awin_hdmi
 file	arch/arm/allwinner/awin_hdmi.c		awin_hdmi
+
+# A20 TV Encoder / VGA output
+device	awintve: edid, videomode
+attach	awintve at awinio with awin_tve
+file	arch/arm/allwinner/awin_tve.c		awin_tve
 
 # A20/A31 HDMI audio (HDMIAUDIO)
 device	awinhdmiaudio: audiobus, auconv, mulaw, aurateconv, auvolconv
@@ -152,7 +157,7 @@ file	arch/arm/allwinner/awin_hdmiaudio.c	awin_hdmiaudio
 # A10/A20/A31 LCD/TV timing controller (TCON)
 device	awintcon
 attach	awintcon at awinio with awin_tcon
-file	arch/arm/allwinner/awin_tcon.c		awin_tcon | awin_hdmi
+file	arch/arm/allwinner/awin_tcon.c		awin_tcon | awin_hdmi	needs-flag
 
 # A10/A20/A31 Display engine backend (DE-BE)
 device	awindebe { }
@@ -172,3 +177,8 @@ file	arch/arm/allwinner/awin_fb.c		awin_fb		needs-flag
 device	awinir: irbus
 attach	awinir at awinio with awin_ir
 file	arch/arm/allwinner/awin_ir.c		awin_ir
+
+# A20 LRADC
+device	awinlradc
+attach	awinlradc at awinio with awin_lradc
+file	arch/arm/allwinner/awin_lradc.c		awin_lradc

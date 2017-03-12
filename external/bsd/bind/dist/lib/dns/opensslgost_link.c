@@ -1,7 +1,7 @@
-/*	$NetBSD: opensslgost_link.c,v 1.9 2014/12/10 04:37:58 christos Exp $	*/
+/*	$NetBSD: opensslgost_link.c,v 1.11 2015/12/17 04:00:43 christos Exp $	*/
 
 /*
- * Copyright (C) 2010-2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2010-2015  Internet Systems Consortium, Inc. ("ISC")
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,14 +16,13 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 
-/* Id: opensslgost_link.c,v 1.5 2011/01/19 23:47:12 tbox Exp  */
-
 #include <config.h>
 
 #if defined(OPENSSL) && defined(HAVE_OPENSSL_GOST)
 
 #include <isc/entropy.h>
 #include <isc/mem.h>
+#include <isc/safe.h>
 #include <isc/string.h>
 #include <isc/util.h>
 
@@ -253,6 +252,7 @@ opensslgost_generate(dst_key_t *key, int unused, void (*callback)(int)) {
 		DST_RET(dst__openssl_toresult2("EVP_PKEY_keygen",
 					       DST_R_OPENSSLFAILURE));
 	key->keydata.pkey = pkey;
+	key->key_size = EVP_PKEY_bits(pkey);
 	EVP_PKEY_CTX_free(ctx);
 	return (ISC_R_SUCCESS);
 
@@ -309,7 +309,7 @@ opensslgost_todns(const dst_key_t *key, isc_buffer_t *data) {
 	p = der;
 	len = i2d_PUBKEY(pkey, &p);
 	INSIST(len == sizeof(der));
-	INSIST(memcmp(gost_prefix, der, 37) == 0);
+	INSIST(isc_safe_memequal(gost_prefix, der, 37));
 	memmove(r.base, der + 37, 64);
 	isc_buffer_add(data, 64);
 
@@ -338,6 +338,7 @@ opensslgost_fromdns(dst_key_t *key, isc_buffer_t *data) {
 		return (dst__openssl_toresult2("d2i_PUBKEY",
 					       DST_R_OPENSSLFAILURE));
 	key->keydata.pkey = pkey;
+	key->key_size = EVP_PKEY_bits(pkey);
 
 	return (ISC_R_SUCCESS);
 }

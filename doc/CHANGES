@@ -1,4 +1,4 @@
-# LIST OF CHANGES FROM LAST RELEASE:			<$Revision: 1.2045 $>
+# LIST OF CHANGES FROM LAST RELEASE:			<$Revision: 1.2159 $>
 #
 #
 # [Note: This file does not mention every change made to the NetBSD source tree.
@@ -105,6 +105,8 @@ Changes from NetBSD 7.0 to NetBSD 8.0:
 	awinir(4): Add support for Allwinner A20/A31 IR receiver.
 		[jmcneill 20141115]
 	zoneinfo: Import tzdata2014j. [apb 20141116]
+	libc: Change arc4random(3) to use ChaCha20 and per-thread state.
+		[riastradh 20141116]
 	libc: Update to tzcode2014j. [christos 20141117]
 	libpcap: Import 1.6.2. [christos 20141119]
 	tcpdump(8): Import 4.6.2. [christos 20141119]
@@ -130,4 +132,159 @@ Changes from NetBSD 7.0 to NetBSD 8.0:
 	libevent: Import libevent 2.0.22 [spz 20150129]
 	dhcpcd(8): Import dhcpcd-6.7.1. [roy 20150130]
 	zoneinfo: Import tzdata2015a. [apb 20150131]
-	libc: Import tzdata2015a. [christos 20150131]
+	libc: Import tzcode2015a. [christos 20150131]
+	bind: patch to version 9.10.1-P2. [spz 20150221]
+	network: introduce RTF_LOCAL for local address routes. [roy 20150226]
+	evbarm: Add support for RPI2. [skrll 20150304]
+	evbarm: Add support for ODROID-C1. [jmcneill 20150304]
+	dtrace: Add syscall support [christos 20150307]
+	dtrace: Add lockstat support [riastradh, christos 20150308]
+	zoneinfo: Import tzdata2015b. [apb 20150321]
+	openssl: Import openssl 1.0.1m [spz 20150323]
+	libc: Update to tzcode2015b. [christos 20150324]
+	dhcpcd(8): Import dhcpcd-6.8.1. [roy 20150327]
+	libpcap: Import 1.7.2. [christos 20150331]
+	tcpdump(8): Import 4.7.3. [christos 20150331]
+	wpa: Import wpa_supplicant and hostapd 2.4. [christos 20150401]
+	OpenSSH: Imported 6.8. [christos 20150403]
+	btmagic(4): add Magic Trackpad support [bouyer 20150406]
+	ntp: Import ntp 4.2.8p2. [christos 20150407]
+	acpi(4): Updated ACPICA to 20150410. [christos 20150413]
+	evbarm: add a driver for EDMA controller on AM335x SoC.
+		Add DMA support to the sdhc controllers on AM335x SoC.
+		Enable DMA for sdhc0 and sdhc1 on BEAGLEBONE [bouyer 20150414]
+	xz(1): Import of XZ 5.2.1. [christos 20150417]
+	libc: Update to tzcode2015d. [christos 20150428]
+	openresolv(8): Import openresolv-3.7.0 [roy 20150501]
+	netinet: Added IN_IFF_TENTATIVE, IN_IFF_DUPLICATED and IN_IFF_DETACHED.
+	         IPV4 addresses now perform DAD using ARP as described in
+		 RFC 5227. [roy 20150502]
+	dhcpcd(8): Import dhcpcd-6.9.0. [roy 20150517]
+	FFS: General improvements in the superblock parser. [maxv 20150523]
+	openssl: Import openssl 1.0.1n [christos 20150612]
+	openssl: Import openssl 1.0.1o [christos 20150616]
+	zoneinfo: Import tzdata2015e. [apb 20150621]
+	nfssvc(2): Support 32-bit system calls for the NFS server.
+		[mrg 20150622]
+	gcc: Import GCC 4.8.5.  [mrg 20150624]
+	OpenSSH: Imported 6.9. [christos 20150630]
+	bind: Import version 9.10.2-P2. [christos 20150708]
+	dhcpcd: Import dhcpcd 6.9.1. [roy 20150709]
+	iostat(8): Support fnmatch(3) patterns for disknames.  [mrg 20150709]
+	openssl: Import openssl 1.0.1p [christos 20150709]
+	ntp: Import ntp 4.2.8p3. [christos 20150710]
+	arm: Add support for NVIDIA Tegra K1 SoC. [jmcneill 20150725]
+	evbarm: Add support for NVIDIA Jetson TK1. [jmcneill 20150725]
+	bind: Import version 9.10.2-P3. [christos 20150728]
+	kernel: Several bug fixes and improvements in the PaX subsystem.
+		[maxv 20150804]
+	sdmmc(4): Add support for UHS-I and MMC HS200 transfer modes.
+		[jmcneill 20150808]
+	sdhc(4): Add support for UHS-I and MMC HS200 transfer modes.
+		[jmcneill 20150808]
+	amlogicsdhc(4): Add support for UHS-I and MMC HS200 transfer modes.
+		[jmcneill 20150808]
+	zoneinfo: Import tzdata2015f. [apb 20150811]
+	OpenSSH: Imported 7.0. [christos 20150813]
+	libc: Update to tzcode2015f. [christos 20150813]
+	gdb(1): Updated to 7.9.1.  [christos 20150818]
+	acpi(4): Updated ACPICA to 20150717. [christos 20150818]
+	mcp3kadc(4): Driver for Microchip 3x0x SAR ADC chips. [phx 20150818]
+	OpenSSH: Imported 7.1. [christos 20150821]
+	dhcpcd: Import dhcpcd 6.9.2. [roy 20150821]
+	rtwn(4): Add a driver for Realtek RTL8188CE/RTL8192CE PCIe IEEE
+		802.11b/g/n wireless network devices, ported from OpenBSD.
+		[nonaka 20150827]
+	arp(4): Remove net.inet.arp.{prune,refresh} sysctl. [ozaki-r 20150831]
+	bind: Import version 9.10.2-P4. [christos 20150903]
+	dhcpcd: Import dhcpcd 6.9.3. [roy 20150904]
+	ftp(1): SNI support for https.  [wiz 20150912]
+	netstat(1): Now knows how tall the display is.  [mrg 20150919]
+	libproc, librtld_db: Added from FreeBSD [christos 20150924]
+	dtrace: Updated from FreeBSD [christos 20150924]
+	resolvconf: Import openresolv-3.7.1 [roy 20150929]
+	x86: Add PCI Extended Configuration Space support [nonaka 20151002]
+	pci(3): Decode Extended Capability in PCI Extended Configuration Space.
+		[nonaka 20151002]
+	lua: Updated to Lua 5.3.1 [mbalmer 20151008]
+	libc: Update to tzcode2015g. [christos 20151009]
+	ntp: Import ntp 4.2.8p4. [christos 20151023]
+	vioscsi(4): Add driver for virtio SCSI devices [christos 20151030]
+	omapgpio(4): Add support for TI AM335x GPIO. [jmcneill 20151101]
+	libc/ti-rpc: Remove FD_SETSIZE limit; provide MT support for svc_run()
+		to be run by multiple threads each thread handling the fd's it
+		created. Provide support for a poll based svc_run() and the
+		global variables svc_pollfd and svc_pollfd_max.
+		[christos 20151107]
+	amiga: wsdisplay(4) virtual terminals are working on CV64 and
+		CV64/3D. [phx 20151112]
+	amiga: Build the Xorg server with wsfb(4) driver.
+		Added wsfb(4) support for CV64 and CV64/3D graphics cards.
+		[phx 20151112]
+	cpuctl(8): Most commands can specify more than one CPU now.
+		[mrg 20151115]
+	ndp: net.inet6.ip6.neighborgcthresh is now per interface basis.
+		[ozaki-r 20151125]
+	dhcpcd: Import dhcpcd 6.9.4. [roy 20151130]
+	openssl: Import openssl 1.0.1q [christos 20151206]
+	ip6addrctl: Import from FreeBSD [christos 20151212]
+	adm1026hm(4): Add driver for ADM1026 i2c hardware monitor
+		[jdc 20151216]
+	bind: Import version 9.10.3-P2. [christos 20151216]
+	mdocml: Import 1.13.3. [christos 20151217]
+	sortinfo(1): Add utility to sort texinfo dir files [christos 20151218]
+	raidframe: Now built as a kernel module; it can be built-in at
+		kernel build time, or (for MODULAR kernels) loaded as
+		needed. [pgoyette 20151226]
+	admtemp(4): Add chip temperature limits for envsys(4) [jdc 20160103]
+	lmtemp(4): Add chip temperature limits for envsys(4) [jdc 20160103]
+	ismt(4): Add another Intel Chipset internal SMBus driver.
+		[msaitoh 20160105]
+	dhcpcd: Import dhcpcd 6.10.0. [roy 20160107]
+	ntp: Import ntp 4.2.8p5. [christos 20160108]
+	flex(1): Import flex-2.6.0 [christos 20160109]
+	acpi(4): Updated ACPICA to 20160108. [christos 20160109]
+	byacc: update to 20150711 [christos 20160109]
+	tmux(1): Import of tmux 2.1 [christos 20160110]
+	dhcp: Import version 4.3.3. [christos 20160110]
+	gettext: Upgrade to 0.16.1 [christos 20160112]
+	bind: Import version 9.10.3-P3. [christos 20160119]
+	dhcpcd: Import dhcpcd 6.10.1. [roy 20160120]
+	openssl: Import openssl 1.0.1r [christos 20160130]
+	gdb(1): Updated to 7.10.1.  [christos 20160202]
+	elftoolchain: Import FreeBSD-2016-02-19. [christos 20160219]
+	openresolv: Import openresolv-3.7.3. [roy 20160222]
+	mv(1): Add SIGINFO support. [mrg 20160228]
+	openssl: Import openssl 1.0.1s - disable weak (export) ciphers and SSLv2
+		[christos 20160301]
+	bind: Import version 9.10.3-P4. [christos 20160309]
+	OpenSSH: Imported 7.2. [christos 20160310]
+	libc: Update to tzcode2016b. [christos 20160315]
+	zoneinfo: Import tzdata2016b. [christos 20160315]
+	wpa_supplicant(8): Added interface matching rules [roy 20160323]
+	lua: Applied second and third patch from http://lua.org/bugs.html
+		[mbalmer 20160325]
+	network: Drop the concept of cloning/cloned routes [ozaki-r 20160404]
+	network: Remove RTF_CLONING, RTF_XRESOLVE, RTF_LLINFO, RTF_CLONED and
+		RTM_RESOLVE [ozaki-r 20160404]
+	network: Add RTF_CONNECTED as a substitute of RTF_CLONING
+		[ozaki-r 20160404]
+	route(8): Remove -xresolve, -[no]cloned and -llinfo options and add
+		[no]connected option (same as -[no]cloning) [ozaki-r 20160404]
+	route(8): Remove 'c' and 'L' flags and 'C' is now for connected routes
+		[ozaki-r 20160404]
+	netstat(1): Remove 'c' and 'L' flags and 'C' is now for connected routes
+		[ozaki-r 20160404]
+	route(8): route show doesn't contain nexthop caches [ozaki-r 20160404]
+	netstat(1): netstat -r doesn't contain nexthop caches [ozaki-r 20160404]
+	libutil: added pidfile_lock, pidfile_read, pidfile_read [roy 20160410]
+	dhcpcd(8): Import dhcpcd-6.10.2 [roy 20160410]
+	openresolv(8): Import openresolv-3.8.0 [roy 20160411]
+	ddb(4): rename show arptab to show routes [ozaki-r 20160413]
+	dhcpcd(8): Import dhcpcd-6.10.3 [roy 20160420]
+	nvme(4): Add a driver for Non-Volatile Memory Host Controller Interface
+		devices, ported from OpenBSD. [nonaka 20160501]
+	ntp: Import ntp 4.2.8p7. [christos 20160501]
+	openssl: Import openssl 1.0.1t - security fixes [christos 20160503]
+	acpi(4): Updated ACPICA to 20160422. [christos 20160504]
+	dhcpcd(8): Import dhcpcd-6.11.0 [roy 20160509]

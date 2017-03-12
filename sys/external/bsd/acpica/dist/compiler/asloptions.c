@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -68,7 +68,7 @@ AslDoResponseFile (
 
 
 #define ASL_TOKEN_SEPARATORS    " \t\n"
-#define ASL_SUPPORTED_OPTIONS   "@:b|c|d^D:e:f^gh^i|I:l^m:no|p:P^r:s|t|T+G^v^w|x:z"
+#define ASL_SUPPORTED_OPTIONS   "@:a:b|c|d^D:e:f^gh^i|I:l^m:no|p:P^r:s|t|T+G^v^w|x:z"
 
 
 /*******************************************************************************
@@ -107,7 +107,7 @@ AslCommandLine (
 
     if (Gbl_DoTemplates)
     {
-        Status = DtCreateTemplates (Gbl_TemplateSignature);
+        Status = DtCreateTemplates (argv);
         if (ACPI_FAILURE (Status))
         {
             exit (-1);
@@ -184,7 +184,25 @@ AslDoOptions (
         }
         break;
 
-    case 'b':   /* Debug output options */
+    case 'a':   /* Debug options */
+
+        switch (AcpiGbl_Optarg[0])
+        {
+        case 'r':
+
+            Gbl_EnableReferenceTypechecking = TRUE;
+            break;
+
+        default:
+
+            printf ("Unknown option: -a%s\n", AcpiGbl_Optarg);
+            return (-1);
+        }
+
+        break;
+
+
+    case 'b':   /* Debug options */
 
         switch (AcpiGbl_Optarg[0])
         {
@@ -193,10 +211,38 @@ AslDoOptions (
             AslCompilerdebug = 1; /* same as yydebug */
             DtParserdebug = 1;
             PrParserdebug = 1;
+            Gbl_DebugFlag = TRUE;
+            Gbl_KeepPreprocessorTempFile = TRUE;
+            break;
+
+        case 'p':   /* Prune ASL parse tree */
+
+            /* Get the required argument */
+
+            if (AcpiGetoptArgument (argc, argv))
+            {
+                return (-1);
+            }
+
+            Gbl_PruneParseTree = TRUE;
+            Gbl_PruneDepth = (UINT8) strtoul (AcpiGbl_Optarg, NULL, 0);
+            break;
+
+        case 's':
+
+            Gbl_DebugFlag = TRUE;
             break;
 
         case 't':
 
+            /* Get the required argument */
+
+            if (AcpiGetoptArgument (argc, argv))
+            {
+                return (-1);
+            }
+
+            Gbl_PruneType = (UINT8) strtoul (AcpiGbl_Optarg, NULL, 0);
             break;
 
         default:
@@ -205,9 +251,6 @@ AslDoOptions (
             return (-1);
         }
 
-        /* Produce debug output file */
-
-        Gbl_DebugFlag = TRUE;
         break;
 
     case 'c':
@@ -250,6 +293,17 @@ AslDoOptions (
 
             break;
 
+        case 'f':
+
+            AcpiGbl_ForceAmlDisassembly = TRUE;
+            break;
+
+        case 'l':   /* Use legacy ASL code (not ASL+) for disassembly */
+
+            Gbl_DoCompile = FALSE;
+            AcpiGbl_CstyleDisassembly = FALSE;
+            break;
+
         default:
 
             printf ("Unknown option: -d%s\n", AcpiGbl_Optarg);
@@ -277,7 +331,8 @@ AslDoOptions (
             Status = AcpiDmAddToExternalFileList (argv[AcpiGbl_Optind]);
             if (ACPI_FAILURE (Status))
             {
-                printf ("Could not add %s to external list\n", argv[AcpiGbl_Optind]);
+                printf ("Could not add %s to external list\n",
+                    argv[AcpiGbl_Optind]);
                 return (-1);
             }
 
@@ -404,6 +459,7 @@ AslDoOptions (
             /* Produce listing file (Mixed source/aml) */
 
             Gbl_ListingFlag = TRUE;
+            AcpiGbl_DmOpt_Listing = TRUE;
             break;
 
         case 'i':
@@ -432,6 +488,13 @@ AslDoOptions (
             /* Produce combined source file */
 
             Gbl_SourceOutputFlag = TRUE;
+            break;
+
+        case 'x':
+
+            /* Produce cross-reference file */
+
+            Gbl_CrossReferenceOutput = TRUE;
             break;
 
         default:
@@ -469,6 +532,20 @@ AslDoOptions (
             Gbl_ReferenceOptimizationFlag = FALSE;
             break;
 
+        case 'c':
+
+            /* Display compile time(s) */
+
+            Gbl_CompileTimesFlag = TRUE;
+            break;
+
+        case 'e':
+
+            /* Disable External opcode generation */
+
+            Gbl_DoExternals = FALSE;
+            break;
+
         case 'f':
 
             /* Disable folding on "normal" expressions */
@@ -492,9 +569,9 @@ AslDoOptions (
 
         case 't':
 
-            /* Display compile time(s) */
+            /* Disable heavy typechecking */
 
-            Gbl_CompileTimesFlag = TRUE;
+            Gbl_DoTypechecking = FALSE;
             break;
 
         default:
@@ -530,7 +607,6 @@ AslDoOptions (
 
         Gbl_OutputFilenamePrefix = AcpiGbl_Optarg;
         UtConvertBackslashes (Gbl_OutputFilenamePrefix);
-
         Gbl_UseDefaultAmlFilename = FALSE;
         break;
 
@@ -600,7 +676,6 @@ AslDoOptions (
     case 'T':   /* Create a ACPI table template file */
 
         Gbl_DoTemplates = TRUE;
-        Gbl_TemplateSignature = AcpiGbl_Optarg;
         break;
 
     case 'v':   /* Version and verbosity settings */

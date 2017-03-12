@@ -1,4 +1,4 @@
-/*	$NetBSD: if_enet.c,v 1.1 2014/09/25 05:05:28 ryo Exp $	*/
+/*	$NetBSD: if_enet.c,v 1.5 2016/02/09 08:32:08 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 2014 Ryo Shimizu <ryo@nerv.org>
@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_enet.c,v 1.1 2014/09/25 05:05:28 ryo Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_enet.c,v 1.5 2016/02/09 08:32:08 ozaki-r Exp $");
 
 #include "imxocotp.h"
 #include "imxccm.h"
@@ -43,7 +43,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_enet.c,v 1.1 2014/09/25 05:05:28 ryo Exp $");
 #include <sys/device.h>
 #include <sys/sockio.h>
 #include <sys/kernel.h>
-#include <sys/rnd.h>
+#include <sys/rndsource.h>
 
 #include <lib/libkern/libkern.h>
 
@@ -346,10 +346,14 @@ enet_attach(device_t parent __unused, device_t self, void *aux)
 
 	/* setup interrupt handlers */
 	if ((sc->sc_ih = intr_establish(aa->aa_irq, IPL_NET,
-	    IST_EDGE, enet_intr, sc)) == NULL) {
+	    IST_LEVEL, enet_intr, sc)) == NULL) {
 		aprint_error_dev(self, "unable to establish interrupt\n");
 		goto failure;
 	}
+
+	/* callout will be scheduled from enet_init() */
+	callout_init(&sc->sc_tick_ch, 0);
+	callout_setfunc(&sc->sc_tick_ch, enet_tick, sc);
 
 	/* setup ifp */
 	ifp = &sc->sc_ethercom.ec_if;
@@ -410,9 +414,6 @@ enet_attach(device_t parent __unused, device_t self, void *aux)
 #endif
 
 	sc->sc_stopping = false;
-	callout_init(&sc->sc_tick_ch, 0);
-	callout_setfunc(&sc->sc_tick_ch, enet_tick, sc);
-	callout_schedule(&sc->sc_tick_ch, hz);
 
 	return;
 
@@ -721,7 +722,7 @@ enet_rx_intr(void *arg)
 					char flags1buf[128], flags2buf[128];
 					snprintb(flags1buf, sizeof(flags1buf),
 					    "\20" "\31MISS" "\26LENGTHVIOLATION"
-					    "\25NONOCTET" "\23CRC" "\22OVERRUN"a
+					    "\25NONOCTET" "\23CRC" "\22OVERRUN"
 					    "\21TRUNCATED", flags1);
 					snprintb(flags2buf, sizeof(flags2buf),
 					    "\20" "\40MAC" "\33PHY"
@@ -754,7 +755,7 @@ enet_rx_intr(void *arg)
 				/* Pass this up to any BPF listeners */
 				bpf_mtap(ifp, m0);
 
-				(*ifp->if_input)(ifp, m0);
+				if_percpuq_enqueue(ifp->if_percpuq, m0);
 			}
 
 			m0 = NULL;
@@ -987,6 +988,7 @@ enet_init(struct ifnet *ifp)
 	ENET_REG_WRITE(sc, ENET_RDAR, ENET_RDAR_ACTIVE);
 
 	sc->sc_stopping = false;
+	callout_schedule(&sc->sc_tick_ch, hz);
 
  init_failure:
 	splx(s);
@@ -1411,8 +1413,10 @@ enet_alloc_rxbuf(struct enet_softc *sc, int idx)
 	error = bus_dmamap_load(sc->sc_dmat, sc->sc_rxsoft[idx].rxs_dmamap,
 	    m->m_ext.ext_buf, m->m_ext.ext_size, NULL,
 	    BUS_DMA_READ | BUS_DMA_NOWAIT);
-	if (error)
+	if (error) {
+		m_freem(m);
 		return error;
+	}
 
 	bus_dmamap_sync(sc->sc_dmat, sc->sc_rxsoft[idx].rxs_dmamap, 0,
 	    sc->sc_rxsoft[idx].rxs_dmamap->dm_mapsize, 
@@ -2004,7 +2008,6 @@ enet_init_regs(struct enet_softc *sc, int init)
 	ENET_REG_WRITE(sc, ENET_EIMR, 
 	    ENET_EIR_TXF |
 	    ENET_EIR_RXF |
-	    ENET_EIR_MII |
 	    ENET_EIR_EBERR |
 	    0);
 
@@ -2028,7 +2031,7 @@ enet_alloc_dma(struct enet_softc *sc, size_t size, void **addrp,
 	int nsegs, error;
 
 	if ((error = bus_dmamem_alloc(sc->sc_dmat, size, PAGE_SIZE, 0, seglist,
-	    1, &nsegs, M_WAITOK)) != 0) {
+	    1, &nsegs, M_NOWAIT)) != 0) {
 		device_printf(sc->sc_dev,
 		    "unable to allocate DMA buffer, error=%d\n", error);
 		goto fail_alloc;

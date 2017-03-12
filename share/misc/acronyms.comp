@@ -1,4 +1,4 @@
-$NetBSD: acronyms.comp,v 1.148 2015/02/06 14:48:24 ginsbach Exp $
+$NetBSD: acronyms.comp,v 1.163 2016/05/07 12:22:57 pgoyette Exp $
 3WHS	three-way handshake
 8VSB	8-state vestigial side band modulation
 AA	anti-aliasing
@@ -37,6 +37,7 @@ AL	active link
 ALE	address latch enable
 ALS	ambient light sensor
 ALU	arithmetic and logical unit
+ALUA	asymmetric logical unit access
 AM	access method
 AM	alignment mask
 AM	amplitude modulation
@@ -262,6 +263,7 @@ DAB	digital audio broadcasting
 DAC	digital [to] analog converter
 DAC	discretionary access control
 DAD	duplicate address detection
+DANE	DNS-based Authentication of Named Entities
 DAO	disk at once
 DAP	Directory Access Protocol
 DAT	digital audio tape
@@ -325,6 +327,7 @@ DMT	discrete multitone modulation
 DNARD	Digital network appliance reference design
 DND	drag and drop
 DNS	Domain Name System
+DNSSEC	DNS Security Extensions
 DOE	distributed object environment
 DOF	data over fibre
 DOM	document object model
@@ -358,6 +361,7 @@ DTD	document type definition
 DTE	data terminal equipment
 DTE	dumb terminal emulator
 DTL	diode-transistor logic
+DTLS	datagram transport layer security
 DTS	digital thermal sensor
 DUT	device under test
 DVB	digital video broadcasting
@@ -369,7 +373,10 @@ DVI	Digital Visual Interface
 DVR	digital video recorder
 E-XER	extended XML encoding rules
 EABI	embedded-application binary interface
+EAI	Email Address Internationalization
+EAI	Enterprise Application Integration
 EAP	Extensible Authentication Protocol
+EBCDIC	Extended Binary Coded Decimal Interchange Code
 EBR	extended boot record
 EC	elliptical curve
 ECC	error correction code
@@ -392,7 +399,7 @@ EFM	eight to fourteen modulation
 EGA	Enhanced Graphics Adapter
 EGP	exterior gateway protocol
 EH	extension header
-EIDE	enchanced IDE
+EIDE	enhanced IDE
 EISA	extended industry standard architecture
 ELF	executable and linking format
 ELS	entry level system
@@ -480,6 +487,7 @@ GID	group identifier
 GIF	graphics interchange format
 GMCH	graphics and memory controller hub
 GNU	GNU's Not Unix
+GOP	graphics output protocol
 GOT	global offset table
 GPE	general purpose event
 GPF	general protection fault
@@ -517,6 +525,8 @@ HOOD	hierarchical object oriented design
 HP	Hewlett-Packard
 HPC	high performance computing
 HPET	high precision event timer
+HSM	hardware security module
+HSM	hierarchical storage management 
 HT	hyper-threading
 HTC	hardware thermal control
 HTCC	high temperature co-fired ceramic
@@ -683,9 +693,12 @@ LSN	Large Scale NAT
 LSN	log sequence number
 LSR	label switch router
 LTCC	low temperature co-fired ceramic
+LTO	link time optimization
 LTR	left to right
 LTR	load task register
 LTR	letter(-sized paper)
+LTS	long term support
+LUA	Lua Uppercase Accident
 LUN	logical unit number
 LV	logical volume
 LVM	logical volume management
@@ -697,6 +710,7 @@ MAC	medium access control
 MAC	message authentication {check,code}
 MADT	multiple APIC descriptor table
 MB	megabyte
+MBA	multi-boot agent
 MBR	master boot record
 MBS	megabits per second
 MC	memory controller
@@ -736,9 +750,11 @@ ML	mailing list
 ML	markup language
 ML	maximum likelihood
 MLC	multi-level cell
+MLD	multicast listener discovery
 MLHP	micro loop heat pipe
 MMIC	monolithic microwave integrated circuit
 MMIO	memory mapped input/output
+MMORPG	massive multiplayer online role playing game
 MMU	memory management unit
 MMX	matrix math extension
 MMX	multimedia extension
@@ -770,6 +786,7 @@ MSS	maximum segment size
 MT	machine translation
 MTA	mail transfer agent
 MTBF	mean time between failures
+MTP	media transfer protocol
 MTRR	memory type range register
 MTTF	mean time to failure
 MTU	maximum transmission unit
@@ -792,6 +809,7 @@ ND	neighbor discovery
 NDFA	nondeterministic finite automaton
 NE	numeric error
 NFA	nondeterministic finite automaton
+NFC	near-field communication
 NFS	network file system
 NIA	next instruction address
 NIC	network information center
@@ -1253,6 +1271,7 @@ TUI	{terminal,text-based,textual} user interface
 TX	{transmit out,transmitter}
 TZ	time zone
 UAC	user {access,account} control
+UAF	use-after-free
 UART	universal asynchronous receiver/transmitter
 UAT	user acceptance testing
 UC	uncacheable
@@ -1260,7 +1279,9 @@ UCS	uniform-cost search
 UDMA	ultra DMA
 UDO	ultra density optical
 UDP	User Datagram Protocol
+UEFI	unified extensible firmware interface
 UFS	Unix File System
+UGA	universal graphics adapter
 UI	unit interval
 UI	user interface
 UID	unique identifier

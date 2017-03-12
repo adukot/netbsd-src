@@ -1,4 +1,4 @@
-/*	$NetBSD: read.c,v 1.71 2014/07/06 18:15:34 christos Exp $	*/
+/*	$NetBSD: read.c,v 1.95 2016/04/19 19:50:53 christos Exp $	*/
 
 /*-
  * Copyright (c) 1992, 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)read.c	8.1 (Berkeley) 6/4/93";
 #else
-__RCSID("$NetBSD: read.c,v 1.71 2014/07/06 18:15:34 christos Exp $");
+__RCSID("$NetBSD: read.c,v 1.95 2016/04/19 19:50:53 christos Exp $");
 #endif
 #endif /* not lint && not SCCSID */
 
@@ -45,20 +45,26 @@ __RCSID("$NetBSD: read.c,v 1.71 2014/07/06 18:15:34 christos Exp $");
  * read.c: Clean this junk up! This is horrible code.
  *	   Terminal read functions
  */
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <stdlib.h>
 #include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
 #include "el.h"
+#include "fcns.h"
+#include "read.h"
 
-#define OKCMD	-1	/* must be -1! */
+struct el_read_t {
+	el_rfunc_t	 read_char;	/* Function to read a character. */
+};
 
-private int	read__fixio(int, int);
-private int	read_preread(EditLine *);
-private int	read_char(EditLine *, Char *);
-private int	read_getcmd(EditLine *, el_action_t *, Char *);
-private void	read_pop(c_macro_t *);
+static int	read__fixio(int, int);
+static int	read_char(EditLine *, wchar_t *);
+static int	read_getcmd(EditLine *, el_action_t *, wchar_t *);
+static void	read_pop(c_macro_t *);
 
 /* read_init():
  *	Initialize the read stuff
@@ -66,8 +72,10 @@ private void	read_pop(c_macro_t *);
 protected int
 read_init(EditLine *el)
 {
+	if ((el->el_read = el_malloc(sizeof(*el->el_read))) == NULL)
+		return -1;
 	/* builtin read_char */
-	el->el_read.read_char = read_char;
+	el->el_read->read_char = read_char;
 	return 0;
 }
 
@@ -77,9 +85,9 @@ read_init(EditLine *el)
  *	If it is set to EL_BUILTIN_GETCFN, then reset to the builtin one.
  */
 protected int
-el_read_setfn(EditLine *el, el_rfunc_t rc)
+el_read_setfn(struct el_read_t *el_read, el_rfunc_t rc)
 {
-	el->el_read.read_char = (rc == EL_BUILTIN_GETCFN) ? read_char : rc;
+	el_read->read_char = (rc == EL_BUILTIN_GETCFN) ? read_char : rc;
 	return 0;
 }
 
@@ -89,19 +97,15 @@ el_read_setfn(EditLine *el, el_rfunc_t rc)
  *	if it is the default one
  */
 protected el_rfunc_t
-el_read_getfn(EditLine *el)
+el_read_getfn(struct el_read_t *el_read)
 {
-       return el->el_read.read_char == read_char ?
-	    EL_BUILTIN_GETCFN : el->el_read.read_char;
+       return el_read->read_char == read_char ?
+	    EL_BUILTIN_GETCFN : el_read->read_char;
 }
 
 
-#ifndef MIN
-#define MIN(A,B) ((A) < (B) ? (A) : (B))
-#endif
-
 #ifdef DEBUG_EDIT
-private void
+static void
 read_debug(EditLine *el)
 {
 
@@ -123,7 +127,7 @@ read_debug(EditLine *el)
  *	Try to recover from a read error
  */
 /* ARGSUSED */
-private int
+static int
 read__fixio(int fd __attribute__((__unused__)), int e)
 {
 
@@ -181,49 +185,17 @@ read__fixio(int fd __attribute__((__unused__)), int e)
 }
 
 
-/* read_preread():
- *	Try to read the stuff in the input queue;
- */
-private int
-read_preread(EditLine *el)
-{
-	int chrs = 0;
-
-	if (el->el_tty.t_mode == ED_IO)
-		return 0;
-
-#ifndef WIDECHAR
-/* FIONREAD attempts to buffer up multiple bytes, and to make that work
- * properly with partial wide/UTF-8 characters would need some careful work. */
-#ifdef FIONREAD
-	(void) ioctl(el->el_infd, FIONREAD, &chrs);
-	if (chrs > 0) {
-		char buf[EL_BUFSIZ];
-
-		chrs = read(el->el_infd, buf,
-		    (size_t) MIN(chrs, EL_BUFSIZ - 1));
-		if (chrs > 0) {
-			buf[chrs] = '\0';
-			el_push(el, buf);
-		}
-	}
-#endif /* FIONREAD */
-#endif
-	return chrs > 0;
-}
-
-
 /* el_push():
  *	Push a macro
  */
-public void
-FUN(el,push)(EditLine *el, const Char *str)
+void
+el_wpush(EditLine *el, const wchar_t *str)
 {
 	c_macro_t *ma = &el->el_chared.c_macro;
 
 	if (str != NULL && ma->level + 1 < EL_MAXMACRO) {
 		ma->level++;
-		if ((ma->macro[ma->level] = Strdup(str)) != NULL)
+		if ((ma->macro[ma->level] = wcsdup(str)) != NULL)
 			return;
 		ma->level--;
 	}
@@ -233,24 +205,26 @@ FUN(el,push)(EditLine *el, const Char *str)
 
 
 /* read_getcmd():
- *	Get next command from the input stream, return OKCMD on success.
+ *	Get next command from the input stream,
+ *	return 0 on success or -1 on EOF or error.
  *	Character values > 255 are not looked up in the map, but inserted.
  */
-private int
-read_getcmd(EditLine *el, el_action_t *cmdnum, Char *ch)
+static int
+read_getcmd(EditLine *el, el_action_t *cmdnum, wchar_t *ch)
 {
+	static const wchar_t meta = (wchar_t)0x80;
 	el_action_t cmd;
 	int num;
 
 	el->el_errno = 0;
 	do {
-		if ((num = FUN(el,getc)(el, ch)) != 1) {/* if EOF or error */
+		if ((num = el_wgetc(el, ch)) != 1) {/* if EOF or error */
 			el->el_errno = num == 0 ? 0 : errno;
-			return 0;	/* not OKCMD */
+			return -1;
 		}
 
 #ifdef	KANJI
-		if ((*ch & 0200)) {
+		if ((*ch & meta)) {
 			el->el_state.metanext = 0;
 			cmd = CcViMap[' '];
 			break;
@@ -259,13 +233,11 @@ read_getcmd(EditLine *el, el_action_t *cmdnum, Char *ch)
 
 		if (el->el_state.metanext) {
 			el->el_state.metanext = 0;
-			*ch |= 0200;
+			*ch |= meta;
 		}
-#ifdef WIDECHAR
 		if (*ch >= N_KEYS)
 			cmd = ED_INSERT;
 		else
-#endif
 			cmd = el->el_map.current[(unsigned char) *ch];
 		if (cmd == ED_SEQUENCE_LEAD_IN) {
 			keymacro_value_t val;
@@ -274,14 +246,8 @@ read_getcmd(EditLine *el, el_action_t *cmdnum, Char *ch)
 				cmd = val.cmd;
 				break;
 			case XK_STR:
-				FUN(el,push)(el, val.str);
+				el_wpush(el, val.str);
 				break;
-#ifdef notyet
-			case XK_EXE:
-				/* XXX: In the future to run a user function */
-				RunCommand(val.str);
-				break;
-#endif
 			default:
 				EL_ABORT((el->el_errfile, "Bad XK_ type \n"));
 				break;
@@ -291,32 +257,20 @@ read_getcmd(EditLine *el, el_action_t *cmdnum, Char *ch)
 			el->el_map.current = el->el_map.key;
 	} while (cmd == ED_SEQUENCE_LEAD_IN);
 	*cmdnum = cmd;
-	return OKCMD;
+	return 0;
 }
-
-#ifdef WIDECHAR
-/* utf8_islead():
- *	Test whether a byte is a leading byte of a UTF-8 sequence.
- */
-private int
-utf8_islead(int c)
-{
-	return c < 0x80 ||	       /* single byte char */
-	       (c >= 0xc2 && c <= 0xf4); /* start of multibyte sequence */
-}
-#endif
 
 /* read_char():
  *	Read a character from the tty.
  */
-private int
-read_char(EditLine *el, Char *cp)
+static int
+read_char(EditLine *el, wchar_t *cp)
 {
 	ssize_t num_read;
 	int tried = 0;
 	char cbuf[MB_LEN_MAX];
 	size_t cbp = 0;
-	int bytes = 0;
+	int save_errno = errno;
 
  again:
 	el->el_signal->sig_no = 0;
@@ -324,7 +278,7 @@ read_char(EditLine *el, Char *cp)
 		int e = errno;
 		switch (el->el_signal->sig_no) {
 		case SIGCONT:
-			FUN(el,set)(el, EL_REFRESH);
+			el_wset(el, EL_REFRESH);
 			/*FALLTHROUGH*/
 		case SIGWINCH:
 			sig_set(el);
@@ -332,56 +286,68 @@ read_char(EditLine *el, Char *cp)
 		default:
 			break;
 		}
-		if (!tried && read__fixio(el->el_infd, e) == 0)
+		if (!tried && read__fixio(el->el_infd, e) == 0) {
+			errno = save_errno;
 			tried = 1;
-		else {
+		} else {
 			errno = e;
-			*cp = '\0';
+			*cp = L'\0';
 			return -1;
 		}
 	}
 
 	/* Test for EOF */
 	if (num_read == 0) {
-		errno = 0;
-		*cp = '\0';
+		*cp = L'\0';
 		return 0;
 	}
 
-#ifdef WIDECHAR
-	if (el->el_flags & CHARSET_IS_UTF8) {
-		if (!utf8_islead((unsigned char)cbuf[0]))
-			goto again; /* discard the byte we read and try again */
+	for (;;) {
+		mbstate_t mbs;
+
 		++cbp;
-		if ((bytes = ct_mbtowc(cp, cbuf, cbp)) == -1) {
-			ct_mbtowc_reset;
-			if (cbp >= MB_LEN_MAX) { /* "shouldn't happen" */
+		/* This only works because UTF8 is stateless. */
+		memset(&mbs, 0, sizeof(mbs));
+		switch (mbrtowc(cp, cbuf, cbp, &mbs)) {
+		case (size_t)-1:
+			if (cbp > 1) {
+				/*
+				 * Invalid sequence, discard all bytes
+				 * except the last one.
+				 */
+				cbuf[0] = cbuf[cbp - 1];
+				cbp = 0;
+				break;
+			} else {
+				/* Invalid byte, discard it. */
+				cbp = 0;
+				goto again;
+			}
+		case (size_t)-2:
+			/*
+			 * We don't support other multibyte charsets.
+			 * The second condition shouldn't happen
+			 * and is here merely for additional safety.
+			 */
+			if ((el->el_flags & CHARSET_IS_UTF8) == 0 ||
+			    cbp >= MB_LEN_MAX) {
 				errno = EILSEQ;
-				*cp = '\0';
+				*cp = L'\0';
 				return -1;
 			}
+			/* Incomplete sequence, read another byte. */
 			goto again;
+		default:
+			/* Valid character, process it. */
+			return 1;
 		}
-	} else if (isascii((unsigned char)cbuf[0]) ||
-		/* we don't support other multibyte charsets */
-		++cbp != 1 ||
-		/* Try non-ASCII characters in a 8-bit character set */
-		(bytes = ct_mbtowc(cp, cbuf, cbp)) != 1)
-#endif
-		*cp = (unsigned char)cbuf[0];
-
-	if ((el->el_flags & IGNORE_EXTCHARS) && bytes > 1) {
-		cbp = 0; /* skip this character */
-		goto again;
 	}
-
-	return (int)num_read;
 }
 
 /* read_pop():
  *	Pop a macro from the stack
  */
-private void
+static void
 read_pop(c_macro_t *ma)
 {
 	int i;
@@ -393,22 +359,17 @@ read_pop(c_macro_t *ma)
 	ma->offset = 0;
 }
 
-/* el_getc():
- *	Read a character
+/* el_wgetc():
+ *	Read a wide character
  */
-public int
-FUN(el,getc)(EditLine *el, Char *cp)
+int
+el_wgetc(EditLine *el, wchar_t *cp)
 {
 	int num_read;
 	c_macro_t *ma = &el->el_chared.c_macro;
 
 	terminal__flush(el);
 	for (;;) {
-		if (ma->level < 0) {
-			if (!read_preread(el))
-				break;
-		}
-
 		if (ma->level < 0)
 			break;
 
@@ -436,15 +397,11 @@ FUN(el,getc)(EditLine *el, Char *cp)
 #ifdef DEBUG_READ
 	(void) fprintf(el->el_errfile, "Reading a character\n");
 #endif /* DEBUG_READ */
-	num_read = (*el->el_read.read_char)(el, cp);
+	num_read = (*el->el_read->read_char)(el, cp);
 	if (num_read < 0)
 		el->el_errno = errno;
-#ifdef WIDECHAR
-	if (el->el_flags & NARROW_READ)
-		*cp = *(char *)(void *)cp;
-#endif
 #ifdef DEBUG_READ
-	(void) fprintf(el->el_errfile, "Got it %c\n", *cp);
+	(void) fprintf(el->el_errfile, "Got it %lc\n", *cp);
 #endif /* DEBUG_READ */
 	return num_read;
 }
@@ -479,18 +436,16 @@ read_finish(EditLine *el)
 		sig_clr(el);
 }
 
-public const Char *
-FUN(el,gets)(EditLine *el, int *nread)
+const wchar_t *
+el_wgets(EditLine *el, int *nread)
 {
 	int retval;
 	el_action_t cmdnum = 0;
 	int num;		/* how many chars we have read at NL */
-	Char ch, *cp;
+	wchar_t wc;
+	wchar_t ch, *cp;
 	int crlf = 0;
 	int nrb;
-#ifdef FIONREAD
-	c_macro_t *ma = &el->el_chared.c_macro;
-#endif /* FIONREAD */
 
 	if (nread == NULL)
 		nread = &nrb;
@@ -500,7 +455,8 @@ FUN(el,gets)(EditLine *el, int *nread)
 		size_t idx;
 
 		cp = el->el_line.buffer;
-		while ((num = (*el->el_read.read_char)(el, cp)) == 1) {
+		while ((num = (*el->el_read->read_char)(el, &wc)) == 1) {
+			*cp = wc;
 			/* make sure there is space for next character */
 			if (cp + 1 >= el->el_line.limit) {
 				idx = (size_t)(cp - el->el_line.buffer);
@@ -525,8 +481,8 @@ FUN(el,gets)(EditLine *el, int *nread)
 
 
 #ifdef FIONREAD
-	if (el->el_tty.t_mode == EX_IO && ma->level < 0) {
-		long chrs = 0;
+	if (el->el_tty.t_mode == EX_IO && el->el_chared.c_macro.level < 0) {
+		int chrs = 0;
 
 		(void) ioctl(el->el_infd, FIONREAD, &chrs);
 		if (chrs == 0) {
@@ -552,7 +508,8 @@ FUN(el,gets)(EditLine *el, int *nread)
 
 		terminal__flush(el);
 
-		while ((num = (*el->el_read.read_char)(el, cp)) == 1) {
+		while ((num = (*el->el_read->read_char)(el, &wc)) == 1) {
+			*cp = wc;
 			/* make sure there is space next character */
 			if (cp + 1 >= el->el_line.limit) {
 				idx = (size_t)(cp - el->el_line.buffer);
@@ -577,17 +534,15 @@ FUN(el,gets)(EditLine *el, int *nread)
 		goto noedit;
 	}
 
-	for (num = OKCMD; num == OKCMD;) {	/* while still editing this
-						 * line */
+	for (num = -1; num == -1;) {  /* while still editing this line */
 #ifdef DEBUG_EDIT
 		read_debug(el);
 #endif /* DEBUG_EDIT */
 		/* if EOF or error */
-		if ((num = read_getcmd(el, &cmdnum, &ch)) != OKCMD) {
-			num = -1;
+		if (read_getcmd(el, &cmdnum, &ch) == -1) {
 #ifdef DEBUG_READ
 			(void) fprintf(el->el_errfile,
-			    "Returning from el_gets %d\n", num);
+			    "Returning from el_gets\n");
 #endif /* DEBUG_READ */
 			break;
 		}
@@ -613,7 +568,7 @@ FUN(el,gets)(EditLine *el, int *nread)
 					break;
 			if (b->name)
 				(void) fprintf(el->el_errfile,
-				    "Executing %s\n", b->name);
+				    "Executing %ls\n", b->name);
 			else
 				(void) fprintf(el->el_errfile,
 				    "Error command = %d\n", cmdnum);
@@ -627,7 +582,7 @@ FUN(el,gets)(EditLine *el, int *nread)
 		    el->el_chared.c_redo.pos < el->el_chared.c_redo.lim) {
 			if (cmdnum == VI_DELETE_PREV_CHAR &&
 			    el->el_chared.c_redo.pos != el->el_chared.c_redo.buf
-			    && Isprint(el->el_chared.c_redo.pos[-1]))
+			    && iswprint(el->el_chared.c_redo.pos[-1]))
 				el->el_chared.c_redo.pos--;
 			else
 				*el->el_chared.c_redo.pos++ = ch;

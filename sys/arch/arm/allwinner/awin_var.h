@@ -1,4 +1,4 @@
-/* $NetBSD: awin_var.h,v 1.34 2014/12/22 00:07:24 jmcneill Exp $ */
+/* $NetBSD: awin_var.h,v 1.40 2015/12/26 16:54:41 macallan Exp $ */
 /*-
  * Copyright (c) 2013 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -90,8 +90,8 @@ struct awin_gpio_pindata {
 
 struct awin_dma_channel;
 
-extern struct bus_space awin_bs_tag;
-extern struct bus_space awin_a4x_bs_tag;
+extern struct bus_space armv7_generic_bs_tag;
+extern struct bus_space armv7_generic_a4x_bs_tag;
 extern bus_space_handle_t awin_core_bsh;
 #if defined(ALLWINNER_A80)
 extern bus_space_handle_t awin_core2_bsh;
@@ -108,6 +108,7 @@ void	awin_pll3_enable(void);
 void	awin_pll6_enable(void);
 void	awin_pll7_enable(void);
 void	awin_pll3_set_rate(uint32_t);
+void	awin_pll7_set_rate(uint32_t);
 uint32_t awin_pll5x_get_rate(void);
 uint32_t awin_pll6_get_rate(void);
 uint32_t awin_periph0_get_rate(void);
@@ -136,12 +137,14 @@ int	awin_dma_transfer(void *, paddr_t, paddr_t, size_t);
 void	awin_dma_halt(void *);
 
 struct videomode;
-unsigned int awin_tcon_get_clk_div(void);
-bool	awin_tcon_get_clk_dbl(void);
-void	awin_tcon_set_videomode(const struct videomode *);
-void	awin_tcon_enable(bool);
-void	awin_debe_set_videomode(const struct videomode *);
-void	awin_debe_enable(bool);
+unsigned int awin_tcon_get_clk_pll(int);
+unsigned int awin_tcon_get_clk_div(int);
+bool	awin_tcon_get_clk_dbl(int);
+void	awin_tcon1_set_videomode(int, const struct videomode *);
+void	awin_tcon1_enable(int, bool);
+void	awin_tcon_setvideo(int, bool);
+void	awin_debe_set_videomode(int, const struct videomode *);
+void	awin_debe_enable(int, bool);
 int	awin_debe_ioctl(device_t, u_long, void *);
 int	awin_mp_ioctl(device_t, u_long, void *);
 void	awin_mp_setbase(device_t, paddr_t, size_t);
@@ -153,12 +156,15 @@ struct awin_hdmi_info {
 	bool	display_hdmimode;
 };
 void	awin_hdmi_get_info(struct awin_hdmi_info *);
+void	awin_hdmi_poweron(bool);
 
 void	awin_fb_set_videomode(device_t, u_int, u_int);
 void	awin_fb_ddb_trap_callback(int);
 
 void	awin_wdog_reset(void);
 void	awin_tmr_cpu_init(struct cpu_info *);
+
+int	awin_set_mpu_volt(int, bool);
 
 static inline void
 awin_gpio_pindata_write(const struct awin_gpio_pindata *pd, int value)
@@ -182,5 +188,7 @@ awin_reg_set_clear(bus_space_tag_t bst, bus_space_handle_t bsh,
 		bus_space_write_4(bst, bsh, o, new);
 	}
 }
+
+struct i2c_controller *awin_twi_get_controller(device_t);
 
 #endif /* _ARM_ALLWINNER_AWIN_VAR_H_ */

@@ -1,7 +1,7 @@
-/*	$NetBSD: pkcs11dh_link.c,v 1.1.1.4 2014/12/10 03:34:40 christos Exp $	*/
+/*	$NetBSD: pkcs11dh_link.c,v 1.1.1.6 2015/12/17 03:22:07 christos Exp $	*/
 
 /*
- * Copyright (C) 2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2014, 2015  Internet Systems Consortium, Inc. ("ISC")
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,8 +15,6 @@
  * OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
  * PERFORMANCE OF THIS SOFTWARE.
  */
-
-/* Id */
 
 #ifdef PKCS11CRYPTO
 
@@ -280,7 +278,8 @@ pkcs11dh_compare(const dst_key_t *key1, const dst_key_t *key2) {
 		return (ISC_TRUE);
 	else if ((attr1 == NULL) || (attr2 == NULL) ||
 		 (attr1->ulValueLen != attr2->ulValueLen) ||
-		 memcmp(attr1->pValue, attr2->pValue, attr1->ulValueLen))
+		 !isc_safe_memequal(attr1->pValue, attr2->pValue,
+				    attr1->ulValueLen))
 		return (ISC_FALSE);
 
 	attr1 = pk11_attribute_bytype(dh1, CKA_BASE);
@@ -289,7 +288,8 @@ pkcs11dh_compare(const dst_key_t *key1, const dst_key_t *key2) {
 		return (ISC_TRUE);
 	else if ((attr1 == NULL) || (attr2 == NULL) ||
 		 (attr1->ulValueLen != attr2->ulValueLen) ||
-		 memcmp(attr1->pValue, attr2->pValue, attr1->ulValueLen))
+		 !isc_safe_memequal(attr1->pValue, attr2->pValue,
+				    attr1->ulValueLen))
 		return (ISC_FALSE);
 
 	attr1 = pk11_attribute_bytype(dh1, CKA_VALUE);
@@ -298,7 +298,8 @@ pkcs11dh_compare(const dst_key_t *key1, const dst_key_t *key2) {
 		return (ISC_TRUE);
 	else if ((attr1 == NULL) || (attr2 == NULL) ||
 		 (attr1->ulValueLen != attr2->ulValueLen) ||
-		 memcmp(attr1->pValue, attr2->pValue, attr1->ulValueLen))
+		 !isc_safe_memequal(attr1->pValue, attr2->pValue,
+				    attr1->ulValueLen))
 		return (ISC_FALSE);
 
 	attr1 = pk11_attribute_bytype(dh1, CKA_VALUE2);
@@ -306,7 +307,8 @@ pkcs11dh_compare(const dst_key_t *key1, const dst_key_t *key2) {
 	if (((attr1 != NULL) || (attr2 != NULL)) &&
 	    ((attr1 == NULL) || (attr2 == NULL) ||
 	     (attr1->ulValueLen != attr2->ulValueLen) ||
-	     memcmp(attr1->pValue, attr2->pValue, attr1->ulValueLen)))
+	     !isc_safe_memequal(attr1->pValue, attr2->pValue,
+				attr1->ulValueLen)))
 		return (ISC_FALSE);
 
 	if (!dh1->ontoken && !dh2->ontoken)
@@ -337,7 +339,8 @@ pkcs11dh_paramcompare(const dst_key_t *key1, const dst_key_t *key2) {
 		return (ISC_TRUE);
 	else if ((attr1 == NULL) || (attr2 == NULL) ||
 		 (attr1->ulValueLen != attr2->ulValueLen) ||
-		 memcmp(attr1->pValue, attr2->pValue, attr1->ulValueLen))
+		 !isc_safe_memequal(attr1->pValue, attr2->pValue,
+				    attr1->ulValueLen))
 		return (ISC_FALSE);
 
 	attr1 = pk11_attribute_bytype(dh1, CKA_BASE);
@@ -346,7 +349,8 @@ pkcs11dh_paramcompare(const dst_key_t *key1, const dst_key_t *key2) {
 		return (ISC_TRUE);
 	else if ((attr1 == NULL) || (attr2 == NULL) ||
 		 (attr1->ulValueLen != attr2->ulValueLen) ||
-		 memcmp(attr1->pValue, attr2->pValue, attr1->ulValueLen))
+		 !isc_safe_memequal(attr1->pValue, attr2->pValue,
+				    attr1->ulValueLen))
 		return (ISC_FALSE);
 
 	return (ISC_TRUE);
@@ -634,8 +638,10 @@ pkcs11dh_destroy(dst_key_t *key) {
 
 static void
 uint16_toregion(isc_uint16_t val, isc_region_t *region) {
-	*region->base++ = (val & 0xff00) >> 8;
-	*region->base++ = (val & 0x00ff);
+	*region->base = (val & 0xff00) >> 8;
+	isc_region_consume(region, 1);
+	*region->base = (val & 0x00ff);
+	isc_region_consume(region, 1);
 }
 
 static isc_uint16_t
@@ -646,7 +652,8 @@ uint16_fromregion(isc_region_t *region) {
 	val = ((unsigned int)(cp[0])) << 8;
 	val |= ((unsigned int)(cp[1]));
 
-	region->base += 2;
+	isc_region_consume(region, 2);
+
 	return (val);
 }
 
@@ -683,13 +690,13 @@ pkcs11dh_todns(const dst_key_t *key, isc_buffer_t *data) {
 
 	isc_buffer_availableregion(data, &r);
 
-	if ((glen == 1) && (memcmp(pk11_dh_bn2, base, glen) == 0) &&
+	if ((glen == 1) && isc_safe_memequal(pk11_dh_bn2, base, glen) &&
 	    (((plen == sizeof(pk11_dh_bn768)) &&
-	      (memcmp(pk11_dh_bn768, prime, plen) == 0)) ||
+	      isc_safe_memequal(pk11_dh_bn768, prime, plen)) ||
 	     ((plen == sizeof(pk11_dh_bn1024)) &&
-	      (memcmp(pk11_dh_bn1024, prime, plen) == 0)) ||
+	      isc_safe_memequal(pk11_dh_bn1024, prime, plen)) ||
 	     ((plen == sizeof(pk11_dh_bn1536)) &&
-	      (memcmp(pk11_dh_bn1536, prime, plen) == 0)))) {
+	      isc_safe_memequal(pk11_dh_bn1536, prime, plen)))) {
 		plen = 1;
 		glen = 0;
 	}
@@ -700,26 +707,27 @@ pkcs11dh_todns(const dst_key_t *key, isc_buffer_t *data) {
 
 	uint16_toregion(plen, &r);
 	if (plen == 1) {
-		if (memcmp(pk11_dh_bn768, prime, sizeof(pk11_dh_bn768)) == 0)
+		if (isc_safe_memequal(pk11_dh_bn768, prime,
+				      sizeof(pk11_dh_bn768)))
 			*r.base = 1;
-		else if (memcmp(pk11_dh_bn1024, prime,
-				sizeof(pk11_dh_bn1024)) == 0)
+		else if (isc_safe_memequal(pk11_dh_bn1024, prime,
+					   sizeof(pk11_dh_bn1024)))
 			*r.base = 2;
 		else
 			*r.base = 3;
 	}
 	else
 		memmove(r.base, prime, plen);
-	r.base += plen;
+	isc_region_consume(&r, plen);
 
 	uint16_toregion(glen, &r);
 	if (glen > 0)
 		memmove(r.base, base, glen);
-	r.base += glen;
+	isc_region_consume(&r, glen);
 
 	uint16_toregion(publen, &r);
 	memmove(r.base, pub, publen);
-	r.base += publen;
+	isc_region_consume(&r, publen);
 
 	isc_buffer_add(data, dnslen);
 
@@ -766,10 +774,12 @@ pkcs11dh_fromdns(dst_key_t *key, isc_buffer_t *data) {
 	}
 	plen_ = plen;
 	if (plen == 1 || plen == 2) {
-		if (plen == 1)
-			special = *r.base++;
-		else
+		if (plen == 1) {
+			special = *r.base;
+			isc_region_consume(&r, 1);
+		} else {
 			special = uint16_fromregion(&r);
+		}
 		switch (special) {
 			case 1:
 				prime = pk11_dh_bn768;
@@ -791,7 +801,7 @@ pkcs11dh_fromdns(dst_key_t *key, isc_buffer_t *data) {
 	}
 	else {
 		prime = r.base;
-		r.base += plen;
+		isc_region_consume(&r, plen);
 	}
 
 	/*
@@ -818,7 +828,7 @@ pkcs11dh_fromdns(dst_key_t *key, isc_buffer_t *data) {
 		}
 		else {
 			base = r.base;
-			if (memcmp(base, pk11_dh_bn2, glen) == 0) {
+			if (isc_safe_memequal(base, pk11_dh_bn2, glen)) {
 				base = pk11_dh_bn2;
 				glen_ = sizeof(pk11_dh_bn2);
 			}
@@ -837,7 +847,7 @@ pkcs11dh_fromdns(dst_key_t *key, isc_buffer_t *data) {
 		}
 		base = r.base;
 	}
-	r.base += glen;
+	isc_region_consume(&r, glen);
 
 	if (r.length < 2) {
 		memset(dh, 0, sizeof(*dh));
@@ -851,7 +861,7 @@ pkcs11dh_fromdns(dst_key_t *key, isc_buffer_t *data) {
 		return (DST_R_INVALIDPUBLICKEY);
 	}
 	pub = r.base;
-	r.base += publen;
+	isc_region_consume(&r, publen);
 
 	key->key_size = pk11_numbits(prime, plen_);
 

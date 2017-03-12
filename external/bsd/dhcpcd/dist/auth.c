@@ -1,5 +1,5 @@
 #include <sys/cdefs.h>
- __RCSID("$NetBSD: auth.c,v 1.8 2015/01/30 09:47:05 roy Exp $");
+ __RCSID("$NetBSD: auth.c,v 1.11 2016/05/09 10:15:59 roy Exp $");
 
 /*
  * dhcpcd - DHCP client daemon
@@ -35,7 +35,6 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syslog.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -324,8 +323,8 @@ gottoken:
 
 	/* RFC3318, section 5.2 - zero giaddr and hops */
 	if (mp == 4) {
-		*(mm + offsetof(struct dhcp_message, hwopcount)) = '\0';
-		memset(mm + offsetof(struct dhcp_message, giaddr), 0, 4);
+		*(mm + offsetof(struct bootp, hops)) = '\0';
+		memset(mm + offsetof(struct bootp, giaddr), 0, 4);
 	}
 
 	memset(hmac, 0, sizeof(hmac));
@@ -419,7 +418,8 @@ get_next_rdm_monotonic_counter(struct auth *auth)
 	rdm++;
 	if (fseek(fp, 0, SEEK_SET) == -1 ||
 	    ftruncate(fileno(fp), 0) == -1 ||
-	    fprintf(fp, "0x%016" PRIu64 "\n", rdm) != 19)
+	    fprintf(fp, "0x%016" PRIu64 "\n", rdm) != 19 ||
+	    fflush(fp) == EOF)
 	{
 		if (!auth->last_replay_set) {
 			auth->last_replay = rdm;
@@ -428,7 +428,6 @@ get_next_rdm_monotonic_counter(struct auth *auth)
 			rdm = ++auth->last_replay;
 		/* report error? */
 	}
-	fflush(fp);
 #ifdef LOCK_EX
 	if (flocked == 0)
 		flock(fileno(fp), LOCK_UN);
@@ -642,10 +641,10 @@ dhcp_auth_encode(struct auth *auth, const struct token *t,
 
 	/* RFC3318, section 5.2 - zero giaddr and hops */
 	if (mp == 4) {
-		p = m + offsetof(struct dhcp_message, hwopcount);
+		p = m + offsetof(struct bootp, hops);
 		hops = *p;
 		*p = '\0';
-		p = m + offsetof(struct dhcp_message, giaddr);
+		p = m + offsetof(struct bootp, giaddr);
 		memcpy(&giaddr, p, sizeof(giaddr));
 		memset(p, 0, sizeof(giaddr));
 	} else {
@@ -664,9 +663,9 @@ dhcp_auth_encode(struct auth *auth, const struct token *t,
 
 	/* RFC3318, section 5.2 - restore giaddr and hops */
 	if (mp == 4) {
-		p = m + offsetof(struct dhcp_message, hwopcount);
+		p = m + offsetof(struct bootp, hops);
 		*p = hops;
-		p = m + offsetof(struct dhcp_message, giaddr);
+		p = m + offsetof(struct bootp, giaddr);
 		memcpy(p, &giaddr, sizeof(giaddr));
 	}
 

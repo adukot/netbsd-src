@@ -1,4 +1,4 @@
-/*	$NetBSD: in6_src.c,v 1.56 2015/01/20 21:27:36 roy Exp $	*/
+/*	$NetBSD: in6_src.c,v 1.59 2015/12/12 23:34:25 christos Exp $	*/
 /*	$KAME: in6_src.c,v 1.159 2005/10/19 01:40:32 t-momose Exp $	*/
 
 /*
@@ -66,9 +66,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: in6_src.c,v 1.56 2015/01/20 21:27:36 roy Exp $");
+__KERNEL_RCSID(0, "$NetBSD: in6_src.c,v 1.59 2015/12/12 23:34:25 christos Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_inet.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -788,6 +790,21 @@ in6_selecthlim(struct in6pcb *in6p, struct ifnet *ifp)
 		return (ip6_defhlim);
 }
 
+int
+in6_selecthlim_rt(struct in6pcb *in6p)
+{
+	struct rtentry *rt;
+
+	if (in6p == NULL)
+		return in6_selecthlim(in6p, NULL);
+
+	rt = rtcache_validate(&in6p->in6p_route);
+	if (rt != NULL)
+		return in6_selecthlim(in6p, rt->rt_ifp);
+	else
+		return in6_selecthlim(in6p, NULL);
+}
+
 /*
  * Find an empty port and set it to the specified PCB.
  */
@@ -868,8 +885,9 @@ struct sel_walkarg {
 	void *w_limit;
 };
 
+int sysctl_net_inet6_addrctlpolicy(SYSCTLFN_ARGS);
 int
-in6_src_sysctl(void *oldp, size_t *oldlenp, void *newp, size_t newlen)
+sysctl_net_inet6_addrctlpolicy(SYSCTLFN_ARGS)
 {
 	int error = 0;
 	int s;

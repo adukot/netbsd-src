@@ -1,4 +1,4 @@
-/*	$NetBSD: savenewlabel.c,v 1.2 2014/08/03 16:09:38 martin Exp $	*/
+/*	$NetBSD: savenewlabel.c,v 1.4 2016/01/26 14:08:58 martin Exp $	*/
 
 /*
  * Copyright 1997 Jonathan Stone
@@ -36,7 +36,7 @@
 
 #include <sys/cdefs.h>
 #if defined(LIBC_SCCS) && !defined(lint)
-__RCSID("$NetBSD: savenewlabel.c,v 1.2 2014/08/03 16:09:38 martin Exp $");
+__RCSID("$NetBSD: savenewlabel.c,v 1.4 2016/01/26 14:08:58 martin Exp $");
 #endif
 
 #include <sys/types.h>
@@ -59,6 +59,7 @@ savenewlabel(partinfo *lp, int nparts)
 {
 	FILE *f;
 	char *f_name = malloc(STRSIZE * sizeof(char));
+	char *sane_packname, *p;
 	int i;
 	pm_devs_t *pm_i;
 
@@ -73,7 +74,12 @@ savenewlabel(partinfo *lp, int nparts)
 					snprintf(pm_i->bsddiskname, DISKNAME_SIZE, "disk %c", i);
 			}
 
-	snprintf(f_name, STRSIZE, "/tmp/disktab.%s", pm->bsddiskname);
+	sane_packname = strdup(pm->bsddiskname);
+	for (p = sane_packname; *p; p++)
+		if (*p == '/')
+			*p = ' ';
+	snprintf(f_name, STRSIZE, "/tmp/disktab.%s", sane_packname);
+	free(sane_packname);
 
 	/*
 	  N.B. disklabels only support up to 2TB (32-bit field for sectors).
@@ -127,5 +133,6 @@ savenewlabel(partinfo *lp, int nparts)
 	scripting_fprintf(NULL, "EOF\n");
 	fflush(NULL);
 	run_program(0, "sh -c 'cat /tmp/disktab.* >/tmp/disktab'");
+	free(f_name);
 	return(0);
 }

@@ -1,7 +1,7 @@
-/*	$NetBSD: rbt.c,v 1.9 2014/12/10 04:37:58 christos Exp $	*/
+/*	$NetBSD: rbt.c,v 1.11 2015/12/17 04:00:43 christos Exp $	*/
 
 /*
- * Copyright (C) 2004, 2005, 2007-2009, 2011-2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2004, 2005, 2007-2009, 2011-2015  Internet Systems Consortium, Inc. ("ISC")
  * Copyright (C) 1999-2003  Internet Software Consortium.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -2189,6 +2189,7 @@ create_node(isc_mem_t *mctx, dns_name_t *name, dns_rbtnode_t **nodep) {
 	node->right_is_relative = 0;
 	node->parent_is_relative = 0;
 	node->data_is_relative = 0;
+	node->rpz = 0;
 
 #ifdef DNS_RBT_USEHASH
 	HASHNEXT(node) = NULL;
@@ -2355,8 +2356,7 @@ rotate_left(dns_rbtnode_t *node, dns_rbtnode_t **rootp) {
 		PARENT(LEFT(child)) = node;
 	LEFT(child) = node;
 
-	if (child != NULL)
-		PARENT(child) = PARENT(node);
+	PARENT(child) = PARENT(node);
 
 	if (IS_ROOT(node)) {
 		*rootp = child;
@@ -2388,8 +2388,7 @@ rotate_right(dns_rbtnode_t *node, dns_rbtnode_t **rootp) {
 		PARENT(RIGHT(child)) = node;
 	RIGHT(child) = node;
 
-	if (child != NULL)
-		PARENT(child) = PARENT(node);
+	PARENT(child) = PARENT(node);
 
 	if (IS_ROOT(node)) {
 		*rootp = child;

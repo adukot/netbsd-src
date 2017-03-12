@@ -1,4 +1,4 @@
-/*	$NetBSD: pciide_machdep.c,v 1.13 2014/05/12 11:55:39 joerg Exp $	*/
+/*	$NetBSD: pciide_machdep.c,v 1.15 2015/07/27 15:45:20 msaitoh Exp $	*/
 
 /*
  * Copyright (c) 1998 Christopher G. Demetriou.  All rights reserved.
@@ -41,7 +41,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pciide_machdep.c,v 1.13 2014/05/12 11:55:39 joerg Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pciide_machdep.c,v 1.15 2015/07/27 15:45:20 msaitoh Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -69,7 +69,7 @@ pciide_machdep_compat_intr_establish(device_t dev,
 	int irq;
 	void *cookie;
 #if NIOAPIC > 0
-	int mpih;
+	intr_handle_t mpih;
 	char buf[PCI_INTRSTR_LEN];
 #endif
 
@@ -93,7 +93,8 @@ pciide_machdep_compat_intr_establish(device_t dev,
 }
 
 void
-pciide_machdep_compat_intr_disestablish(device_t dev, pci_chipset_tag_t pc, int chan, void *cookie)
+pciide_machdep_compat_intr_disestablish(device_t dev, pci_chipset_tag_t pc,
+    int chan, void *cookie)
 {
 	isa_intr_disestablish(NULL, cookie);
 	return;

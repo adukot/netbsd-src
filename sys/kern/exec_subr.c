@@ -1,4 +1,4 @@
-/*	$NetBSD: exec_subr.c,v 1.71 2014/03/29 09:31:11 maxv Exp $	*/
+/*	$NetBSD: exec_subr.c,v 1.74 2016/04/07 12:06:50 christos Exp $	*/
 
 /*
  * Copyright (c) 1993, 1994, 1996 Christopher G. Demetriou
@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: exec_subr.c,v 1.71 2014/03/29 09:31:11 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: exec_subr.c,v 1.74 2016/04/07 12:06:50 christos Exp $");
 
 #include "opt_pax.h"
 
@@ -45,10 +45,7 @@ __KERNEL_RCSID(0, "$NetBSD: exec_subr.c,v 1.71 2014/03/29 09:31:11 maxv Exp $");
 #include <sys/mman.h>
 #include <sys/resourcevar.h>
 #include <sys/device.h>
-
-#if defined(PAX_ASLR) || defined(PAX_MPROTECT)
 #include <sys/pax.h>
-#endif /* PAX_ASLR || PAX_MPROTECT */
 
 #include <uvm/uvm_extern.h>
 
@@ -184,9 +181,7 @@ vmcmd_map_pagedvn(struct lwp *l, struct exec_vmcmd *cmd)
 
 	prot = cmd->ev_prot;
 	maxprot = UVM_PROT_ALL;
-#ifdef PAX_MPROTECT
-	pax_mprotect(l, &prot, &maxprot);
-#endif /* PAX_MPROTECT */
+	PAX_MPROTECT_ADJUST(l, &prot, &maxprot);
 
 	/*
 	 * check the file system's opinion about mmapping the file
@@ -266,9 +261,7 @@ vmcmd_readvn(struct lwp *l, struct exec_vmcmd *cmd)
 
 	prot = cmd->ev_prot;
 	maxprot = VM_PROT_ALL;
-#ifdef PAX_MPROTECT
-	pax_mprotect(l, &prot, &maxprot);
-#endif /* PAX_MPROTECT */
+	PAX_MPROTECT_ADJUST(l, &prot, &maxprot);
 
 #ifdef PMAP_NEED_PROCWR
 	/*
@@ -326,9 +319,7 @@ vmcmd_map_zero(struct lwp *l, struct exec_vmcmd *cmd)
 
 	prot = cmd->ev_prot;
 	maxprot = UVM_PROT_ALL;
-#ifdef PAX_MPROTECT
-	pax_mprotect(l, &prot, &maxprot);
-#endif /* PAX_MPROTECT */
+	PAX_MPROTECT_ADJUST(l, &prot, &maxprot);
 
 	error = uvm_map(&p->p_vmspace->vm_map, &cmd->ev_addr,
 			round_page(cmd->ev_len), NULL, UVM_UNKNOWN_OFFSET, 0,
@@ -408,7 +399,7 @@ exec_setup_stack(struct lwp *l, struct exec_package *epp)
 	    max_stack_size);
 
 #ifdef PAX_ASLR
-	pax_aslr_stack(l, epp, &max_stack_size);
+	pax_aslr_stack(epp, &max_stack_size);
 #endif /* PAX_ASLR */
 
 	l->l_proc->p_stackbase = epp->ep_minsaddr;

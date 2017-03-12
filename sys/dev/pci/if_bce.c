@@ -1,4 +1,4 @@
-/* $NetBSD: if_bce.c,v 1.39 2014/08/10 16:44:36 tls Exp $	 */
+/* $NetBSD: if_bce.c,v 1.41 2016/02/09 08:32:11 ozaki-r Exp $	 */
 
 /*
  * Copyright (c) 2003 Clifford Wright. All rights reserved.
@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_bce.c,v 1.39 2014/08/10 16:44:36 tls Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_bce.c,v 1.41 2016/02/09 08:32:11 ozaki-r Exp $");
 
 #include "vlan.h"
 
@@ -55,7 +55,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_bce.c,v 1.39 2014/08/10 16:44:36 tls Exp $");
 #include <net/if_ether.h>
 
 #include <net/bpf.h>
-#include <sys/rnd.h>
+#include <sys/rndsource.h>
 
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
@@ -815,7 +815,7 @@ bce_rxintr(struct bce_softc *sc)
 		bpf_mtap(ifp, m);
 
 		/* Pass it on. */
-		(*ifp->if_input) (ifp, m);
+		if_percpuq_enqueue(ifp->if_percpuq, m);
 
 		/* re-check current in case it changed */
 		curr = (bus_space_read_4(sc->bce_btag, sc->bce_bhandle,

@@ -1,4 +1,4 @@
-/*	$NetBSD: rump.c,v 1.316 2015/02/06 18:19:22 maxv Exp $	*/
+/*	$NetBSD: rump.c,v 1.329 2016/03/08 14:30:48 joerg Exp $	*/
 
 /*
  * Copyright (c) 2007-2011 Antti Kantee.  All Rights Reserved.
@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: rump.c,v 1.316 2015/02/06 18:19:22 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: rump.c,v 1.329 2016/03/08 14:30:48 joerg Exp $");
 
 #include <sys/systm.h>
 #define ELFSIZE ARCH_ELFSIZE
@@ -71,7 +71,13 @@ __KERNEL_RCSID(0, "$NetBSD: rump.c,v 1.316 2015/02/06 18:19:22 maxv Exp $");
 #include <sys/vmem.h>
 #include <sys/xcall.h>
 #include <sys/cprng.h>
+#include <sys/rnd.h>
 #include <sys/ktrace.h>
+
+#include <rump-sys/kern.h>
+#include <rump-sys/dev.h>
+#include <rump-sys/net.h>
+#include <rump-sys/vfs.h>
 
 #include <rump/rumpuser.h>
 
@@ -82,12 +88,8 @@ __KERNEL_RCSID(0, "$NetBSD: rump.c,v 1.316 2015/02/06 18:19:22 maxv Exp $");
 #include <uvm/uvm_extern.h>
 #include <uvm/uvm_readahead.h>
 
-#include "rump_private.h"
-#include "rump_net_private.h"
-#include "rump_vfs_private.h"
-#include "rump_dev_private.h"
-
 char machine[] = MACHINE;
+char machine_arch[] = MACHINE_ARCH;
 
 struct proc *initproc;
 
@@ -104,7 +106,8 @@ int rump_threads = 1;
 static void rump_component_addlocal(void);
 static struct lwp *bootlwp;
 
-static char rump_msgbuf[16*1024]; /* 16k should be enough for std rump needs */
+/* 16k should be enough for std rump needs */
+static  char rump_msgbuf[16*1024] __aligned(256);
 
 bool rump_ttycomponent = false;
 
@@ -124,30 +127,12 @@ int  (*rump_vfs_makeonedevnode)(dev_t, const char *,
 				devmajor_t, devminor_t) = (void *)nullop;
 int  (*rump_vfs_makedevnodes)(dev_t, const char *, char,
 			      devmajor_t, devminor_t, int) = (void *)nullop;
+int  (*rump_vfs_makesymlink)(const char *, const char *) = (void *)nullop;
 
 rump_proc_vfs_init_fn rump_proc_vfs_init = (void *)nullop;
 rump_proc_vfs_release_fn rump_proc_vfs_release = (void *)nullop;
 
 static void add_linkedin_modules(const struct modinfo *const *, size_t);
-
-/*
- * Create some sysctl nodes.  why only this you ask.  well, init_sysctl
- * is a kitchen sink in need of some gardening.  but i want to use
- * others today.  Furthermore, creating a whole kitchen sink full of
- * sysctl nodes is a waste of cycles for rump kernel bootstrap.
- */
-static void
-mksysctls(void)
-{
-
-	/* hw.pagesize */
-	sysctl_createv(NULL, 0, NULL, NULL,
-	    CTLFLAG_PERMANENT|CTLFLAG_IMMEDIATE,
-	    CTLTYPE_INT, "pagesize",
-	    SYSCTL_DESCR("Software page size"),
-	    NULL, PAGE_SIZE, NULL, 0,
-	    CTL_HW, HW_PAGESIZE, CTL_EOL);
-}
 
 static pid_t rspo_wrap_getpid(void) {
 	return rump_sysproxy_hyp_getpid();
@@ -262,7 +247,7 @@ rump_init(void)
 	/* init minimal lwp/cpu context */
 	rump_lwproc_init();
 	l = &lwp0;
-	l->l_cpu = l->l_target_cpu = rump_cpu;
+	l->l_cpu = l->l_target_cpu = &rump_bootcpu;
 	rump_lwproc_curlwp_set(l);
 
 	/* retrieve env vars which affect the early stage of bootstrap */
@@ -312,11 +297,11 @@ rump_init(void)
 	uao_init();
 
 	mutex_obj_init();
+	rw_obj_init();
 	callout_startup();
 
 	kprintf_init();
 	pserialize_init();
-	loginit();
 
 	kauth_init();
 
@@ -330,7 +315,8 @@ rump_init(void)
 	{
 		struct sysctl_setup_chain *ssc;
 
-		LIST_FOREACH(ssc, &sysctl_boot_chain, ssc_entries) {
+		while ((ssc = LIST_FIRST(&sysctl_boot_chain)) != NULL) {
+			LIST_REMOVE(ssc, ssc_entries);
 			ssc->ssc_func(NULL);
 		}
 	}
@@ -353,6 +339,8 @@ rump_init(void)
 
 	lwpinit_specificdata();
 	lwp_initspecific(&lwp0);
+
+	loginit();
 
 	rump_biglock_init();
 
@@ -399,6 +387,7 @@ rump_init(void)
 
 		aprint_verbose("cpu%d at thinair0: rump virtual cpu\n", i);
 	}
+	ncpuonline = ncpu;
 
 	/* Once all CPUs are detected, initialize the per-CPU cprng_fast.  */
 	cprng_fast_init();
@@ -408,7 +397,6 @@ rump_init(void)
 
 	rnd_init_softint();
 
-	mksysctls();
 	kqueue_init();
 	iostat_init();
 	fd_sys_init();
@@ -491,6 +479,7 @@ rump_init(void)
 	mutex_exit(proc_lock);
 	if (initproc == NULL)
 		panic("where in the world is initproc?");
+	strlcpy(initproc->p_comm, "rumplocal", sizeof(initproc->p_comm));
 
 	rump_component_init(RUMP_COMPONENT_POSTINIT);
 
@@ -557,6 +546,10 @@ rump_component_load(const struct rump_component *rc_const)
 {
 	struct rump_component *rc, *rc_iter;
 
+	/* time for rump component loading and unloading has passed */
+	if (!cold)
+		return;
+
 	/*
 	 * XXX: this is ok since the "const" was removed from the
 	 * definition of RUMP_COMPONENT().
@@ -576,6 +569,20 @@ rump_component_load(const struct rump_component *rc_const)
 	LIST_INSERT_HEAD(&rchead, rc, rc_entries);
 	KASSERT(rc->rc_type < RUMP_COMPONENT_MAX);
 	compcounter[rc->rc_type]++;
+}
+
+void
+rump_component_unload(struct rump_component *rc)
+{
+
+	/*
+	 * Checking for cold is enough because rump_init() both
+	 * flips it and handles component loading.
+	 */
+	if (!cold)
+		return;
+
+	LIST_REMOVE(rc, rc_entries);
 }
 
 int
@@ -683,17 +690,6 @@ rump_getversion(void)
 }
 /* compat */
 __strong_alias(rump_pub_getversion,rump_getversion);
-
-int
-rump_nativeabi_p(void)
-{
-
-#ifdef _RUMP_NATIVE_ABI
-	return 1;
-#else
-	return 0;
-#endif
-}
 
 /*
  * Note: may be called unscheduled.  Not fully safe since no locking

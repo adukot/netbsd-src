@@ -1,4 +1,4 @@
-/*	$NetBSD: mainbus.c,v 1.3 2014/12/23 15:09:13 macallan Exp $ */
+/*	$NetBSD: mainbus.c,v 1.5 2016/01/29 01:54:14 macallan Exp $ */
 
 /*-
  * Copyright (c) 2014 Michael Lorenz
@@ -27,7 +27,9 @@
  */
  
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: mainbus.c,v 1.3 2014/12/23 15:09:13 macallan Exp $");
+__KERNEL_RCSID(0, "$NetBSD: mainbus.c,v 1.5 2016/01/29 01:54:14 macallan Exp $");
+
+#include "opt_multiprocessor.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -58,7 +60,9 @@ struct mainbusdev {
 
 struct mainbusdev mainbusdevs[] = {
 	{ "cpu",	},
-	{ "com",	},
+#ifdef MULTIPROCESSOR
+	{ "cpu",	},
+#endif
 	{ "apbus",	},
 	{ NULL,		}
 };
@@ -92,6 +96,10 @@ mainbus_attach(device_t parent, device_t self, void *aux)
 
 	/* send ourselves an IPI */
 	MTC0(0x12345678, CP0_CORE_MBOX, 0);
+	delay(1000);
+
+	/* send the other core an IPI */
+	MTC0(0x12345678, CP0_CORE_MBOX, 1);
 	delay(1000);
 #endif
 }

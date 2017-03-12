@@ -6,7 +6,7 @@ NoEcho('
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -124,7 +124,7 @@ NoEcho('
 %token <i> PARSEOP_DECREMENT
 %token <i> PARSEOP_DEFAULT
 %token <i> PARSEOP_DEFAULT_ARG
-%token <i> PARSEOP_DEFINITIONBLOCK
+%token <i> PARSEOP_DEFINITION_BLOCK
 %token <i> PARSEOP_DEREFOF
 %token <i> PARSEOP_DEVICE
 %token <i> PARSEOP_DEVICEPOLARITY_HIGH
@@ -166,6 +166,7 @@ NoEcho('
 %token <i> PARSEOP_GPIO_INT
 %token <i> PARSEOP_GPIO_IO
 %token <i> PARSEOP_I2C_SERIALBUS
+%token <i> PARSEOP_I2C_SERIALBUS_V2
 %token <i> PARSEOP_IF
 %token <i> PARSEOP_INCLUDE
 %token <i> PARSEOP_INCLUDE_END
@@ -323,6 +324,7 @@ NoEcho('
 %token <i> PARSEOP_SLAVEMODE_DEVICEINIT
 %token <i> PARSEOP_SLEEP
 %token <i> PARSEOP_SPI_SERIALBUS
+%token <i> PARSEOP_SPI_SERIALBUS_V2
 %token <i> PARSEOP_STALL
 %token <i> PARSEOP_STARTDEPENDENTFN
 %token <i> PARSEOP_STARTDEPENDENTFN_NOPRI
@@ -348,6 +350,7 @@ NoEcho('
 %token <i> PARSEOP_TYPE_STATIC
 %token <i> PARSEOP_TYPE_TRANSLATION
 %token <i> PARSEOP_UART_SERIALBUS
+%token <i> PARSEOP_UART_SERIALBUS_V2
 %token <i> PARSEOP_UNICODE
 %token <i> PARSEOP_UNLOAD
 %token <i> PARSEOP_UPDATERULE_ONES
@@ -375,6 +378,100 @@ NoEcho('
 %token <i> PARSEOP_XFERTYPE_16
 %token <i> PARSEOP_XOR
 %token <i> PARSEOP_ZERO
+
+/* ToPld macro */
+
+%token <i> PARSEOP_TOPLD
+%token <i> PARSEOP_PLD_REVISION
+%token <i> PARSEOP_PLD_IGNORECOLOR
+%token <i> PARSEOP_PLD_RED
+%token <i> PARSEOP_PLD_GREEN
+%token <i> PARSEOP_PLD_BLUE
+%token <i> PARSEOP_PLD_WIDTH
+%token <i> PARSEOP_PLD_HEIGHT
+%token <i> PARSEOP_PLD_USERVISIBLE
+%token <i> PARSEOP_PLD_DOCK
+%token <i> PARSEOP_PLD_LID
+%token <i> PARSEOP_PLD_PANEL
+%token <i> PARSEOP_PLD_VERTICALPOSITION
+%token <i> PARSEOP_PLD_HORIZONTALPOSITION
+%token <i> PARSEOP_PLD_SHAPE
+%token <i> PARSEOP_PLD_GROUPORIENTATION
+%token <i> PARSEOP_PLD_GROUPTOKEN
+%token <i> PARSEOP_PLD_GROUPPOSITION
+%token <i> PARSEOP_PLD_BAY
+%token <i> PARSEOP_PLD_EJECTABLE
+%token <i> PARSEOP_PLD_EJECTREQUIRED
+%token <i> PARSEOP_PLD_CABINETNUMBER
+%token <i> PARSEOP_PLD_CARDCAGENUMBER
+%token <i> PARSEOP_PLD_REFERENCE
+%token <i> PARSEOP_PLD_ROTATION
+%token <i> PARSEOP_PLD_ORDER
+%token <i> PARSEOP_PLD_RESERVED
+%token <i> PARSEOP_PLD_VERTICALOFFSET
+%token <i> PARSEOP_PLD_HORIZONTALOFFSET
+
+/*
+ * C-style expression parser. These must appear after all of the
+ * standard ASL operators and keywords.
+ *
+ * Note: The order of these tokens implements the precedence rules
+ * (low precedence to high). See aslrules.y for an exhaustive list.
+ */
+%right <i> PARSEOP_EXP_EQUALS
+           PARSEOP_EXP_ADD_EQ
+           PARSEOP_EXP_SUB_EQ
+           PARSEOP_EXP_MUL_EQ
+           PARSEOP_EXP_DIV_EQ
+           PARSEOP_EXP_MOD_EQ
+           PARSEOP_EXP_SHL_EQ
+           PARSEOP_EXP_SHR_EQ
+           PARSEOP_EXP_AND_EQ
+           PARSEOP_EXP_XOR_EQ
+           PARSEOP_EXP_OR_EQ
+
+%left <i>  PARSEOP_EXP_LOGICAL_OR
+%left <i>  PARSEOP_EXP_LOGICAL_AND
+%left <i>  PARSEOP_EXP_OR
+%left <i>  PARSEOP_EXP_XOR
+%left <i>  PARSEOP_EXP_AND
+%left <i>  PARSEOP_EXP_EQUAL
+           PARSEOP_EXP_NOT_EQUAL
+%left <i>  PARSEOP_EXP_GREATER
+           PARSEOP_EXP_LESS
+           PARSEOP_EXP_GREATER_EQUAL
+           PARSEOP_EXP_LESS_EQUAL
+%left <i>  PARSEOP_EXP_SHIFT_RIGHT
+           PARSEOP_EXP_SHIFT_LEFT
+%left <i>  PARSEOP_EXP_ADD
+           PARSEOP_EXP_SUBTRACT
+%left <i>  PARSEOP_EXP_MULTIPLY
+           PARSEOP_EXP_DIVIDE
+           PARSEOP_EXP_MODULO
+
+%right <i> PARSEOP_EXP_NOT
+           PARSEOP_EXP_LOGICAL_NOT
+
+%left <i>  PARSEOP_EXP_INCREMENT
+           PARSEOP_EXP_DECREMENT
+
+/* Brackets for Index() support */
+
+%left <i>  PARSEOP_EXP_INDEX_LEFT
+%right <i> PARSEOP_EXP_INDEX_RIGHT
+
+/* Macros */
+
+%token <i> PARSEOP_PRINTF
+%token <i> PARSEOP_FPRINTF
+%token <i> PARSEOP_FOR
+
+/* Specific parentheses tokens are not used at this time */
+           /* PARSEOP_EXP_PAREN_OPEN */
+           /* PARSEOP_EXP_PAREN_CLOSE */
+
+
+%token <i> PARSEOP_ASL_CODE
 
 /*
  * Special functions. These should probably stay at the end of this

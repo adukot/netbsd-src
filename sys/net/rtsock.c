@@ -1,4 +1,4 @@
-/*	$NetBSD: rtsock.c,v 1.166 2014/12/02 21:28:31 christos Exp $	*/
+/*	$NetBSD: rtsock.c,v 1.185 2016/04/25 15:43:49 roy Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -61,12 +61,13 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: rtsock.c,v 1.166 2014/12/02 21:28:31 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: rtsock.c,v 1.185 2016/04/25 15:43:49 roy Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
 #include "opt_mpls.h"
 #include "opt_compat_netbsd.h"
+#include "opt_sctp.h"
 #endif
 
 #include <sys/param.h>
@@ -80,15 +81,22 @@ __KERNEL_RCSID(0, "$NetBSD: rtsock.c,v 1.166 2014/12/02 21:28:31 christos Exp $"
 #include <sys/kauth.h>
 #include <sys/kmem.h>
 #include <sys/intr.h>
-#ifdef RTSOCK_DEBUG
-#include <netinet/in.h>
-#endif /* RTSOCK_DEBUG */
 
 #include <net/if.h>
+#include <net/if_llatbl.h>
+#include <net/if_types.h>
 #include <net/route.h>
 #include <net/raw_cb.h>
 
+#include <netinet/in_var.h>
+#include <netinet/if_inarp.h>
+
 #include <netmpls/mpls.h>
+
+#ifdef SCTP
+extern void sctp_add_ip_address(struct ifaddr *);
+extern void sctp_delete_ip_address(struct ifaddr *);
+#endif
 
 #if defined(COMPAT_14) || defined(COMPAT_50)
 #include <compat/net/if.h>
@@ -107,7 +115,7 @@ __KERNEL_RCSID(0, "$NetBSD: rtsock.c,v 1.166 2014/12/02 21:28:31 christos Exp $"
 #define	DOMAINNAME	"oroute"
 CTASSERT(sizeof(struct ifa_xmsghdr) == 20);
 DOMAIN_DEFINE(compat_50_routedomain); /* forward declare and add to link set */
-#else
+#else /* COMPAT_RTSOCK */
 #define	RTM_XVERSION	RTM_VERSION
 #define	RT_XADVANCE(a,b) RT_ADVANCE(a,b)
 #define	RT_XROUNDUP(n)	RT_ROUNDUP(n)
@@ -125,7 +133,7 @@ CTASSERT(sizeof(struct ifa_xmsghdr) == 24);
 DOMAIN_DEFINE(routedomain); /* forward declare and add to link set */
 #undef COMPAT_50
 #undef COMPAT_14
-#endif
+#endif /* COMPAT_RTSOCK */
 
 #ifndef COMPATCALL
 #define	COMPATCALL(name, args)	do { } while (/*CONSTCOND*/ 0)
@@ -145,12 +153,12 @@ struct route_info COMPATNAME(route_info) = {
 #define	PRESERVED_RTF	(RTF_UP | RTF_GATEWAY | RTF_HOST | RTF_DONE | RTF_MASK)
 
 static void COMPATNAME(route_init)(void);
-static int COMPATNAME(route_output)(struct mbuf *, ...);
+static int COMPATNAME(route_output)(struct mbuf *, struct socket *);
 
-static int rt_msg2(int, struct rt_addrinfo *, void *, struct rt_walkarg *, int *);
 static int rt_xaddrs(u_char, const char *, const char *, struct rt_addrinfo *);
 static struct mbuf *rt_makeifannouncemsg(struct ifnet *, int, int,
     struct rt_addrinfo *);
+static int rt_msg2(int, struct rt_addrinfo *, void *, struct rt_walkarg *, int *);
 static void rt_setmetrics(int, const struct rt_xmsghdr *, struct rtentry *);
 static void rtm_setmetrics(const struct rtentry *, struct rt_xmsghdr *);
 static void sysctl_net_route_setup(struct sysctllog **);
@@ -158,6 +166,8 @@ static int sysctl_dumpentry(struct rtentry *, void *);
 static int sysctl_iflist(int, struct rt_walkarg *, int);
 static int sysctl_rtable(SYSCTLFN_PROTO);
 static void rt_adjustcount(int, int);
+
+static const struct protosw COMPATNAME(route_protosw)[];
 
 static void
 rt_adjustcount(int af, int cnt)
@@ -229,7 +239,7 @@ COMPATNAME(route_detach)(struct socket *so)
 }
 
 static int
-COMPATNAME(route_accept)(struct socket *so, struct mbuf *nam)
+COMPATNAME(route_accept)(struct socket *so, struct sockaddr *nam)
 {
 	KASSERT(solocked(so));
 
@@ -239,7 +249,7 @@ COMPATNAME(route_accept)(struct socket *so, struct mbuf *nam)
 }
 
 static int
-COMPATNAME(route_bind)(struct socket *so, struct mbuf *nam, struct lwp *l)
+COMPATNAME(route_bind)(struct socket *so, struct sockaddr *nam, struct lwp *l)
 {
 	KASSERT(solocked(so));
 
@@ -255,7 +265,7 @@ COMPATNAME(route_listen)(struct socket *so, struct lwp *l)
 }
 
 static int
-COMPATNAME(route_connect)(struct socket *so, struct mbuf *nam, struct lwp *l)
+COMPATNAME(route_connect)(struct socket *so, struct sockaddr *nam, struct lwp *l)
 {
 	KASSERT(solocked(so));
 
@@ -329,7 +339,7 @@ COMPATNAME(route_stat)(struct socket *so, struct stat *ub)
 }
 
 static int
-COMPATNAME(route_peeraddr)(struct socket *so, struct mbuf *nam)
+COMPATNAME(route_peeraddr)(struct socket *so, struct sockaddr *nam)
 {
 	struct rawcb *rp = sotorawcb(so);
 
@@ -345,7 +355,7 @@ COMPATNAME(route_peeraddr)(struct socket *so, struct mbuf *nam)
 }
 
 static int
-COMPATNAME(route_sockaddr)(struct socket *so, struct mbuf *nam)
+COMPATNAME(route_sockaddr)(struct socket *so, struct sockaddr *nam)
 {
 	struct rawcb *rp = sotorawcb(so);
 
@@ -378,15 +388,16 @@ COMPATNAME(route_recvoob)(struct socket *so, struct mbuf *m, int flags)
 
 static int
 COMPATNAME(route_send)(struct socket *so, struct mbuf *m,
-    struct mbuf *nam, struct mbuf *control, struct lwp *l)
+    struct sockaddr *nam, struct mbuf *control, struct lwp *l)
 {
 	int error = 0;
 	int s;
 
 	KASSERT(solocked(so));
+	KASSERT(so->so_proto == &COMPATNAME(route_protosw)[0]);
 
 	s = splsoftnet();
-	error = raw_send(so, m, nam, control, l);
+	error = raw_send(so, m, nam, control, l, &COMPATNAME(route_output));
 	splx(s);
 
 	return error;
@@ -412,42 +423,66 @@ COMPATNAME(route_purgeif)(struct socket *so, struct ifnet *ifp)
 	return EOPNOTSUPP;
 }
 
+#ifdef INET
 static int
-COMPATNAME(route_usrreq)(struct socket *so, int req, struct mbuf *m,
-    struct mbuf *nam, struct mbuf *control, struct lwp *l)
+route_get_sdl_index(struct rt_addrinfo *info, int *sdl_index)
 {
-	int s, error = 0;
+	struct rtentry *nrt;
+	int error;
 
-	KASSERT(req != PRU_ATTACH);
-	KASSERT(req != PRU_DETACH);
-	KASSERT(req != PRU_ACCEPT);
-	KASSERT(req != PRU_BIND);
-	KASSERT(req != PRU_LISTEN);
-	KASSERT(req != PRU_CONNECT);
-	KASSERT(req != PRU_CONNECT2);
-	KASSERT(req != PRU_DISCONNECT);
-	KASSERT(req != PRU_SHUTDOWN);
-	KASSERT(req != PRU_ABORT);
-	KASSERT(req != PRU_CONTROL);
-	KASSERT(req != PRU_SENSE);
-	KASSERT(req != PRU_PEERADDR);
-	KASSERT(req != PRU_SOCKADDR);
-	KASSERT(req != PRU_RCVD);
-	KASSERT(req != PRU_RCVOOB);
-	KASSERT(req != PRU_SEND);
-	KASSERT(req != PRU_SENDOOB);
-	KASSERT(req != PRU_PURGEIF);
+	error = rtrequest1(RTM_GET, info, &nrt);
+	if (error != 0)
+		return error;
+	/*
+	 * nrt->rt_ifp->if_index may not be correct
+	 * due to changing to ifplo0.
+	 */
+	*sdl_index = satosdl(nrt->rt_gateway)->sdl_index;
+	rtfree(nrt);
 
-	s = splsoftnet();
-	error = raw_usrreq(so, req, m, nam, control, l);
-	splx(s);
+	return 0;
+}
+#endif /* INET */
 
-	return error;
+static void
+route_get_sdl(const struct ifnet *ifp, const struct sockaddr *dst,
+    struct sockaddr_dl *sdl, int *flags)
+{
+	struct llentry *la;
+
+	KASSERT(ifp != NULL);
+
+	IF_AFDATA_RLOCK(ifp);
+	switch (dst->sa_family) {
+	case AF_INET:
+		la = lla_lookup(LLTABLE(ifp), 0, dst);
+		break;
+	case AF_INET6:
+		la = lla_lookup(LLTABLE6(ifp), 0, dst);
+		break;
+	default:
+		la = NULL;
+		KASSERTMSG(0, "Invalid AF=%d\n", dst->sa_family);
+		break;
+	}
+	IF_AFDATA_RUNLOCK(ifp);
+
+	void *a = (LLE_IS_VALID(la) && (la->la_flags & LLE_VALID) == LLE_VALID)
+	    ? &la->ll_addr : NULL;
+
+	a = sockaddr_dl_init(sdl, sizeof(*sdl), ifp->if_index, ifp->if_type,
+	    NULL, 0, a, ifp->if_addrlen);
+	KASSERT(a != NULL);
+
+	if (la != NULL) {
+		*flags = la->la_flags;
+		LLE_RUNLOCK(la);
+	}
 }
 
 /*ARGSUSED*/
 int
-COMPATNAME(route_output)(struct mbuf *m, ...)
+COMPATNAME(route_output)(struct mbuf *m, struct socket *so)
 {
 	struct sockproto proto = { .sp_family = PF_XROUTE, };
 	struct rt_xmsghdr *rtm = NULL;
@@ -458,13 +493,10 @@ COMPATNAME(route_output)(struct mbuf *m, ...)
 	int len, error = 0;
 	struct ifnet *ifp = NULL;
 	struct ifaddr *ifa = NULL;
-	struct socket *so;
-	va_list ap;
 	sa_family_t family;
-
-	va_start(ap, m);
-	so = va_arg(ap, struct socket *);
-	va_end(ap);
+	bool is_ll = false;
+	int ll_flags = 0;
+	struct sockaddr_dl sdl;
 
 #define senderr(e) do { error = e; goto flush;} while (/*CONSTCOND*/ 0)
 	if (m == NULL || ((m->m_len < sizeof(int32_t)) &&
@@ -526,17 +558,71 @@ COMPATNAME(route_output)(struct mbuf *m, ...)
 		if (info.rti_info[RTAX_GATEWAY] == NULL) {
 			senderr(EINVAL);
 		}
+#ifdef INET
+		/* support for new ARP code with keeping backcompat */
+		if (info.rti_info[RTAX_GATEWAY]->sa_family == AF_LINK) {
+			const struct sockaddr_dl *sdlp =
+			    satocsdl(info.rti_info[RTAX_GATEWAY]);
+
+			/* Allow routing requests by interface index */
+			if (sdlp->sdl_nlen == 0 && sdlp->sdl_alen == 0
+			    && sdlp->sdl_slen == 0)
+				goto fallback;
+			/*
+			 * Old arp binaries don't set the sdl_index
+			 * so we have to complement it.
+			 */
+			int sdl_index = sdlp->sdl_index;
+			if (sdl_index == 0) {
+				error = route_get_sdl_index(&info, &sdl_index);
+				if (error != 0)
+					goto fallback;
+			} else if (
+			    info.rti_info[RTAX_DST]->sa_family == AF_INET) {
+				/*
+				 * XXX workaround for SIN_PROXY case; proxy arp
+				 * entry should be in an interface that has
+				 * a network route including the destination,
+				 * not a local (link) route that may not be a
+				 * desired place, for example a tap.
+				 */
+				const struct sockaddr_inarp *sina =
+				    (const struct sockaddr_inarp *)
+				    info.rti_info[RTAX_DST];
+				if (sina->sin_other & SIN_PROXY) {
+					error = route_get_sdl_index(&info,
+					    &sdl_index);
+					if (error != 0)
+						goto fallback;
+				}
+			}
+			error = lla_rt_output(rtm->rtm_type, rtm->rtm_flags,
+			    rtm->rtm_rmx.rmx_expire, &info, sdl_index);
+			break;
+		}
+	fallback:
+#endif /* INET */
 		error = rtrequest1(rtm->rtm_type, &info, &saved_nrt);
-		if (error == 0 && saved_nrt) {
+		if (error == 0) {
 			rt_setmetrics(rtm->rtm_inits, rtm, saved_nrt);
-			saved_nrt->rt_refcnt--;
+			rtfree(saved_nrt);
 		}
 		break;
 
 	case RTM_DELETE:
+#ifdef INET
+		/* support for new ARP code */
+		if (info.rti_info[RTAX_GATEWAY] &&
+		    (info.rti_info[RTAX_GATEWAY]->sa_family == AF_LINK) &&
+		    (rtm->rtm_flags & RTF_LLDATA) != 0) {
+			error = lla_rt_output(rtm->rtm_type, rtm->rtm_flags,
+			    rtm->rtm_rmx.rmx_expire, &info, 0);
+			break;
+		}
+#endif /* INET */
 		error = rtrequest1(rtm->rtm_type, &info, &saved_nrt);
 		if (error == 0) {
-			(rt = saved_nrt)->rt_refcnt++;
+			rt = saved_nrt;
 			goto report;
 		}
 		break;
@@ -548,6 +634,7 @@ COMPATNAME(route_output)(struct mbuf *m, ...)
 		 * info.rti_info[RTAX_NETMASK] before
                  * searching.  It did not used to do that.  --dyoung
 		 */
+		rt = NULL;
 		error = rtrequest1(RTM_GET, &info, &rt);
 		if (error != 0)
 			senderr(error);
@@ -560,6 +647,27 @@ COMPATNAME(route_output)(struct mbuf *m, ...)
 				senderr(ETOOMANYREFS);
 		}
 
+		/*
+		 * XXX if arp/ndp requests an L2 entry, we have to obtain
+		 * it from lltable while for the route command we have to
+		 * return a route as it is. How to distinguish them?
+		 * For newer arp/ndp, RTF_LLDATA flag set by arp/ndp
+		 * indicates an L2 entry is requested. For old arp/ndp
+		 * binaries, we check RTF_UP flag is NOT set; it works
+		 * by the fact that arp/ndp don't set it while the route
+		 * command sets it.
+		 */
+		if (((rtm->rtm_flags & RTF_LLDATA) != 0 ||
+		     (rtm->rtm_flags & RTF_UP) == 0) &&
+		    rtm->rtm_type == RTM_GET &&
+		    sockaddr_cmp(rt_getkey(rt), info.rti_info[RTAX_DST]) != 0) {
+			route_get_sdl(rt->rt_ifp, info.rti_info[RTAX_DST], &sdl,
+			    &ll_flags);
+			info.rti_info[RTAX_GATEWAY] = sstocsa(&sdl);
+			is_ll = true;
+			goto skip;
+		}
+
 		switch (rtm->rtm_type) {
 		case RTM_GET:
 		report:
@@ -567,6 +675,7 @@ COMPATNAME(route_output)(struct mbuf *m, ...)
 			info.rti_info[RTAX_GATEWAY] = rt->rt_gateway;
 			info.rti_info[RTAX_NETMASK] = rt_mask(rt);
 			info.rti_info[RTAX_TAG] = rt_gettag(rt);
+		skip:
 			if ((rtm->rtm_addrs & (RTA_IFP | RTA_IFA)) == 0)
 				;
 			else if ((ifp = rt->rt_ifp) != NULL) {
@@ -616,6 +725,10 @@ COMPATNAME(route_output)(struct mbuf *m, ...)
 			rtm->rtm_flags = rt->rt_flags;
 			rtm_setmetrics(rt, rtm);
 			rtm->rtm_addrs = info.rti_addrs;
+			if (is_ll) {
+				rtm->rtm_flags |= RTF_LLDATA;
+				rtm->rtm_flags |= (ll_flags & LLE_STATIC) ? RTF_STATIC : 0;
+			}
 			break;
 
 		case RTM_CHANGE:
@@ -626,11 +739,18 @@ COMPATNAME(route_output)(struct mbuf *m, ...)
 			 */
 			if ((error = rt_getifa(&info)) != 0)
 				senderr(error);
-			if (info.rti_info[RTAX_GATEWAY] &&
-			    rt_setgate(rt, info.rti_info[RTAX_GATEWAY]))
-				senderr(EDQUOT);
-			if (info.rti_info[RTAX_TAG])
-				rt_settag(rt, info.rti_info[RTAX_TAG]);
+			if (info.rti_info[RTAX_GATEWAY]) {
+				error = rt_setgate(rt,
+				    info.rti_info[RTAX_GATEWAY]);
+				if (error != 0)
+					senderr(error);
+			}
+			if (info.rti_info[RTAX_TAG]) {
+				const struct sockaddr *tag;
+				tag = rt_settag(rt, info.rti_info[RTAX_TAG]);
+				if (tag == NULL)
+					senderr(ENOBUFS);
+			}
 			/* new gateway could require new ifaddr, ifp;
 			   flags may also be different; ifp may be specified
 			   by ll sockaddr when protocol address is ambiguous */
@@ -749,8 +869,11 @@ rt_setmetrics(int which, const struct rt_xmsghdr *in, struct rtentry *out)
 	metric(RTV_RTTVAR, rmx_rttvar);
 	metric(RTV_HOPCOUNT, rmx_hopcount);
 	metric(RTV_MTU, rmx_mtu);
-	metric(RTV_EXPIRE, rmx_expire);
 #undef metric
+	if (which & RTV_EXPIRE) {
+		out->rt_rmx.rmx_expire = in->rtm_rmx.rmx_expire ?
+		    time_wall_to_mono(in->rtm_rmx.rmx_expire) : 0;
+	}
 }
 
 static void
@@ -764,8 +887,9 @@ rtm_setmetrics(const struct rtentry *in, struct rt_xmsghdr *out)
 	metric(rmx_rttvar);
 	metric(rmx_hopcount);
 	metric(rmx_mtu);
-	metric(rmx_expire);
 #undef metric
+	out->rtm_rmx.rmx_expire = in->rt_rmx.rmx_expire ?
+	    time_mono_to_wall(in->rt_rmx.rmx_expire) : 0;
 }
 
 static int
@@ -999,6 +1123,15 @@ again:
 	return 0;
 }
 
+#ifndef COMPAT_RTSOCK
+int
+rt_msg3(int type, struct rt_addrinfo *rtinfo, void *cpv, struct rt_walkarg *w,
+	int *lenp)
+{
+	return rt_msg2(type, rtinfo, cpv, w, lenp);
+}
+#endif
+
 /*
  * This routine is called to generate a message from the routing
  * socket indicating that a redirect has occurred, a routing lookup
@@ -1018,6 +1151,7 @@ COMPATNAME(rt_missmsg)(int type, const struct rt_addrinfo *rtinfo, int flags,
 	if (COMPATNAME(route_info).ri_cb.any_count == 0)
 		return;
 	memset(&rtm, 0, sizeof(rtm));
+	rtm.rtm_pid = curproc->p_pid;
 	rtm.rtm_flags = RTF_DONE | flags;
 	rtm.rtm_errno = error;
 	m = COMPATNAME(rt_msg1)(type, &info, &rtm, sizeof(rtm));
@@ -1084,6 +1218,14 @@ COMPATNAME(rt_newaddrmsg)(int cmd, struct ifaddr *ifa, int error,
 
 	KASSERT(ifa != NULL);
 	ifp = ifa->ifa_ifp;
+#ifdef SCTP
+	if (cmd == RTM_ADD) {
+		sctp_add_ip_address(ifa);
+	} else if (cmd == RTM_DELETE) {
+		sctp_delete_ip_address(ifa);
+	}
+#endif
+
 	COMPATCALL(rt_newaddrmsg, (cmd, ifa, error, rt));
 	if (COMPATNAME(route_info).ri_cb.any_count == 0)
 		return;
@@ -1133,6 +1275,7 @@ COMPATNAME(rt_newaddrmsg)(int cmd, struct ifaddr *ifa, int error,
 			info.rti_info[RTAX_DST] = sa = rt_getkey(rt);
 			info.rti_info[RTAX_GATEWAY] = rt->rt_gateway;
 			memset(&rtm, 0, sizeof(rtm));
+			rtm.rtm_pid = curproc->p_pid;
 			rtm.rtm_index = ifp->if_index;
 			rtm.rtm_flags |= rt->rt_flags;
 			rtm.rtm_errno = error;
@@ -1415,6 +1558,21 @@ again:
 
 	case NET_RT_DUMP:
 	case NET_RT_FLAGS:
+#ifdef INET
+		/*
+		 * take care of llinfo entries, the caller must
+		 * specify an AF
+		 */
+		if (w.w_op == NET_RT_FLAGS &&
+		    (w.w_arg == 0 || w.w_arg & RTF_LLDATA)) {
+			if (af != 0)
+				error = lltable_sysctl_dumparp(af, &w);
+			else
+				error = EINVAL;
+			break;
+		}
+#endif /* INET */
+
 		for (i = 1; i <= AF_MAX; i++)
 			if ((af == 0 || af == i) &&
 			    (error = rt_walktree(i, sysctl_dumpentry, &w)))
@@ -1547,7 +1705,6 @@ static const struct pr_usrreqs route_usrreqs = {
 	.pr_send	= COMPATNAME(route_send_wrapper),
 	.pr_sendoob	= COMPATNAME(route_sendoob_wrapper),
 	.pr_purgeif	= COMPATNAME(route_purgeif_wrapper),
-	.pr_generic	= COMPATNAME(route_usrreq_wrapper),
 };
 
 static const struct protosw COMPATNAME(route_protosw)[] = {
@@ -1556,7 +1713,6 @@ static const struct protosw COMPATNAME(route_protosw)[] = {
 		.pr_domain = &COMPATNAME(routedomain),
 		.pr_flags = PR_ATOMIC|PR_ADDR,
 		.pr_input = raw_input,
-		.pr_output = COMPATNAME(route_output),
 		.pr_ctlinput = raw_ctlinput,
 		.pr_usrreqs = &route_usrreqs,
 		.pr_init = raw_init,

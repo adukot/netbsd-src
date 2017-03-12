@@ -1,4 +1,4 @@
-#	$NetBSD: SHEEVAPLUG,v 1.46 2014/10/17 18:45:14 martin Exp $
+#	$NetBSD: SHEEVAPLUG,v 1.48 2016/03/19 23:21:02 gdt Exp $
 #
 #  This configuration supports for generically Marvell SheevaPlug
 #
@@ -142,7 +142,6 @@ options 	DKWEDGE_METHOD_GPT	# Supports GPT partitions as wedges
 
 options 	KTRACE		# system call tracing, a la ktrace(1)
 options 	IRQSTATS	# manage IRQ statistics
-#options 	KMEMSTATS	# kernel memory statistics
 options 	MIIVERBOSE	# Verbose MII autoconfuration messages
 #options 	PCIVERBOSE	# Verbose PCI descriptions
 options 	USBVERBOSE	# verbose USB device autoconfig messages
@@ -374,7 +373,7 @@ ukyopon* at uhub? port ?
 ucom*	at ukyopon? portno ?
 
 # USB scanners
-uscanner* at uhub? port ?
+#uscanner* at uhub? port ?
 
 # USB scanners that use SCSI emulation, e.g., HP5300
 usscanner* at uhub? port ?

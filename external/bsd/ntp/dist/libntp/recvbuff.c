@@ -1,4 +1,4 @@
-/*	$NetBSD: recvbuff.c,v 1.2 2014/12/19 20:43:17 christos Exp $	*/
+/*	$NetBSD: recvbuff.c,v 1.6 2016/05/01 23:32:00 christos Exp $	*/
 
 #ifdef HAVE_CONFIG_H
 # include <config.h>
@@ -158,18 +158,15 @@ uninit_recvbuff(void)
 void
 freerecvbuf(recvbuf_t *rb)
 {
-	if (rb == NULL) {
-		msyslog(LOG_ERR, "freerecvbuff received NULL buffer");
-		return;
+	if (rb) {
+		LOCK();
+		rb->used--;
+		if (rb->used != 0)
+			msyslog(LOG_ERR, "******** freerecvbuff non-zero usage: %d *******", rb->used);
+		LINK_SLIST(free_recv_list, rb, link);
+		free_recvbufs++;
+		UNLOCK();
 	}
-
-	LOCK();
-	rb->used--;
-	if (rb->used != 0)
-		msyslog(LOG_ERR, "******** freerecvbuff non-zero usage: %d *******", rb->used);
-	LINK_SLIST(free_recv_list, rb, link);
-	free_recvbufs++;
-	UNLOCK();
 }
 
 	
@@ -218,7 +215,7 @@ get_free_recv_buffer_alloc(void)
 		create_buffers(RECV_INC);
 		buffer = get_free_recv_buffer();
 	}
-	NTP_ENSURE(buffer != NULL);
+	ENSURE(buffer != NULL);
 	return (buffer);
 }
 #endif
@@ -266,7 +263,7 @@ get_full_recv_buffer(void)
  */
 void
 purge_recv_buffers_for_fd(
-	SOCKET	fd
+	int	fd
 	)
 {
 	recvbuf_t *rbufp;
@@ -279,7 +276,12 @@ purge_recv_buffers_for_fd(
 	     rbufp != NULL;
 	     rbufp = next) {
 		next = rbufp->link;
-		if (rbufp->fd == fd) {
+#	    ifdef HAVE_IO_COMPLETION_PORT
+		if (rbufp->dstadr == NULL && rbufp->fd == fd)
+#	    else
+		if (rbufp->fd == fd)
+#	    endif
+		{
 			UNLINK_MID_FIFO(punlinked, full_recv_fifo,
 					rbufp, link, recvbuf_t);
 			INSIST(punlinked == rbufp);

@@ -1,4 +1,4 @@
-/*	$NetBSD: apropos-utils.c,v 1.17 2014/10/18 08:33:31 snj Exp $	*/
+/*	$NetBSD: apropos-utils.c,v 1.25 2016/04/24 18:11:43 christos Exp $	*/
 /*-
  * Copyright (c) 2011 Abhinav Upadhyay <er.abhinav.upadhyay@gmail.com>
  * All rights reserved.
@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: apropos-utils.c,v 1.17 2014/10/18 08:33:31 snj Exp $");
+__RCSID("$NetBSD: apropos-utils.c,v 1.25 2016/04/24 18:11:43 christos Exp $");
 
 #include <sys/queue.h>
 #include <sys/stat.h>
@@ -50,8 +50,6 @@ __RCSID("$NetBSD: apropos-utils.c,v 1.17 2014/10/18 08:33:31 snj Exp $");
 
 #include "apropos-utils.h"
 #include "manconf.h"
-#include "dist/mandoc.h"
-#include "sqlite3.h"
 
 typedef struct orig_callback_data {
 	void *data;
@@ -114,7 +112,10 @@ concat2(char **dst, const char *src, size_t srclen)
 	size_t total_len, dst_len;
 	assert(src != NULL);
 
-	/* If destination buffer dst is NULL, then simply strdup the source buffer */
+	/*
+	 * If destination buffer dst is NULL, then simply
+	 * strdup the source buffer
+	 */
 	if (*dst == NULL) {
 		*dst = estrdup(src);
 		return;
@@ -168,26 +169,30 @@ create_db(sqlite3 *db)
 		goto out;
 	sqlite3_free(schemasql);
 
-	sqlstr = "CREATE VIRTUAL TABLE mandb USING fts4(section, name, "
-			    "name_desc, desc, lib, return_vals, env, files, "
-			    "exit_status, diagnostics, errors, md5_hash UNIQUE, machine, "
-			    "compress=zip, uncompress=unzip, tokenize=porter); "	//mandb
-			"CREATE TABLE IF NOT EXISTS mandb_meta(device, inode, mtime, "
-			    "file UNIQUE, md5_hash UNIQUE, id  INTEGER PRIMARY KEY); "
-				//mandb_meta
-			"CREATE TABLE IF NOT EXISTS mandb_links(link, target, section, "
-			    "machine, md5_hash); ";	//mandb_links
+	sqlstr =
+	    //mandb
+	    "CREATE VIRTUAL TABLE mandb USING fts4(section, name, "
+		"name_desc, desc, lib, return_vals, env, files, "
+		"exit_status, diagnostics, errors, md5_hash UNIQUE, machine, "
+		"compress=zip, uncompress=unzip, tokenize=porter); "
+	    //mandb_meta
+	    "CREATE TABLE IF NOT EXISTS mandb_meta(device, inode, mtime, "
+		"file UNIQUE, md5_hash UNIQUE, id  INTEGER PRIMARY KEY); "
+	    //mandb_links
+	    "CREATE TABLE IF NOT EXISTS mandb_links(link, target, section, "
+		"machine, md5_hash); ";
 
 	sqlite3_exec(db, sqlstr, NULL, NULL, &errmsg);
 	if (errmsg != NULL)
 		goto out;
 
-	sqlstr = "CREATE INDEX IF NOT EXISTS index_mandb_links ON mandb_links "
-			"(link); "
-			"CREATE INDEX IF NOT EXISTS index_mandb_meta_dev ON mandb_meta "
-			"(device, inode); "
-			"CREATE INDEX IF NOT EXISTS index_mandb_links_md5 ON mandb_links "
-			"(md5_hash);";
+	sqlstr =
+	    "CREATE INDEX IF NOT EXISTS index_mandb_links ON mandb_links "
+		"(link); "
+	    "CREATE INDEX IF NOT EXISTS index_mandb_meta_dev ON mandb_meta "
+		"(device, inode); "
+	    "CREATE INDEX IF NOT EXISTS index_mandb_links_md5 ON mandb_links "
+		"(md5_hash);";
 	sqlite3_exec(db, sqlstr, NULL, NULL, &errmsg);
 	if (errmsg != NULL)
 		goto out;
@@ -261,7 +266,7 @@ unzip(sqlite3_context *pctx, int nval, sqlite3_value **apval)
 		return;
 	}
 	outbuf = erealloc(outbuf, stream.total_out);
-	sqlite3_result_text(pctx, (const char *) outbuf, stream.total_out, free);
+	sqlite3_result_text(pctx, (const char *)outbuf, stream.total_out, free);
 }
 
 /*
@@ -296,13 +301,14 @@ get_dbpath(const char *manconf)
  *  	3. DB_CREATE: Open in read-write mode. It will try to create the db if
  *			it does not exist already.
  *  RETURN VALUES:
- *		The function will return NULL in case the db does not exist and DB_CREATE
+ *		The function will return NULL in case the db does not exist
+ *		and DB_CREATE
  *  	was not specified. And in case DB_CREATE was specified and yet NULL is
  *  	returned, then there was some other error.
  *  	In normal cases the function should return a handle to the db.
  */
 sqlite3 *
-init_db(int db_flag, const char *manconf)
+init_db(mandb_access_mode db_flag, const char *manconf)
 {
 	sqlite3 *db = NULL;
 	sqlite3_stmt *stmt;
@@ -313,10 +319,10 @@ init_db(int db_flag, const char *manconf)
 	char *dbpath = get_dbpath(manconf);
 	if (dbpath == NULL)
 		errx(EXIT_FAILURE, "_mandb entry not found in man.conf");
-	/* Check if the database exists or not */
+
 	if (!(stat(dbpath, &sb) == 0 && S_ISREG(sb.st_mode))) {
-		/* Database does not exist, check if DB_CREATE was specified, and set
-		 * flag to create the database schema
+		/* Database does not exist, check if DB_CREATE was specified,
+		 * and set flag to create the database schema
 		 */
 		if (db_flag != (MANDB_CREATE)) {
 			warnx("Missing apropos database. "
@@ -324,16 +330,33 @@ init_db(int db_flag, const char *manconf)
 			return NULL;
 		}
 		create_db_flag = 1;
+	} else {
+		/*
+		 * Database exists. Check if we have the permissions
+		 * to read/write the files
+		 */
+		int access_mode = R_OK;
+		switch (db_flag) {
+		case MANDB_CREATE:
+		case MANDB_WRITE:
+			access_mode |= W_OK;
+			break;
+		default:
+			break;
+		}
+		if ((access(dbpath, access_mode)) != 0) {
+			warnx("Unable to access the database, please check"
+			    " permissions for `%s'", dbpath);
+			return NULL;
+		}
 	}
 
-	/* Now initialize the database connection */
 	sqlite3_initialize();
 	rc = sqlite3_open_v2(dbpath, &db, db_flag, NULL);
 
 	if (rc != SQLITE_OK) {
 		warnx("%s", sqlite3_errmsg(db));
-		sqlite3_shutdown();
-		return NULL;
+		goto error;
 	}
 
 	if (create_db_flag && create_db(db) < 0) {
@@ -364,7 +387,8 @@ init_db(int db_flag, const char *manconf)
 	sqlite3_extended_result_codes(db, 1);
 
 	/* Register the zip and unzip functions for FTS compression */
-	rc = sqlite3_create_function(db, "zip", 1, SQLITE_ANY, NULL, zip, NULL, NULL);
+	rc = sqlite3_create_function(db, "zip", 1, SQLITE_ANY, NULL, zip,
+	    NULL, NULL);
 	if (rc != SQLITE_OK) {
 		warnx("Unable to register function: compress: %s",
 		    sqlite3_errmsg(db));
@@ -381,8 +405,7 @@ init_db(int db_flag, const char *manconf)
 	return db;
 
 error:
-	sqlite3_close(db);
-	sqlite3_shutdown();
+	close_db(db);
 	return NULL;
 }
 
@@ -395,8 +418,7 @@ error:
  *                                      inverse document frequency of t)
  *
  *  Term Frequency of term t in document d = Number of times t occurs in d /
- *	                                        Number of times t appears in all
- *											documents
+ *	Number of times t appears in all documents
  *
  *  Inverse document frequency of t = log(Total number of documents /
  *										Number of documents in which t occurs)
@@ -413,7 +435,10 @@ rank_func(sqlite3_context *pctx, int nval, sqlite3_value **apval)
 	int ndoc;
 	int doclen = 0;
 	const double k = 3.75;
-	/* Check that the number of arguments passed to this function is correct. */
+	/*
+	 * Check that the number of arguments passed to this
+	 * function is correct.
+	 */
 	assert(nval == 1);
 
 	matchinfo = (const unsigned int *) sqlite3_value_blob(apval[0]);
@@ -422,15 +447,17 @@ rank_func(sqlite3_context *pctx, int nval, sqlite3_value **apval)
 	ndoc = matchinfo[2 + 3 * ncol * nphrase + ncol];
 	for (iphrase = 0; iphrase < nphrase; iphrase++) {
 		int icol;
-		const unsigned int *phraseinfo = &matchinfo[2 + ncol+ iphrase * ncol * 3];
+		const unsigned int *phraseinfo =
+		    &matchinfo[2 + ncol + iphrase * ncol * 3];
 		for(icol = 1; icol < ncol; icol++) {
 
-			/* nhitcount: number of times the current phrase occurs in the current
-			 *            column in the current document.
-			 * nglobalhitcount: number of times current phrase occurs in the current
-			 *                  column in all documents.
-			 * ndocshitcount:   number of documents in which the current phrase
-			 *                  occurs in the current column at least once.
+			/* nhitcount: number of times the current phrase occurs
+			 * 	in the current column in the current document.
+			 * nglobalhitcount: number of times current phrase
+			 *	occurs in the current column in all documents.
+			 * ndocshitcount: number of documents in which the
+			 *	current phrase occurs in the current column at
+			 *	least once.
 			 */
   			int nhitcount = phraseinfo[3 * icol];
 			int nglobalhitcount = phraseinfo[3 * icol + 1];
@@ -438,29 +465,31 @@ rank_func(sqlite3_context *pctx, int nval, sqlite3_value **apval)
 			doclen = matchinfo[2 + icol ];
 			double weight = col_weights[icol - 1];
 			if (idf->status == 0 && ndocshitcount)
-				idf->value += log(((double)ndoc / ndocshitcount))* weight;
+				idf->value +=
+				    log(((double)ndoc / ndocshitcount))* weight;
 
-			/* Dividing the tf by document length to normalize the effect of
-			 * longer documents.
+			/*
+			 * Dividing the tf by document length to normalize
+			 * the effect of longer documents.
 			 */
 			if (nglobalhitcount > 0 && nhitcount)
-				tf += (((double)nhitcount  * weight) / (nglobalhitcount * doclen));
+				tf += (((double)nhitcount  * weight)
+				    / (nglobalhitcount * doclen));
 		}
 	}
 	idf->status = 1;
 
-	/* Final score = (tf * idf)/ ( k + tf)
-	 *	Dividing by k+ tf further normalizes the weight leading to better
-	 *  results.
-	 *  The value of k is experimental
+	/*
+	 * Final score: Dividing by k + tf further normalizes the weight
+	 * leading to better results. The value of k is experimental
 	 */
-	double score = (tf * idf->value/ ( k + tf)) ;
+	double score = (tf * idf->value) / (k + tf);
 	sqlite3_result_double(pctx, score);
 	return;
 }
 
 /*
- *  run_query --
+ *  run_query_internal --
  *  Performs the searches for the keywords entered by the user.
  *  The 2nd param: snippet_args is an array of strings providing values for the
  *  last three parameters to the snippet function of sqlite. (Look at the docs).
@@ -489,11 +518,12 @@ run_query_internal(sqlite3 *db, const char *snippet_args[3], query_args *args)
 	sqlite3_stmt *stmt;
 
 	if (args->machine)
-		easprintf(&machine_clause, "AND machine = \'%s\' ", args->machine);
+		easprintf(&machine_clause, "AND machine = \'%s\' ",
+		    args->machine);
 
 	/* Register the rank function */
-	rc = sqlite3_create_function(db, "rank_func", 1, SQLITE_ANY, (void *)&idf,
-	                             rank_func, NULL, NULL);
+	rc = sqlite3_create_function(db, "rank_func", 1, SQLITE_ANY,
+	    (void *)&idf, rank_func, NULL, NULL);
 	if (rc != SQLITE_OK) {
 		warnx("Unable to register the ranking function: %s",
 		    sqlite3_errmsg(db));
@@ -505,21 +535,27 @@ run_query_internal(sqlite3 *db, const char *snippet_args[3], query_args *args)
 	/* We want to build a query of the form: "select x,y,z from mandb where
 	 * mandb match :query [AND (section LIKE '1' OR section LIKE '2' OR...)]
 	 * ORDER BY rank DESC..."
-	 * NOTES: 1. The portion in square brackets is optional, it will be there
-	 * only if the user has specified an option on the command line to search in
-	 * one or more specific sections.
-	 * 2. I am using LIKE operator because '=' or IN operators do not seem to be
-	 * working with the compression option enabled.
+	 * NOTES:
+	 *   1. The portion in square brackets is optional, it will be there
+	 *      only if the user has specified an option on the command line
+	 *      to search in one or more specific sections.
+	 *   2. I am using LIKE operator because '=' or IN operators do not
+	 *      seem to be working with the compression option enabled.
 	 */
+	char *sections_str = args->sec_nums;
+	char *temp;
+	if (sections_str) {
+		while (*sections_str) {
+			size_t len = strcspn(sections_str, " ");
+			char *sec = sections_str;
+			if (sections_str[len] == 0) {
+				sections_str += len;
+			} else {
+				sections_str[len] = 0;
+				sections_str += len + 1;
+			}
+			easprintf(&temp, "\'%s\',", sec);
 
-	if (args->sec_nums) {
-		char *temp;
-		int i;
-
-		for (i = 0; i < SECMAX; i++) {
-			if (args->sec_nums[i] == 0)
-				continue;
-			easprintf(&temp, " OR section = \'%d\'", i + 1);
 			if (section_clause) {
 				concat(&section_clause, temp);
 				free(temp);
@@ -530,10 +566,15 @@ run_query_internal(sqlite3 *db, const char *snippet_args[3], query_args *args)
 		if (section_clause) {
 			/*
 			 * At least one section requested, add glue for query.
+			 * Before doing that, remove the comma at the end of
+			 * section_clause
 			 */
+			size_t section_clause_len = strlen(section_clause);
+			if (section_clause[section_clause_len - 1] == ',')
+				section_clause[section_clause_len - 1] = 0;
 			temp = section_clause;
-			/* Skip " OR " before first term. */
-			easprintf(&section_clause, " AND (%s)", temp + 4);
+			easprintf(&section_clause, " AND section IN (%s)",
+			    temp);
 			free(temp);
 		}
 	}
@@ -559,9 +600,7 @@ run_query_internal(sqlite3 *db, const char *snippet_args[3], query_args *args)
 		"%s"
 		"%s",
 		snippet_args[0], snippet_args[1], snippet_args[2],
-		wild,
-		section_clause ? section_clause : "",
-		snippet_args[0], snippet_args[1], snippet_args[2],
+		wild, wild,
 		section_clause ? section_clause : "",
 		limit_clause ? limit_clause : "");
 		free(wild);
@@ -609,15 +648,15 @@ run_query_internal(sqlite3 *db, const char *snippet_args[3], query_args *args)
 			name_temp = slash_ptr + 1;
 		if (machine && machine[0]) {
 			m = estrdup(machine);
-			easprintf(&name, "%s/%s", lower(m),
-				name_temp);
+			easprintf(&name, "%s/%s", lower(m), name_temp);
 			free(m);
 		} else {
-			name = estrdup((const char *) sqlite3_column_text(stmt, 1));
+			name = estrdup((const char *)
+			    sqlite3_column_text(stmt, 1));
 		}
 
-		(args->callback)(args->callback_data, section, name, name_desc, snippet,
-			strlen(snippet));
+		(args->callback)(args->callback_data, section, name,
+		    name_desc, snippet, strlen(snippet));
 
 		free(name);
 	}
@@ -627,6 +666,75 @@ run_query_internal(sqlite3 *db, const char *snippet_args[3], query_args *args)
 	return *(args->errmsg) == NULL ? 0 : -1;
 }
 
+static char *
+get_escaped_html_string(const char *src, size_t *slen)
+{
+	static const char trouble[] = "<>\"&\002\003";
+	/*
+	 * First scan the src to find out the number of occurrences
+	 * of {'>', '<' '"', '&'}.  Then allocate a new buffer with
+	 * sufficient space to be able to store the quoted versions
+	 * of the special characters {&gt;, &lt;, &quot;, &amp;}.
+	 * Copy over the characters from the original src into
+	 * this buffer while replacing the special characters with
+	 * their quoted versions.
+	 */
+	char *dst, *ddst;
+	size_t count;
+	const char *ssrc;
+
+	for (count = 0, ssrc = src; *src; count++) {
+		size_t sz = strcspn(src, trouble);
+		src += sz + 1;
+	}
+
+
+#define append(a)				\
+    do {					\
+	memcpy(dst, (a), sizeof(a) - 1);	\
+	dst += sizeof(a) - 1; 			\
+    } while (/*CONSTCOND*/0)
+
+
+	ddst = dst = emalloc(*slen + count * 5 + 1);
+	for (src = ssrc; *src; src++) {
+		switch (*src) {
+		case '<':
+			append("&lt;");
+			break;
+		case '>':
+			append("&gt;");
+			break;
+		case '\"':
+			append("&quot;");
+			break;
+		case '&':
+			/*
+			 * Don't perform the quoting if this & is part of
+			 * an mdoc escape sequence, e.g. \&
+			 */
+			if (src != ssrc && src[-1] != '\\')
+				append("&amp;");
+			else
+				append("&");
+			break;
+		case '\002':
+			append("<b>");
+			break;
+		case '\003':
+			append("</b>");
+			break;
+		default:
+			*dst++ = *src;
+			break;
+		}
+	}
+	*dst = '\0';
+	*slen = dst - ddst;
+	return ddst;
+}
+
+
 /*
  * callback_html --
  *  Callback function for run_query_html. It builds the html output and then
@@ -634,80 +742,21 @@ run_query_internal(sqlite3 *db, const char *snippet_args[3], query_args *args)
  */
 static int
 callback_html(void *data, const char *section, const char *name,
-	const char *name_desc, const char *snippet, size_t snippet_length)
+    const char *name_desc, const char *snippet, size_t snippet_length)
 {
-	const char *temp = snippet;
-	int i = 0;
-	size_t sz = 0;
-	int count = 0;
-	struct orig_callback_data *orig_data = (struct orig_callback_data *) data;
-	int (*callback) (void *, const char *, const char *, const char *,
-		const char *, size_t) = orig_data->callback;
+	struct orig_callback_data *orig_data = data;
+	int (*callback)(void *, const char *, const char *, const char *,
+	    const char *, size_t) = orig_data->callback;
+	size_t length = snippet_length;
+	size_t name_description_length = strlen(name_desc);
+	char *qsnippet = get_escaped_html_string(snippet, &length);
+	char *qname_description = get_escaped_html_string(name_desc,
+	    &name_description_length);
 
-	/* First scan the snippet to find out the number of occurrences of {'>', '<'
-	 * '"', '&'}.
-	 * Then allocate a new buffer with sufficient space to be able to store the
-	 * quoted versions of the special characters {&gt;, &lt;, &quot;, &amp;}.
-	 * Copy over the characters from the original snippet to this buffer while
-	 * replacing the special characters with their quoted versions.
-	 */
-
-	while (*temp) {
-		sz = strcspn(temp, "<>\"&\002\003");
-		temp += sz + 1;
-		count++;
-	}
-	size_t qsnippet_length = snippet_length + count * 5;
-	char *qsnippet = emalloc(qsnippet_length + 1);
-	sz = 0;
-	while (*snippet) {
-		sz = strcspn(snippet, "<>\"&\002\003");
-		if (sz) {
-			memcpy(&qsnippet[i], snippet, sz);
-			snippet += sz;
-			i += sz;
-		}
-
-		switch (*snippet++) {
-		case '<':
-			memcpy(&qsnippet[i], "&lt;", 4);
-			i += 4;
-			break;
-		case '>':
-			memcpy(&qsnippet[i], "&gt;", 4);
-			i += 4;
-			break;
-		case '\"':
-			memcpy(&qsnippet[i], "&quot;", 6);
-			i += 6;
-			break;
-		case '&':
-			/* Don't perform the quoting if this & is part of an mdoc escape
-			 * sequence, e.g. \&
-			 */
-			if (i && *(snippet - 2) != '\\') {
-				memcpy(&qsnippet[i], "&amp;", 5);
-				i += 5;
-			} else {
-				qsnippet[i++] = '&';
-			}
-			break;
-		case '\002':
-			memcpy(&qsnippet[i], "<b>", 3);
-			i += 3;
-			break;
-		case '\003':
-			memcpy(&qsnippet[i], "</b>", 4);
-			i += 4;
-			break;
-		default:
-			break;
-		}
-	}
-	qsnippet[i] = 0;
-	(*callback)(orig_data->data, section, name, name_desc,
-		(const char *)qsnippet,	strlen(qsnippet));
+	(*callback)(orig_data->data, section, name, qname_description,
+	    qsnippet, length);
 	free(qsnippet);
+	free(qname_description);
 	return 0;
 }
 
@@ -766,7 +815,7 @@ static int
 callback_pager(void *data, const char *section, const char *name,
 	const char *name_desc, const char *snippet, size_t snippet_length)
 {
-	struct orig_callback_data *orig_data = (struct orig_callback_data *) data;
+	struct orig_callback_data *orig_data = data;
 	char *psnippet;
 	const char *temp = snippet;
 	int count = 0;
@@ -774,9 +823,9 @@ callback_pager(void *data, const char *section, const char *name,
 	size_t sz = 0;
 	size_t psnippet_length;
 
-	/* Count the number of bytes of matching text. For each of these bytes we
-	 * will use 2 extra bytes to overstrike it so that it appears bold when
-	 * viewed using a pager.
+	/* Count the number of bytes of matching text. For each of these
+	 * bytes we will use 2 extra bytes to overstrike it so that it
+	 * appears bold when viewed using a pager.
 	 */
 	while (*temp) {
 		sz = strcspn(temp, "\002\003");
@@ -792,7 +841,8 @@ callback_pager(void *data, const char *section, const char *name,
 
 	/* Copy the bytes from snippet to psnippet:
 	 * 1. Copy the bytes before \002 as it is.
-	 * 2. The bytes after \002 need to be overstriked till we encounter \003.
+	 * 2. The bytes after \002 need to be overstriked till we
+	 *    encounter \003.
 	 * 3. To overstrike a byte 'A' we need to write 'A\bA'
 	 */
 	did = 0;
@@ -891,6 +941,36 @@ run_query_pager(sqlite3 *db, query_args *args)
 	return run_query_internal(db, snippet_args, args);
 }
 
+struct nv {
+	char *s;
+	size_t l;
+};
+
+static int
+term_putc(int c, void *p)
+{
+	struct nv *nv = p;
+	nv->s[nv->l++] = c;
+	return 0;
+}
+
+static char *
+term_fix_seq(TERMINAL *ti, const char *seq)
+{
+	char *res = estrdup(seq);
+	struct nv nv;
+
+	if (ti == NULL)
+	    return res;
+
+	nv.s = res;
+	nv.l = 0;
+	ti_puts(ti, seq, 1, term_putc, &nv);
+	nv.s[nv.l] = '\0';
+
+	return res;
+}
+
 static void
 term_init(int fd, const char *sa[5])
 {
@@ -920,11 +1000,12 @@ term_init(int fd, const char *sa[5])
 			smul = rmul = "";
 	}
 
-	sa[0] = estrdup(bold ? bold : smso);
-	sa[1] = estrdup(sgr0 ? sgr0 : rmso);
+	sa[0] = term_fix_seq(ti, bold ? bold : smso);
+	sa[1] = term_fix_seq(ti, sgr0 ? sgr0 : rmso);
 	sa[2] = estrdup("...");
-	sa[3] = estrdup(smul);
-	sa[4] = estrdup(rmul);
+	sa[3] = term_fix_seq(ti, smul);
+	sa[4] = term_fix_seq(ti, rmul);
+
 	if (ti)
 		del_curterm(ti);
 }

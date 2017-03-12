@@ -1,4 +1,4 @@
-/*	$NetBSD: vfs_bio.c,v 1.252 2014/09/08 22:01:24 joerg Exp $	*/
+/*	$NetBSD: vfs_bio.c,v 1.259 2016/02/01 05:05:43 riz Exp $	*/
 
 /*-
  * Copyright (c) 2007, 2008, 2009 The NetBSD Foundation, Inc.
@@ -123,9 +123,12 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: vfs_bio.c,v 1.252 2014/09/08 22:01:24 joerg Exp $");
+__KERNEL_RCSID(0, "$NetBSD: vfs_bio.c,v 1.259 2016/02/01 05:05:43 riz Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_bufcache.h"
+#include "opt_dtrace.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -144,6 +147,7 @@ __KERNEL_RCSID(0, "$NetBSD: vfs_bio.c,v 1.252 2014/09/08 22:01:24 joerg Exp $");
 #include <sys/wapbl.h>
 #include <sys/bitops.h>
 #include <sys/cprng.h>
+#include <sys/sdt.h>
 
 #include <uvm/uvm.h>	/* extern struct uvm uvm */
 
@@ -172,8 +176,7 @@ static void buf_setwm(void);
 static int buf_trim(void);
 static void *bufpool_page_alloc(struct pool *, int);
 static void bufpool_page_free(struct pool *, void *);
-static buf_t *bio_doread(struct vnode *, daddr_t, int,
-    kauth_cred_t, int);
+static buf_t *bio_doread(struct vnode *, daddr_t, int, int);
 static buf_t *getnewbuf(int, int, int);
 static int buf_lotsfree(void);
 static int buf_canrelease(void);
@@ -327,7 +330,8 @@ binstailfree(buf_t *bp, struct bqueue *dp)
 {
 
 	KASSERT(mutex_owned(&bufcache_lock));
-	KASSERT(bp->b_freelistindex == -1);
+	KASSERTMSG(bp->b_freelistindex == -1, "double free of buffer? "
+	    "bp=%p, b_freelistindex=%d\n", bp, bp->b_freelistindex);
 	TAILQ_INSERT_TAIL(&dp->bq_queue, bp, b_freelist);
 	dp->bq_bytes += bp->b_bufsize;
 	bp->b_freelistindex = dp - bufqueues;
@@ -442,7 +446,6 @@ bufinit(void)
 	struct bqueue *dp;
 	int use_std;
 	u_int i;
-	extern void (*biodone_vfs)(buf_t *);
 
 	biodone_vfs = biodone;
 
@@ -659,8 +662,7 @@ buf_mrelease(void *addr, size_t size)
  * bread()/breadn() helper.
  */
 static buf_t *
-bio_doread(struct vnode *vp, daddr_t blkno, int size, kauth_cred_t cred,
-    int async)
+bio_doread(struct vnode *vp, daddr_t blkno, int size, int async)
 {
 	buf_t *bp;
 	struct mount *mp;
@@ -719,14 +721,13 @@ bio_doread(struct vnode *vp, daddr_t blkno, int size, kauth_cred_t cred,
  * This algorithm described in Bach (p.54).
  */
 int
-bread(struct vnode *vp, daddr_t blkno, int size, kauth_cred_t cred,
-    int flags, buf_t **bpp)
+bread(struct vnode *vp, daddr_t blkno, int size, int flags, buf_t **bpp)
 {
 	buf_t *bp;
 	int error;
 
 	/* Get buffer for block. */
-	bp = *bpp = bio_doread(vp, blkno, size, cred, 0);
+	bp = *bpp = bio_doread(vp, blkno, size, 0);
 	if (bp == NULL)
 		return ENOMEM;
 
@@ -748,12 +749,12 @@ bread(struct vnode *vp, daddr_t blkno, int size, kauth_cred_t cred,
  */
 int
 breadn(struct vnode *vp, daddr_t blkno, int size, daddr_t *rablks,
-    int *rasizes, int nrablks, kauth_cred_t cred, int flags, buf_t **bpp)
+    int *rasizes, int nrablks, int flags, buf_t **bpp)
 {
 	buf_t *bp;
 	int error, i;
 
-	bp = *bpp = bio_doread(vp, blkno, size, cred, 0);
+	bp = *bpp = bio_doread(vp, blkno, size, 0);
 	if (bp == NULL)
 		return ENOMEM;
 
@@ -768,7 +769,7 @@ breadn(struct vnode *vp, daddr_t blkno, int size, daddr_t *rablks,
 
 		/* Get a buffer for the read-ahead block */
 		mutex_exit(&bufcache_lock);
-		(void) bio_doread(vp, rablks[i], rasizes[i], cred, B_ASYNC);
+		(void) bio_doread(vp, rablks[i], rasizes[i], B_ASYNC);
 		mutex_enter(&bufcache_lock);
 	}
 	mutex_exit(&bufcache_lock);
@@ -1475,6 +1476,11 @@ buf_drain(int n)
 	return size;
 }
 
+SDT_PROVIDER_DEFINE(io);
+
+SDT_PROBE_DEFINE1(io, kernel, , wait__start, "struct buf *"/*bp*/);
+SDT_PROBE_DEFINE1(io, kernel, , wait__done, "struct buf *"/*bp*/);
+
 /*
  * Wait for operations on the buffer to complete.
  * When they do, extract and return the I/O's error value.
@@ -1486,10 +1492,14 @@ biowait(buf_t *bp)
 	KASSERT(ISSET(bp->b_cflags, BC_BUSY));
 	KASSERT(bp->b_refcnt > 0);
 
+	SDT_PROBE1(io, kernel, , wait__start, bp);
+
 	mutex_enter(bp->b_objlock);
 	while (!ISSET(bp->b_oflags, BO_DONE | BO_DELWRI))
 		cv_wait(&bp->b_done, bp->b_objlock);
 	mutex_exit(bp->b_objlock);
+
+	SDT_PROBE1(io, kernel, , wait__done, bp);
 
 	return bp->b_error;
 }
@@ -1529,10 +1539,14 @@ biodone(buf_t *bp)
 	}
 }
 
+SDT_PROBE_DEFINE1(io, kernel, , done, "struct buf *"/*bp*/);
+
 static void
 biodone2(buf_t *bp)
 {
 	void (*callout)(buf_t *);
+
+	SDT_PROBE1(io, kernel, ,done, bp);
 
 	mutex_enter(bp->b_objlock);
 	/* Note that the transfer is done. */

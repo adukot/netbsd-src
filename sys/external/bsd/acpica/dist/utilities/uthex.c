@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,8 +41,6 @@
  * POSSIBILITY OF SUCH DAMAGES.
  */
 
-#define __UTHEX_C__
-
 #include "acpi.h"
 #include "accommon.h"
 
@@ -52,7 +50,7 @@
 
 /* Hex to ASCII conversion table */
 
-static char                 AcpiGbl_HexToAscii[] =
+static const char           AcpiGbl_HexToAscii[] =
 {
     '0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'
 };
@@ -84,9 +82,9 @@ AcpiUtHexToAsciiChar (
 
 /*******************************************************************************
  *
- * FUNCTION:    AcpiUtHexCharToValue
+ * FUNCTION:    AcpiUtAsciiCharToHex
  *
- * PARAMETERS:  AsciiChar             - Hex character in Ascii
+ * PARAMETERS:  HexChar                 - Hex character in Ascii
  *
  * RETURN:      The binary value of the ascii/hex character
  *

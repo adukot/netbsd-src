@@ -1,4 +1,4 @@
-/*	$NetBSD: make.h,v 1.95 2014/09/07 20:55:34 joerg Exp $	*/
+/*	$NetBSD: make.h,v 1.98 2016/02/18 18:29:14 christos Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990, 1993
@@ -84,6 +84,7 @@
 #include <sys/param.h>
 
 #include <ctype.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -91,6 +92,10 @@
 
 #ifdef BSD4_4
 # include <sys/cdefs.h>
+#endif
+
+#ifndef FD_CLOEXEC
+#define FD_CLOEXEC 1
 #endif
 
 #if defined(__GNUC__)
@@ -485,6 +490,10 @@ Boolean Main_SetObjdir(const char *);
 int mkTempFile(const char *, char **);
 int str2Lst_Append(Lst, char *, const char *);
 
+#define	VARF_UNDEFERR	1
+#define	VARF_WANTRES	2
+#define	VARF_ASSIGN	4
+
 #ifdef __GNUC__
 #define UNCONST(ptr)	({ 		\
     union __unconst {			\
@@ -501,6 +510,15 @@ int str2Lst_Append(Lst, char *, const char *);
 #endif
 #ifndef MAX
 #define MAX(a, b) ((a > b) ? a : b)
+#endif
+
+/* At least GNU/Hurd systems lack hardcoded MAXPATHLEN/PATH_MAX */
+#include <limits.h>
+#ifndef MAXPATHLEN
+#define MAXPATHLEN	4096
+#endif
+#ifndef PATH_MAX
+#define PATH_MAX	MAXPATHLEN
 #endif
 
 #endif /* _MAKE_H_ */

@@ -1,4 +1,4 @@
-/* $NetBSD: if_msk.c,v 1.47 2014/10/10 14:23:06 christos Exp $ */
+/* $NetBSD: if_msk.c,v 1.49 2016/02/09 08:32:11 ozaki-r Exp $ */
 /*	$OpenBSD: if_msk.c,v 1.42 2007/01/17 02:43:02 krw Exp $	*/
 
 /*
@@ -52,7 +52,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_msk.c,v 1.47 2014/10/10 14:23:06 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_msk.c,v 1.49 2016/02/09 08:32:11 ozaki-r Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -79,7 +79,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_msk.c,v 1.47 2014/10/10 14:23:06 christos Exp $")
 #include <net/if_media.h>
 
 #include <net/bpf.h>
-#include <sys/rnd.h>
+#include <sys/rndsource.h>
 
 #include <dev/mii/mii.h>
 #include <dev/mii/miivar.h>
@@ -1751,7 +1751,7 @@ msk_rxeof(struct sk_if_softc *sc_if, u_int16_t len, u_int32_t rxstat)
 	bpf_mtap(ifp, m);
 
 	/* pass it on. */
-	(*ifp->if_input)(ifp, m);
+	if_percpuq_enqueue(ifp->if_percpuq, m);
 }
 
 void

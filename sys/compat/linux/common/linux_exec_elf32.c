@@ -1,4 +1,4 @@
-/*	$NetBSD: linux_exec_elf32.c,v 1.91 2014/04/15 17:29:00 maxv Exp $	*/
+/*	$NetBSD: linux_exec_elf32.c,v 1.93 2015/06/11 02:54:00 matt Exp $	*/
 
 /*-
  * Copyright (c) 1995, 1998, 2000, 2001 The NetBSD Foundation, Inc.
@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: linux_exec_elf32.c,v 1.91 2014/04/15 17:29:00 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: linux_exec_elf32.c,v 1.93 2015/06/11 02:54:00 matt Exp $");
 
 #ifndef ELFSIZE
 /* XXX should die */
@@ -391,6 +391,8 @@ ELFNAME2(linux,copyargs)(struct lwp *l, struct exec_package *pack,
 
 	a = ai;
 
+	memset(ai, 0, sizeof(ai));
+
 	/*
 	 * Push extra arguments used by glibc on the stack.
 	 */
@@ -458,7 +460,7 @@ ELFNAME2(linux,copyargs)(struct lwp *l, struct exec_package *pack,
 	a++;
 
 	a->a_type = LINUX_AT_RANDOM;
-	a->a_v = (Elf_Addr)*stackp;
+	a->a_v = (Elf_Addr)(uintptr_t)*stackp;
 	a++;
 
 	a->a_type = AT_NULL;

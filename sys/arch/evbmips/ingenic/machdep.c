@@ -1,4 +1,4 @@
-/*	$NetBSD: machdep.c,v 1.3 2014/12/23 15:09:13 macallan Exp $ */
+/*	$NetBSD: machdep.c,v 1.10 2016/01/29 01:54:14 macallan Exp $ */
 
 /*-
  * Copyright (c) 2014 Michael Lorenz
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.3 2014/12/23 15:09:13 macallan Exp $");
+__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.10 2016/01/29 01:54:14 macallan Exp $");
 
 #include "opt_ddb.h"
 #include "opt_kgdb.h"
@@ -43,6 +43,7 @@ __KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.3 2014/12/23 15:09:13 macallan Exp $")
 #include <sys/reboot.h>
 #include <sys/cpu.h>
 #include <sys/bus.h>
+#include <sys/mutex.h>
 
 #include <uvm/uvm_extern.h>
 
@@ -79,6 +80,10 @@ void	ingenic_putchar_init(void);
 void	ingenic_puts(const char *);
 void	ingenic_com_cnattach(void);
 
+#ifdef MULTIPROCESSOR
+kmutex_t ingenic_ipi_lock;
+#endif
+
 static void
 cal_timer(void)
 {
@@ -114,6 +119,42 @@ cal_timer(void)
 	junk = readreg(JZ_OST_CNT_LO);
 	do {} while (junk == readreg(JZ_OST_CNT_LO));
 }
+
+#ifdef MULTIPROCESSOR
+static void
+ingenic_cpu_init(struct cpu_info *ci)
+{
+	uint32_t reg;
+
+	/* enable IPIs for this core */
+	reg = MFC0(12, 4);	/* reset entry and interrupts */
+	if (cpu_index(ci) == 1) {
+		reg |= REIM_MIRQ1_M;
+	} else
+		reg |= REIM_MIRQ0_M;
+	MTC0(reg, 12, 4);
+	printf("%s %d %08x\n", __func__, cpu_index(ci), reg);
+}
+
+static int
+ingenic_send_ipi(struct cpu_info *ci, int tag)
+{
+	uint32_t msg;
+
+	msg = 1 << tag;
+
+	mutex_enter(&ingenic_ipi_lock);
+	if (kcpuset_isset(cpus_running, cpu_index(ci))) {
+		if (cpu_index(ci) == 0) {
+			MTC0(msg, CP0_CORE_MBOX, 0);
+		} else {
+			MTC0(msg, CP0_CORE_MBOX, 1);
+		}
+	}
+	mutex_exit(&ingenic_ipi_lock);
+	return 0;
+}
+#endif /* MULTIPROCESSOR */
 
 void
 mach_init(void)
@@ -154,7 +195,11 @@ mach_init(void)
 	printf("Memory size: 0x%08x\n", memsize);
 	physmem = btoc(memsize);
 
-	/* XXX this is CI20 specific */
+	/*
+	 * memory is at 0x20000000 with first 256MB mirrored to 0x00000000 so
+	 * we can see them through KSEG*
+	 * assume 1GB for now, the SoC can theoretically support up to 3GB
+	 */
 	mem_clusters[0].start = PAGE_SIZE;
 	mem_clusters[0].size = 0x10000000 - PAGE_SIZE;
 	mem_clusters[1].start = 0x30000000;
@@ -182,6 +227,12 @@ mach_init(void)
 	 */
 	mips_init_lwp0_uarea();
 
+#ifdef MULTIPROCESSOR
+	mutex_init(&ingenic_ipi_lock, MUTEX_DEFAULT, IPL_HIGH);
+	mips_locoresw.lsw_send_ipi = ingenic_send_ipi;
+	mips_locoresw.lsw_cpu_init = ingenic_cpu_init;
+#endif
+
 	apbus_init();
 	/*
 	 * Initialize debuggers, and break into them, if appropriate.
@@ -199,47 +250,14 @@ consinit(void)
 	 * Everything related to console initialization is done
 	 * in mach_init().
 	 */
+	apbus_init();
 	ingenic_com_cnattach();
 }
 
 void
 cpu_startup(void)
 {
-	char pbuf[9];
-	vaddr_t minaddr, maxaddr;
-#ifdef DEBUG
-	extern int pmapdebug;		/* XXX */
-	int opmapdebug = pmapdebug;
-
-	pmapdebug = 0;		/* Shut up pmap debug during bootstrap */
-#endif
-
-	/*
-	 * Good {morning,afternoon,evening,night}.
-	 */
-	printf("%s%s", copyright, version);
-	printf("%s\n", cpu_getmodel());
-	format_bytes(pbuf, sizeof(pbuf), ctob(physmem));
-	printf("total memory = %s\n", pbuf);
-
-	minaddr = 0;
-	/*
-	 * Allocate a submap for physio
-	 */
-	phys_map = uvm_km_suballoc(kernel_map, &minaddr, &maxaddr,
-	    VM_PHYS_SIZE, 0, FALSE, NULL);
-
-	/*
-	 * No need to allocate an mbuf cluster submap.  Mbuf clusters
-	 * are allocated via the pool allocator, and we use KSEG to
-	 * map those pages.
-	 */
-
-#ifdef DEBUG
-	pmapdebug = opmapdebug;
-#endif
-	format_bytes(pbuf, sizeof(pbuf), ptoa(uvmexp.free));
-	printf("avail memory = %s\n", pbuf);
+	cpu_startup_common();
 }
 
 void

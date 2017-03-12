@@ -1,7 +1,7 @@
-/*	$NetBSD: app.c,v 1.12 2014/12/10 04:38:01 christos Exp $	*/
+/*	$NetBSD: app.c,v 1.14 2015/12/17 04:00:45 christos Exp $	*/
 
 /*
- * Copyright (C) 2004, 2005, 2007-2009, 2013, 2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2004, 2005, 2007-2009, 2013-2015  Internet Systems Consortium, Inc. ("ISC")
  * Copyright (C) 1999-2003  Internet Software Consortium.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,8 +16,6 @@
  * OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
  * PERFORMANCE OF THIS SOFTWARE.
  */
-
-/* Id: app.c,v 1.64 2009/11/04 05:58:46 marka Exp  */
 
 /*! \file */
 
@@ -720,7 +718,16 @@ isc__app_ctxrun(isc_appctx_t *ctx0) {
 						 strbuf);
 				return (ISC_R_UNEXPECTED);
 			}
-			result = sigsuspend(&sset);
+#ifdef HAVE_GPERFTOOLS_PROFILER
+			if (sigaddset(&sset, SIGALRM) != 0) {
+				isc__strerror(errno, strbuf, sizeof(strbuf));
+				UNEXPECTED_ERROR(__FILE__, __LINE__,
+						 "isc_app_run() sigsetops: %s",
+						 strbuf);
+				return (ISC_R_UNEXPECTED);
+			}
+#endif
+			(void)sigsuspend(&sset);
 		} else {
 			/*
 			 * External, or BIND9 using multiple contexts:

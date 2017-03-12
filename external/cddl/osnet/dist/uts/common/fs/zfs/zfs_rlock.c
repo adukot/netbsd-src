@@ -98,6 +98,8 @@ static int
 zfs_range_lock_hold(rl_t *rl)
 {
 
+	KASSERT(rl->r_zp != NULL);
+	KASSERT(0 < rl->r_refcnt);
 	KASSERT(mutex_owned(&rl->r_zp->z_range_lock));
 
 	if (rl->r_refcnt >= ULONG_MAX)
@@ -111,8 +113,9 @@ static void
 zfs_range_lock_rele(rl_t *rl)
 {
 
+	KASSERT(rl->r_zp != NULL);
+	KASSERT(0 < rl->r_refcnt);
 	KASSERT(mutex_owned(&rl->r_zp->z_range_lock));
-	KASSERT(rl->r_refcnt > 0);
 
 	if (--rl->r_refcnt == 0) {
 		cv_destroy(&rl->r_wr_cv);
@@ -184,10 +187,12 @@ zfs_range_lock_writer(znode_t *zp, rl_t *new)
 			goto wait; /* already locked at same offset */
 
 		rl = (rl_t *)avl_nearest(tree, where, AVL_AFTER);
+		KASSERT(0 < rl->r_refcnt);
 		if (rl && (rl->r_off < new->r_off + new->r_len))
 			goto wait;
 
 		rl = (rl_t *)avl_nearest(tree, where, AVL_BEFORE);
+		KASSERT(0 < rl->r_refcnt);
 		if (rl && rl->r_off + rl->r_len > new->r_off)
 			goto wait;
 
@@ -229,6 +234,7 @@ zfs_range_proxify(avl_tree_t *tree, rl_t *rl)
 
 	/* create a proxy range lock */
 	proxy = kmem_alloc(sizeof (rl_t), KM_SLEEP);
+	proxy->r_zp = rl->r_zp;
 	proxy->r_off = rl->r_off;
 	proxy->r_len = rl->r_len;
 	proxy->r_cnt = 1;
@@ -261,6 +267,7 @@ zfs_range_split(avl_tree_t *tree, rl_t *rl, uint64_t off)
 
 	/* create the rear proxy range lock */
 	rear = kmem_alloc(sizeof (rl_t), KM_SLEEP);
+	rear->r_zp = rl->r_zp;
 	rear->r_off = off;
 	rear->r_len = rl->r_off + rl->r_len - off;
 	rear->r_cnt = rl->r_cnt;
@@ -283,12 +290,13 @@ zfs_range_split(avl_tree_t *tree, rl_t *rl, uint64_t off)
  * Create and add a new proxy range lock for the supplied range.
  */
 static void
-zfs_range_new_proxy(avl_tree_t *tree, uint64_t off, uint64_t len)
+zfs_range_new_proxy(avl_tree_t *tree, uint64_t off, uint64_t len, znode_t *zp)
 {
 	rl_t *rl;
 
 	ASSERT(len);
 	rl = kmem_alloc(sizeof (rl_t), KM_SLEEP);
+	rl->r_zp = zp;
 	rl->r_off = off;
 	rl->r_len = len;
 	rl->r_cnt = 1;
@@ -305,6 +313,7 @@ zfs_range_new_proxy(avl_tree_t *tree, uint64_t off, uint64_t len)
 static void
 zfs_range_add_reader(avl_tree_t *tree, rl_t *new, rl_t *prev, avl_index_t where)
 {
+	znode_t *zp = new->r_zp;
 	rl_t *next;
 	uint64_t off = new->r_off;
 	uint64_t len = new->r_len;
@@ -341,9 +350,10 @@ zfs_range_add_reader(avl_tree_t *tree, rl_t *new, rl_t *prev, avl_index_t where)
 		return;
 	}
 
+	KASSERT(0 < next->r_refcnt);
 	if (off < next->r_off) {
 		/* Add a proxy for initial range before the overlap */
-		zfs_range_new_proxy(tree, off, next->r_off - off);
+		zfs_range_new_proxy(tree, off, next->r_off - off, zp);
 	}
 
 	new->r_cnt = 0; /* will use proxies in tree */
@@ -360,28 +370,31 @@ zfs_range_add_reader(avl_tree_t *tree, rl_t *new, rl_t *prev, avl_index_t where)
 			/* there's a gap */
 			ASSERT3U(next->r_off, >, prev->r_off + prev->r_len);
 			zfs_range_new_proxy(tree, prev->r_off + prev->r_len,
-			    next->r_off - (prev->r_off + prev->r_len));
+			    next->r_off - (prev->r_off + prev->r_len), zp);
 		}
 		if (off + len == next->r_off + next->r_len) {
 			/* exact overlap with end */
 			next = zfs_range_proxify(tree, next);
+			KASSERT(0 < next->r_refcnt);
 			next->r_cnt++;
 			return;
 		}
 		if (off + len < next->r_off + next->r_len) {
 			/* new range ends in the middle of this block */
 			next = zfs_range_split(tree, next, off + len);
+			KASSERT(0 < next->r_refcnt);
 			next->r_cnt++;
 			return;
 		}
 		ASSERT3U(off + len, >, next->r_off + next->r_len);
 		next = zfs_range_proxify(tree, next);
+		KASSERT(0 < next->r_refcnt);
 		next->r_cnt++;
 	}
 
 	/* Add the remaining end range. */
 	zfs_range_new_proxy(tree, prev->r_off + prev->r_len,
-	    (off + len) - (prev->r_off + prev->r_len));
+	    (off + len) - (prev->r_off + prev->r_len), zp);
 }
 
 /*
@@ -490,11 +503,10 @@ zfs_range_lock(znode_t *zp, uint64_t off, uint64_t len, rl_type_t type)
 		/*
 		 * First check for the usual case of no locks
 		 */
-		if (avl_numnodes(&zp->z_range_avl) == 0) {
+		if (avl_numnodes(&zp->z_range_avl) == 0)
 			avl_add(&zp->z_range_avl, new);
-		} else {
+		else
 			zfs_range_lock_reader(zp, new);
-		}
 	} else {
 		zfs_range_lock_writer(zp, new); /* RL_WRITER or RL_APPEND */
 	}

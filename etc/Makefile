@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.422 2014/11/30 15:53:29 uebayasi Exp $
+#	$NetBSD: Makefile,v 1.426 2015/12/20 02:35:34 christos Exp $
 #	from: @(#)Makefile	8.7 (Berkeley) 5/25/95
 
 # Environment variables without default values:
@@ -67,6 +67,19 @@ MKISOFS_FLAGS+= -J -l -hide-joliet-trans-tbl -r -T \
 MKISOFS_FLAGS+=	-quiet
 .endif
  
+# Reproducible build parameters
+.if ${MKREPRO:Uno} == "no"
+BUILDER!=	echo $${USER-root}@$$(hostname)
+.else
+BUILDER=	builder@localhost.NetBSD.org
+.endif
+.if ${MKREPRO_TIMESTAMP:Uno} == "no"
+PAX_TIMESTAMP=
+BUILD_DATE!=	date -u
+.else
+PAX_TIMESTAMP=--timestamp "${MKREPRO_TIMESTAMP}"
+BUILD_DATE!=	date -u -r "${MKREPRO_TIMESTAMP}"
+.endif
 
 # MD Makefile.inc may append MD targets to BIN[123].  Make sure all
 # are empty, to preserve the old semantics of setting them below with "+=".
@@ -147,11 +160,7 @@ distribution: .PHONY .MAKE check_DESTDIR distrib-dirs
 .endif	# !INSTALL_DONE
 	${MAKEDIRTARGET} . install-etc-files
 . if ${MKX11} != "no"
-.  if ${X11FLAVOUR} == "Xorg"
 	${MAKEDIRTARGET} ${NETBSDSRCDIR}/external/mit/xorg distribution
-.  else
-	${MAKEDIRTARGET} ${NETBSDSRCDIR}/x11 distribution
-.  endif
 . endif
 . if ${MKEXTSRC} != "no"
 	${MAKEDIRTARGET} ${NETBSDSRCDIR}/extsrc distribution
@@ -189,6 +198,7 @@ MAKEDEV: ${.CURDIR}/MAKEDEV.awk ${.CURDIR}/MAKEDEV.tmpl \
 	    > ${.TARGET}
 
 .include "${NETBSDSRCDIR}/etc/Makefile.params"
+
 CLEANFILES+=	etc-release
 etc-release: .EXEC .MAKE
 	${_MKTARGET_CREATE}
@@ -197,8 +207,8 @@ etc-release: .EXEC .MAKE
 		cat ${NETBSDSRCDIR}/sys/conf/copyright; \
 		echo ; \
 		echo "Build information:"; \
-		printf "%20s   %s\n" "Build date" "$$(date -u)"; \
-		printf "%20s   %s\n"  "Built by" "$${USER-root}@$$(hostname)"; \
+		printf "%20s   %s\n" "Build date" "${BUILD_DATE}"; \
+		printf "%20s   %s\n"  "Built by" "${BUILDER}"; \
 		if [ -n "${BUILDID}" ]; then \
 		    printf "%20s   %s\n"  "Build ID" "${BUILDID}" ; \
 		fi ; \
@@ -575,7 +585,7 @@ build_kernels: .PHONY
 # (e.g. Linux) when building on NFS.
 #
 .if !defined(KERNELS_DONE)						# {
-.for configfile in ${ALL_KERNELS}					# {
+.for configfile in ${ALL_KERNELS:O:u}					# {
 build_kernels: kern-${configfile}
 kern-${configfile}: .PHONY .MAKE
 	cd ${KERNCONFDIR} && ${TOOL_CONFIG} ${CONFIGOPTS} -s ${KERNSRCDIR} \
@@ -592,8 +602,8 @@ build_kernelsets: .PHONY
 #	Create kernel sets from ${KERNEL_SETS} into
 #	${RELEASEDIR}/${RELEASEMACHINEDIR}/binary/sets
 #
-.for configfile in ${KERNEL_SETS}					# {
-.for configsel in ${ALL_KERNELS}
+.for configfile in ${KERNEL_SETS:O:u}					# {
+.for configsel in ${ALL_KERNELS:O:u}
 .if ${configfile} == ${configsel}
 build_kernelsets: kernset-${configfile}
 kernset-${configfile}: .PHONY build_kernels snap_pre
@@ -601,7 +611,7 @@ kernset-${configfile}: .PHONY build_kernels snap_pre
 	kerndir=${KERNOBJDIR}/${configfile:C/.*\///}; \
 	kernsuffixes="${KERNEL_SUFFIXES:S/^/./}"; \
 	kern_tgz=${RELEASEDIR}/${RELEASEMACHINEDIR}/binary/sets/kern-${configfile}.tgz; \
-	pax_cmd="GZIP=${GZIP_FLAGS:Q} ${TOOL_PAX} --use-compress-program ${TOOL_GZIP:Q} -O -w -M -N ${NETBSDSRCDIR}/etc -f $${kern_tgz}"; \
+	pax_cmd="GZIP=${GZIP_FLAGS:Q} ${TOOL_PAX} ${PAX_TIMESTAMP} --use-compress-program ${TOOL_GZIP:Q} -O -w -M -N ${NETBSDSRCDIR}/etc -f $${kern_tgz}"; \
 	cd $${kerndir} && { \
 		kernels=; newest=; \
 		for kernel in $${kernlist}; do \
@@ -630,8 +640,8 @@ build_releasekernels: .PHONY
 #	Build kernel.gz from ${KERNEL_SETS} ${EXTRA_KERNELS} into
 #	${RELEASEDIR}/${RELEASEMACHINEDIR}/binary/kernel
 #
-.for configfile in ${KERNEL_SETS} ${EXTRA_KERNELS}			# {
-.for configsel in ${ALL_KERNELS}
+.for configfile in ${KERNEL_SETS:O:u} ${EXTRA_KERNELS:O:u}		# {
+.for configsel in ${ALL_KERNELS:O:u}
 .if ${configfile} == ${configsel}
 build_releasekernels: releasekern-${configfile}
 releasekern-${configfile}: .PHONY build_kernels snap_pre

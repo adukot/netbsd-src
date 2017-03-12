@@ -1,4 +1,4 @@
-/*	$NetBSD: cd9660_vnops.c,v 1.49 2014/07/25 08:20:51 dholland Exp $	*/
+/*	$NetBSD: cd9660_vnops.c,v 1.54 2016/03/12 02:36:25 christos Exp $	*/
 
 /*-
  * Copyright (c) 1994
@@ -37,7 +37,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: cd9660_vnops.c,v 1.49 2014/07/25 08:20:51 dholland Exp $");
+__KERNEL_RCSID(0, "$NetBSD: cd9660_vnops.c,v 1.54 2016/03/12 02:36:25 christos Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -262,9 +262,9 @@ cd9660_read(void *v)
 		if (cd9660_lblktosize(imp, rablock) < ip->i_size) {
 			rasize = cd9660_blksize(imp, ip, rablock);
 			error = breadn(vp, lbn, size, &rablock,
-				       &rasize, 1, NOCRED, 0, &bp);
+				       &rasize, 1, 0, &bp);
 		} else {
-			error = bread(vp, lbn, size, NOCRED, 0, &bp);
+			error = bread(vp, lbn, size, 0, &bp);
 		}
 		if (error) {
 			return (error);
@@ -319,7 +319,8 @@ iso_shipdir(struct isoreaddir *idp)
 	cl = idp->current.d_namlen;
 	cname = idp->current.d_name;
 
-	if ((assoc = cl > 1 && *cname == ASSOCCHAR)) {
+	assoc = (cl > 1) && (*cname == ASSOCCHAR);
+	if (assoc) {
 		cl--;
 		cname++;
 	}
@@ -600,7 +601,7 @@ cd9660_readlink(void *v)
 	error = bread(imp->im_devvp,
 		      (ip->i_number >> imp->im_bshift) <<
 		      (imp->im_bshift - DEV_BSHIFT),
-		      imp->logical_block_size, NOCRED, 0, &bp);
+		      imp->logical_block_size, 0, &bp);
 	if (error) {
 		return (EINVAL);
 	}
@@ -664,14 +665,13 @@ cd9660_readlink(void *v)
 int
 cd9660_link(void *v)
 {
-	struct vop_link_args /* {
+	struct vop_link_v2_args /* {
 		struct vnode *a_dvp;
 		struct vnode *a_vp;
 		struct componentname *a_cnp;
 	} */ *ap = v;
 
 	VOP_ABORTOP(ap->a_dvp, ap->a_cnp);
-	vput(ap->a_dvp);
 	return (EROFS);
 }
 

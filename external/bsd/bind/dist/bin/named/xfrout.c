@@ -1,7 +1,7 @@
-/*	$NetBSD: xfrout.c,v 1.8 2015/01/25 15:51:53 christos Exp $	*/
+/*	$NetBSD: xfrout.c,v 1.10 2015/12/17 04:00:41 christos Exp $	*/
 
 /*
- * Copyright (C) 2004-2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2004-2015  Internet Systems Consortium, Inc. ("ISC")
  * Copyright (C) 1999-2003  Internet Software Consortium.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -139,6 +139,7 @@ log_rr(dns_name_t *name, dns_rdata_t *rdata, isc_uint32_t ttl) {
 	dns_rdataset_t rds;
 	dns_rdata_t rd = DNS_RDATA_INIT;
 
+	dns_rdatalist_init(&rdl);
 	rdl.type = rdata->type;
 	rdl.rdclass = rdata->rdclass;
 	rdl.ttl = ttl;
@@ -147,8 +148,6 @@ log_rr(dns_name_t *name, dns_rdata_t *rdata, isc_uint32_t ttl) {
 		rdl.covers = dns_rdata_covers(rdata);
 	else
 		rdl.covers = dns_rdatatype_none;
-	ISC_LIST_INIT(rdl.rdata);
-	ISC_LINK_INIT(&rdl, link);
 	dns_rdataset_init(&rds);
 	dns_rdata_init(&rd);
 	dns_rdata_clone(rdata, &rd);
@@ -1357,7 +1356,6 @@ sendstream(xfrout_ctx_t *xfr) {
 			result = dns_message_gettemprdataset(msg, &qrdataset);
 			if (result != ISC_R_SUCCESS)
 				goto failure;
-			dns_rdataset_init(qrdataset);
 			dns_rdataset_makequestion(qrdataset,
 					xfr->client->message->rdclass,
 					xfr->qtype);
@@ -1467,14 +1465,11 @@ sendstream(xfrout_ctx_t *xfr) {
 			msgrdl->covers = dns_rdata_covers(rdata);
 		else
 			msgrdl->covers = dns_rdatatype_none;
-		ISC_LINK_INIT(msgrdl, link);
-		ISC_LIST_INIT(msgrdl->rdata);
 		ISC_LIST_APPEND(msgrdl->rdata, msgrdata, link);
 
 		result = dns_message_gettemprdataset(msg, &msgrds);
 		if (result != ISC_R_SUCCESS)
 			goto failure;
-		dns_rdataset_init(msgrds);
 		result = dns_rdatalist_tordataset(msgrdl, msgrds);
 		INSIST(result == ISC_R_SUCCESS);
 

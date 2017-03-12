@@ -1,4 +1,4 @@
-/*	$NetBSD: locore.S,v 1.190 2013/03/01 18:25:47 joerg Exp $	*/
+/*	$NetBSD: locore.S,v 1.197 2015/06/11 07:30:10 matt Exp $	*/
 
 /*
  * Copyright (c) 1992, 1993
@@ -58,7 +58,6 @@
 #include <sys/cdefs.h>
 #include <sys/errno.h>
 
-#include <machine/param.h>
 #include <mips/asm.h>
 #include <mips/cpuregs.h>
 #include <mips/trap.h>
@@ -101,7 +100,28 @@ _C_LABEL(kernel_text):
 	mtc0	zero, MIPS_COP_0_STATUS		# Disable interrupts
 	COP0_SYNC
 #endif
-
+#ifdef MIPS64_OCTEON
+	//
+	// U-boot on the erlite starts all cpus at the kernel entry point.
+	// Use EBASE to find our CPU number and if it's not 0, call
+	// octeon_cpu_spinup if MP or loop using the wait instruction since
+	// non-primary CPUs can't do anything useful.
+	//
+	mfc0	a0, MIPS_COP_0_EBASE		# EBASE
+	COP0_SYNC
+	ext	a1, a0, 0, 10			# get CPU number
+	beqz	a1, 2f				# normal startup if 0
+	 nop
+#ifdef MULTIPROCESSOR
+	j	_C_LABEL(octeon_cpu_spinup)
+	 nop
+#else
+1:	wait
+	b	1b
+	 nop
+#endif /* MIPS64_OCTEON */
+2:
+#endif
 /*
  * Initialize stack and call machine startup.
  */
@@ -176,9 +196,13 @@ _C_LABEL(kernel_text):
 	/*
 	 * Now enable interrupts (but they are all masked).
 	 */
+#if __mips_isa_rev >= 2
+	ei
+#else
 	mfc0	v0, MIPS_COP_0_STATUS
 	or	v0, MIPS_SR_INT_IE
 	mtc0	v0, MIPS_COP_0_STATUS
+#endif
 	COP0_SYNC
 
 	jal	_C_LABEL(main)			# main(void)
@@ -200,20 +224,28 @@ _C_LABEL(verylocore):
  * called at IPL_SCHED
  */
 NESTED(cpu_switchto, CALLFRAME_SIZ, ra)
-#ifdef PARANOIA
+#if defined(PARANOIA)
 	/*
 	 * Make sure we are at IPL_SCHED
 	 */
 	PTR_L	v0, L_CPU(MIPS_CURLWP)
 	INT_L	v1, CPU_INFO_CPL(v0)
+#if __mips >= 32
+	tnei	v1, IPL_SCHED
+#else
 	li	v0, IPL_SCHED
 10:	bne	v0, v1, 10b
 	 nop
+#endif
 
 	mfc0	t0, MIPS_COP_0_STATUS
 	and	t0, MIPS_SR_INT_IE
+#if __mips >= 32
+	teqi	t0, 0
+#else
 11:	beqz	t0, 11b
 	 nop
+#endif
 #endif /* PARANOIA */
 	/*
 	 * Save old context, unless the LWP is exiting.
@@ -241,13 +273,13 @@ NESTED(cpu_switchto, CALLFRAME_SIZ, ra)
 #endif
 	REG_EPILOGUE
 1:
-#ifdef PARANOIA
+#if defined(PARANOID_SPL)
 	/*
 	 * Verify interrupt configuration matches IPL_SCHED
 	 */
 	jal	_C_LABEL(splcheck)
 	 nop
-#endif /* PARANOIA */
+#endif /* PARANOID_SPL */
 
 	move	s6, a0				# s6 = old lwp
 	move	MIPS_CURLWP, a1			# t8 = new lwp
@@ -282,7 +314,10 @@ NESTED(cpu_switchto, CALLFRAME_SIZ, ra)
 	move	v0, s6				# Save return value (old lwp)
 	REG_PROLOGUE
 	REG_L	t0, PCB_CONTEXT+SF_REG_SR(s5)
-#ifdef PARANOID_LOOP
+#if defined(PARANOIA) && __mips >= 32
+	and	t1, t0, MIPS_SR_INT_IE
+	teqi	t1, 0
+#elif defined(PARANOID_LOOP)
 	and	t1, t0, MIPS_SR_INT_IE
 2:	beqz	t1, 2b			# status reg should not differ
 	 nop
@@ -306,7 +341,7 @@ NESTED(cpu_switchto, CALLFRAME_SIZ, ra)
 	REG_L	s8, PCB_CONTEXT+SF_REG_S8(a0)
 	REG_EPILOGUE
 	mtc0	t0, MIPS_COP_0_STATUS
-#ifdef PARANOIA
+#if defined(PARANOID_SPL)
 	COP0_SYNC
 	/*
 	 * Verify interrupt configuration still matches IPL_SCHED
@@ -342,8 +377,12 @@ softint_cleanup:
 #ifdef PARANOIA
 	mfc0	t1, MIPS_COP_0_STATUS
 	and	v0, t1, MIPS_SR_INT_IE
+#if __mips >= 32
+	teqi	v0, 0
+#else
 1:	beqz	v0, 1b
 	 nop
+#endif
 #endif /* PARANOIA */
 	PTR_L	t0, L_CPU(MIPS_CURLWP)
 	NOP_L					# load delay
@@ -379,7 +418,10 @@ NESTED(softint_fast_dispatch, CALLFRAME_SIZ, ra)
 	 * to.
  	 */
 	mfc0	t1, MIPS_COP_0_STATUS
-#ifdef PARANOID_LOOP
+#if defined(PARANOIA) && __mips >= 32
+	and	v0, t1, MIPS_SR_INT_IE		# assert interrupts are on
+	teqi	v0, 0
+#elif defined(PARANOID_LOOP)
 	and	v0, t1, MIPS_SR_INT_IE		# assert interrupts are on
 1:	beqz	v0, 1b
 	 nop
@@ -473,8 +515,12 @@ LEAF(savectx)
 #ifdef PARANOIA
 	mfc0	v0, MIPS_COP_0_STATUS
 	and	t0, v0, MIPS_SR_INT_IE
+#if __mips >= 32
+	teqi	t0, 0
+#else
 1:	beqz	t0, 1b
 	 nop
+#endif
 #endif /* PARANOIA */
 	REG_PROLOGUE
 	REG_S	s0, PCB_CONTEXT+SF_REG_S0(a0)

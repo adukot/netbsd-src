@@ -46,7 +46,9 @@
 
 // Must match the array in gpt_uuid.c
 typedef enum {
+	GPT_TYPE_INVALID = -1,
 	GPT_TYPE_APPLE_HFS = 0,
+	GPT_TYPE_APPLE_UFS,
 	GPT_TYPE_BIOS,
 	GPT_TYPE_EFI,
 	GPT_TYPE_FREEBSD,
@@ -56,6 +58,8 @@ typedef enum {
 	GPT_TYPE_FREEBSD_ZFS,
 	GPT_TYPE_LINUX_DATA,
 	GPT_TYPE_LINUX_SWAP,
+	GPT_TYPE_LINUX_RAID,
+	GPT_TYPE_LINUX_LVM,
 	GPT_TYPE_MS_BASIC_DATA,
 	GPT_TYPE_MS_RESERVED,
 	GPT_TYPE_NETBSD_CCD,
@@ -91,7 +95,10 @@ void gpt_uuid_create(gpt_type_t, gpt_uuid_t, uint16_t *, size_t);
 
 int gpt_uuid_parse(const char *, gpt_uuid_t);
 
-void gpt_uuid_generate(gpt_uuid_t);
+struct gpt;
+int gpt_uuid_generate(struct gpt *, gpt_uuid_t);
+
+void gpt_uuid_help(const char *);
 
 __END_DECLS
 

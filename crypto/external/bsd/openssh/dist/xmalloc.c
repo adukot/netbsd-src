@@ -1,5 +1,6 @@
-/*	$NetBSD: xmalloc.c,v 1.4 2014/10/19 16:30:59 christos Exp $	*/
-/* $OpenBSD: xmalloc.c,v 1.29 2014/01/04 17:50:55 tedu Exp $ */
+/*	$NetBSD: xmalloc.c,v 1.7 2016/03/11 01:55:00 christos Exp $	*/
+/* $OpenBSD: xmalloc.c,v 1.33 2016/02/15 09:47:49 dtucker Exp $ */
+
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -15,15 +16,26 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: xmalloc.c,v 1.4 2014/10/19 16:30:59 christos Exp $");
+__RCSID("$NetBSD: xmalloc.c,v 1.7 2016/03/11 01:55:00 christos Exp $");
 #include <sys/param.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "xmalloc.h"
 #include "log.h"
+
+void
+ssh_malloc_init(void)
+{
+#ifndef __NetBSD__
+	extern char *malloc_options;
+
+	malloc_options = "S";
+#endif
+}
 
 void *
 xmalloc(size_t size)
@@ -45,8 +57,8 @@ xcalloc(size_t nmemb, size_t size)
 
 	if (size == 0 || nmemb == 0)
 		fatal("xcalloc: zero size");
-	if (SIZE_T_MAX / nmemb < size)
-		fatal("xcalloc: nmemb * size > SIZE_T_MAX");
+	if (SIZE_MAX / nmemb < size)
+		fatal("xcalloc: nmemb * size > SIZE_MAX");
 	ptr = calloc(nmemb, size);
 	if (ptr == NULL)
 		fatal("xcalloc: out of memory (allocating %zu bytes)",
@@ -55,22 +67,14 @@ xcalloc(size_t nmemb, size_t size)
 }
 
 void *
-xrealloc(void *ptr, size_t nmemb, size_t size)
+xreallocarray(void *ptr, size_t nmemb, size_t size)
 {
 	void *new_ptr;
-	size_t new_size = nmemb * size;
 
-	if (new_size == 0)
-		fatal("xrealloc: zero size");
-	if (SIZE_T_MAX / nmemb < size)
-		fatal("xrealloc: nmemb * size > SIZE_T_MAX");
-	if (ptr == NULL)
-		new_ptr = malloc(new_size);
-	else
-		new_ptr = realloc(ptr, new_size);
+	new_ptr = reallocarray(ptr, nmemb, size);
 	if (new_ptr == NULL)
-		fatal("xrealloc: out of memory (new_size %zu bytes)",
-		    new_size);
+		fatal("xreallocarray: out of memory (%zu elements of %zu bytes)",
+		    nmemb, size);
 	return new_ptr;
 }
 

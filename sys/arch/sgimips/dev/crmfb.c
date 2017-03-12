@@ -1,4 +1,4 @@
-/* $NetBSD: crmfb.c,v 1.39 2015/01/20 12:13:04 macallan Exp $ */
+/* $NetBSD: crmfb.c,v 1.43 2016/02/14 19:11:19 dholland Exp $ */
 
 /*-
  * Copyright (c) 2007 Jared D. McNeill <jmcneill@invisible.ca>
@@ -32,14 +32,13 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: crmfb.c,v 1.39 2015/01/20 12:13:04 macallan Exp $");
+__KERNEL_RCSID(0, "$NetBSD: crmfb.c,v 1.43 2016/02/14 19:11:19 dholland Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/device.h>
 #include <sys/malloc.h>
 
-#define _SGIMIPS_BUS_DMA_PRIVATE
 #include <machine/autoconf.h>
 #include <sys/bus.h>
 #include <machine/machtype.h>
@@ -262,7 +261,7 @@ crmfb_attach(device_t parent, device_t self, void *opaque)
 
 	ma = (struct mainbus_attach_args *)opaque;
 
-	sc->sc_iot = SGIMIPS_BUS_SPACE_CRIME;
+	sc->sc_iot = normal_memt;
 	sc->sc_dmat = &sgimips_default_bus_dma_tag;
 	sc->sc_wsmode = WSDISPLAYIO_MODE_EMUL;
 
@@ -571,7 +570,7 @@ crmfb_mmap(void *v, void *vs, off_t offset, int prot)
 	if (offset >= 0 && offset < (0x100000 * sc->sc_tiles_x)) {
 		pa = bus_dmamem_mmap(sc->sc_dmat, sc->sc_dma.segs,
 		    sc->sc_dma.nsegs, offset, prot,
-		    BUS_DMA_WAITOK | BUS_DMA_COHERENT);
+		    BUS_DMA_WAITOK | BUS_DMA_COHERENT | BUS_DMA_PREFETCHABLE);
 		return pa;
 	}
 #endif
@@ -588,8 +587,8 @@ crmfb_mmap(void *v, void *vs, off_t offset, int prot)
 	if ((offset >= 0x15010000) && (offset < 0x15030000))
 		return bus_dmamem_mmap(sc->sc_dmat, sc->sc_dma.segs,
 		     sc->sc_dma.nsegs,
-		     offset + (0x100000 * sc->sc_tiles_x) - 0x15010000,
-		     prot, BUS_DMA_WAITOK | BUS_DMA_COHERENT);
+		     offset + (0x100000 * sc->sc_tiles_x) - 0x15010000, prot,
+		     BUS_DMA_WAITOK | BUS_DMA_COHERENT | BUS_DMA_PREFETCHABLE);
 	return -1;
 }
 
@@ -627,10 +626,7 @@ crmfb_init_screen(void *c, struct vcons_screen *scr, int existing,
 		break;
 	}
 
-	ri->ri_bits = KERNADDR(sc->sc_dma);
-
-	if (existing)
-		ri->ri_flg |= RI_CLEAR;
+	ri->ri_bits = NULL;
 
 	rasops_init(ri, 0, 0);
 	ri->ri_caps = WSSCREEN_WSCOLORS;
@@ -1111,36 +1107,36 @@ crmfb_setup_video(struct crmfb_softc *sc, int depth)
 	bus_space_write_8(sc->sc_iot, sc->sc_reh, 0x40, 0);
 	
 	switch (depth) {
-		case 8:
-			sc->sc_de_mode = DE_MODE_TLB_A | DE_MODE_BUFDEPTH_8 |
-			    DE_MODE_TYPE_CI | DE_MODE_PIXDEPTH_8;
-			sc->sc_mte_mode = MTE_MODE_DST_ECC |
-			    (MTE_TLB_A << MTE_DST_TLB_SHIFT) |
-			    (MTE_TLB_A << MTE_SRC_TLB_SHIFT) |
-			    (MTE_DEPTH_8 << MTE_DEPTH_SHIFT);
-			sc->sc_mte_x_shift = 0;
-			break;
-		case 16:
-			sc->sc_de_mode = DE_MODE_TLB_A | DE_MODE_BUFDEPTH_16 |
-			    DE_MODE_TYPE_RGBA | DE_MODE_PIXDEPTH_16;
-			sc->sc_mte_mode = MTE_MODE_DST_ECC |
-			    (MTE_TLB_A << MTE_DST_TLB_SHIFT) |
-			    (MTE_TLB_A << MTE_SRC_TLB_SHIFT) |
-			    (MTE_DEPTH_16 << MTE_DEPTH_SHIFT);
-			sc->sc_mte_x_shift = 1;
-			break;
-		case 32:
-			sc->sc_de_mode = DE_MODE_TLB_A | DE_MODE_BUFDEPTH_32 |
-			    DE_MODE_TYPE_RGBA | DE_MODE_PIXDEPTH_32;
-			break;
-			sc->sc_mte_mode = MTE_MODE_DST_ECC |
-			    (MTE_TLB_A << MTE_DST_TLB_SHIFT) |
-			    (MTE_TLB_A << MTE_SRC_TLB_SHIFT) |
-			    (MTE_DEPTH_32 << MTE_DEPTH_SHIFT);
-			sc->sc_mte_x_shift = 2;
-		default:
-			panic("%s: unsuported colour depth %d\n", __func__,
-			    depth);
+	case 8:
+		sc->sc_de_mode = DE_MODE_TLB_A | DE_MODE_BUFDEPTH_8 |
+		    DE_MODE_TYPE_CI | DE_MODE_PIXDEPTH_8;
+		sc->sc_mte_mode = MTE_MODE_DST_ECC |
+		    (MTE_TLB_A << MTE_DST_TLB_SHIFT) |
+		    (MTE_TLB_A << MTE_SRC_TLB_SHIFT) |
+		    (MTE_DEPTH_8 << MTE_DEPTH_SHIFT);
+		sc->sc_mte_x_shift = 0;
+		break;
+	case 16:
+		sc->sc_de_mode = DE_MODE_TLB_A | DE_MODE_BUFDEPTH_16 |
+		    DE_MODE_TYPE_RGBA | DE_MODE_PIXDEPTH_16;
+		sc->sc_mte_mode = MTE_MODE_DST_ECC |
+		    (MTE_TLB_A << MTE_DST_TLB_SHIFT) |
+		    (MTE_TLB_A << MTE_SRC_TLB_SHIFT) |
+		    (MTE_DEPTH_16 << MTE_DEPTH_SHIFT);
+		sc->sc_mte_x_shift = 1;
+		break;
+	case 32:
+		sc->sc_de_mode = DE_MODE_TLB_A | DE_MODE_BUFDEPTH_32 |
+		    DE_MODE_TYPE_RGBA | DE_MODE_PIXDEPTH_32;
+		sc->sc_mte_mode = MTE_MODE_DST_ECC |
+		    (MTE_TLB_A << MTE_DST_TLB_SHIFT) |
+		    (MTE_TLB_A << MTE_SRC_TLB_SHIFT) |
+		    (MTE_DEPTH_32 << MTE_DEPTH_SHIFT);
+		sc->sc_mte_x_shift = 2;
+		break;
+	default:
+		panic("%s: unsuported colour depth %d\n", __func__,
+		    depth);
 	}
 	sc->sc_needs_sync = 0;
 	sc->sc_src_mode = 0xffffffff;

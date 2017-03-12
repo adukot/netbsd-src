@@ -1,4 +1,4 @@
-/*	$NetBSD: ingenic_dwctwo.c,v 1.5 2014/12/27 17:22:15 macallan Exp $ */
+/*	$NetBSD: ingenic_dwctwo.c,v 1.13 2016/04/23 10:15:30 skrll Exp $ */
 
 /*-
  * Copyright (c) 2014 Michael Lorenz
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ingenic_dwctwo.c,v 1.5 2014/12/27 17:22:15 macallan Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ingenic_dwctwo.c,v 1.13 2016/04/23 10:15:30 skrll Exp $");
 
 /*
  * adapted from bcm2835_dwctwo.c
@@ -47,9 +47,9 @@ __KERNEL_RCSID(0, "$NetBSD: ingenic_dwctwo.c,v 1.5 2014/12/27 17:22:15 macallan 
 #include <dev/usb/usbdi.h>
 #include <dev/usb/usbdivar.h>
 #include <dev/usb/usb_mem.h>
+#include <dev/usb/usbdevs.h>
 
 #include <dwc2/dwc2var.h>
-
 #include <dwc2/dwc2.h>
 #include "dwc2_core.h"
 
@@ -87,6 +87,8 @@ static struct dwc2_core_params ingenic_dwc2_params = {
 	.reload_ctl			= -1,
 	.ahbcfg				= -1,
 	.uframe_sched			= 0,
+	.external_id_pin_ctl		= -1,
+	.hibernation			= -1,
 };
 
 static int ingenic_dwc2_match(device_t, struct cfdata *, void *);
@@ -120,11 +122,11 @@ ingenic_dwc2_attach(device_t parent, device_t self, void *aux)
 	sc->sc_dwc2.sc_dev = self;
 
 	sc->sc_dwc2.sc_iot = aa->aa_bst;
-	sc->sc_dwc2.sc_bus.dmatag = aa->aa_dmat;
+	sc->sc_dwc2.sc_bus.ub_dmatag = aa->aa_dmat;
 	sc->sc_dwc2.sc_params = &ingenic_dwc2_params;
 
 	if (aa->aa_addr == 0)
-		aa->aa_addr = 0x13500000;
+		aa->aa_addr = JZ_DWC2_BASE;
 
 	error = bus_space_map(aa->aa_bst, aa->aa_addr, 0x20000, 0,
 	    &sc->sc_dwc2.sc_ioh);
@@ -134,8 +136,13 @@ ingenic_dwc2_attach(device_t parent, device_t self, void *aux)
 		return;
 	}
 
-	aprint_naive(": USB controller\n");
-	aprint_normal(": USB controller\n");
+	aprint_naive(": USB OTG controller\n");
+	aprint_normal(": USB OTG controller\n");
+
+	/* reset PHY, flash LED */
+	gpio_set(5, 15, 0);
+	delay(250000);
+	gpio_set(5, 15, 1);
 
 	reg = readreg(JZ_USBPCR);
 	reg |= PCR_VBUSVLDEXTSEL;
@@ -149,6 +156,10 @@ ingenic_dwc2_attach(device_t parent, device_t self, void *aux)
 #endif
 
 	reg = readreg(JZ_USBPCR1);
+#ifdef INGENIC_DEBUG
+	printf("JZ_USBPCR1 %08x\n", reg);
+#endif
+	reg &= ~0xf0000000;
 	reg |= PCR_SYNOPSYS;
 	reg |= PCR_REFCLK_CORE;
 	reg &= ~PCR_CLK_M;
@@ -161,6 +172,7 @@ ingenic_dwc2_attach(device_t parent, device_t self, void *aux)
 	printf("JZ_USBRDT  %08x\n", readreg(JZ_USBRDT));
 #endif
 
+	writereg(JZ_USBVBFIL, 0);
 	delay(10000);
 
 	reg = readreg(JZ_USBPCR);
@@ -172,11 +184,16 @@ ingenic_dwc2_attach(device_t parent, device_t self, void *aux)
 
 	delay(10000);
 
-	sc->sc_ih = evbmips_intr_establish(21, dwc2_intr, &sc->sc_dwc2);
+	/* wake up the USB part */
+	reg = readreg(JZ_OPCR);
+	reg |= OPCR_SPENDN0;
+	writereg(JZ_OPCR, reg);
+
+	sc->sc_ih = evbmips_intr_establish(aa->aa_irq, dwc2_intr, &sc->sc_dwc2);
 
 	if (sc->sc_ih == NULL) {
 		aprint_error_dev(self, "failed to establish interrupt %d\n",
-		     21);
+		     aa->aa_irq);
 		goto fail;
 	}
 

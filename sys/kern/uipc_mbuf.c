@@ -1,4 +1,4 @@
-/*	$NetBSD: uipc_mbuf.c,v 1.161 2015/02/08 14:46:30 mlelstv Exp $	*/
+/*	$NetBSD: uipc_mbuf.c,v 1.164 2016/04/20 08:50:43 knakahara Exp $	*/
 
 /*-
  * Copyright (c) 1999, 2001 The NetBSD Foundation, Inc.
@@ -62,11 +62,13 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: uipc_mbuf.c,v 1.161 2015/02/08 14:46:30 mlelstv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: uipc_mbuf.c,v 1.164 2016/04/20 08:50:43 knakahara Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_mbuftrace.h"
 #include "opt_nmbclusters.h"
 #include "opt_ddb.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -581,14 +583,8 @@ m_get(int nowait, int type)
 		return NULL;
 
 	mbstat_type_add(type, 1);
-	mowner_init(m, type);
-	m->m_ext_ref = m;
-	m->m_type = type;
-	m->m_len = 0;
-	m->m_next = NULL;
-	m->m_nextpkt = NULL;
-	m->m_data = m->m_dat;
-	m->m_flags = 0;
+
+	m_hdr_init(m, type, NULL, m->m_dat, 0);
 
 	return m;
 }
@@ -602,13 +598,7 @@ m_gethdr(int nowait, int type)
 	if (m == NULL)
 		return NULL;
 
-	m->m_data = m->m_pktdat;
-	m->m_flags = M_PKTHDR;
-	m->m_pkthdr.rcvif = NULL;
-	m->m_pkthdr.len = 0;
-	m->m_pkthdr.csum_flags = 0;
-	m->m_pkthdr.csum_data = 0;
-	SLIST_INIT(&m->m_pkthdr.tags);
+	m_pkthdr_init(m);
 
 	return m;
 }
@@ -1689,7 +1679,7 @@ m_getptr(struct mbuf *m, int loc, int *off)
 /*
  * m_ext_free: release a reference to the mbuf external storage.
  *
- * => free the mbuf m itsself as well.
+ * => free the mbuf m itself as well.
  */
 
 void

@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.98 2014/08/22 10:51:18 apb Exp $
+#	$NetBSD: Makefile,v 1.100 2015/12/19 22:29:23 christos Exp $
 
 # Experimental RCS METALOG versioning
 # (Needs host's rcs(1) commands)
@@ -24,6 +24,7 @@ SETSENV=	DESTDIR=${DESTDIR:Q} \
 		AWK=${TOOL_AWK:Q} \
 		CKSUM=${TOOL_CKSUM:Q} \
 		DB=${TOOL_DB:Q} \
+		EGREP=${TOOL_GREP:Q}\ -E \
 		HOST_SH=${HOST_SH:Q} \
 		MAKE=${MAKE:Q} \
 		MKTEMP=${TOOL_MKTEMP:Q} \
@@ -39,6 +40,9 @@ SETSCMD=	cd ${.CURDIR} && \
 		${HOST_SH}
 
 MAKETARS_FLAGS=
+.if ${MKREPRO_TIMESTAMP:Uno} != "no"
+MAKETARS_FLAGS+= -T "${MKREPRO_TIMESTAMP}"
+.endif
 .if ${MKX11} != "no"
 MAKESRCTARS_X11_FLAGS=	-x ${X11SRCDIR}
 .endif

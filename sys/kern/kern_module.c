@@ -1,4 +1,4 @@
-/*	$NetBSD: kern_module.c,v 1.102 2014/12/02 13:00:38 pooka Exp $	*/
+/*	$NetBSD: kern_module.c,v 1.110 2016/02/06 22:48:07 pgoyette Exp $	*/
 
 /*-
  * Copyright (c) 2008 The NetBSD Foundation, Inc.
@@ -34,7 +34,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: kern_module.c,v 1.102 2014/12/02 13:00:38 pooka Exp $");
+__KERNEL_RCSID(0, "$NetBSD: kern_module.c,v 1.110 2016/02/06 22:48:07 pgoyette Exp $");
 
 #define _MODULE_INTERNAL
 
@@ -58,7 +58,7 @@ __KERNEL_RCSID(0, "$NetBSD: kern_module.c,v 1.102 2014/12/02 13:00:38 pooka Exp 
 #include <uvm/uvm_extern.h>
 
 struct vm_map *module_map;
-char	*module_machine;
+const char *module_machine;
 char	module_base[MODULE_BASE_SIZE];
 
 struct modlist        module_list = TAILQ_HEAD_INITIALIZER(module_list);
@@ -936,19 +936,19 @@ module_do_load(const char *name, bool isdep, int flags,
 		TAILQ_INSERT_TAIL(pending, mod, mod_chain);
 	} else {
 		/*
-		 * If a requisite module, check to see if it is
-		 * already present.
+		 * Check to see if module is already present.
 		 */
-		if (isdep) {
-			mod = module_lookup(name);
-			if (mod != NULL) {
-				if (modp != NULL) {
-					*modp = mod;
-				}
-				depth--;
-				return 0;
+		mod = module_lookup(name);
+		if (mod != NULL) {
+			if (modp != NULL) {
+				*modp = mod;
 			}
-		}				
+			module_print("%s module `%s' already loaded",
+			    isdep ? "dependent" : "requested", name);
+			depth--;
+			return EEXIST;
+		}
+
 		mod = module_newmodule(MODULE_SOURCE_FILESYS);
 		if (mod == NULL) {
 			module_error("out of memory for `%s'", name);
@@ -966,7 +966,8 @@ module_do_load(const char *name, bool isdep, int flags,
 			 * available for each architecture, so we don't
 			 * print an error if they are missing.
 			 */
-			if (modclass != MODULE_CLASS_EXEC || error != ENOENT)
+			if ((modclass != MODULE_CLASS_EXEC || error != ENOENT)
+			    && root_device != NULL)
 				module_error("vfs load failed for `%s', "
 				    "error %d", name, error);
 #endif
@@ -1027,19 +1028,6 @@ module_do_load(const char *name, bool isdep, int flags,
 	}
 
 	/*
-	 * Check to see if the module is already loaded.  If so, we may
-	 * have been recursively called to handle a dependency, so be sure
-	 * to set modp.
-	 */
-	if ((mod2 = module_lookup(mi->mi_name)) != NULL) {
-		if (modp != NULL)
-			*modp = mod2;
-		module_print("module `%s' already loaded", mi->mi_name);
-		error = EEXIST;
-		goto fail;
-	}
-
-	/*
 	 * Block circular dependencies.
 	 */
 	TAILQ_FOREACH(mod2, pending, mod_chain) {
@@ -1047,10 +1035,10 @@ module_do_load(const char *name, bool isdep, int flags,
 			continue;
 		}
 		if (strcmp(mod2->mod_info->mi_name, mi->mi_name) == 0) {
-		    	error = EDEADLK;
+			error = EDEADLK;
 			module_error("circular dependency detected for `%s'",
 			    mi->mi_name);
-		    	goto fail;
+			goto fail;
 		}
 	}
 
@@ -1090,7 +1078,7 @@ module_do_load(const char *name, bool isdep, int flags,
 			}
 			error = module_do_load(buf, true, flags, NULL,
 			    &mod2, MODULE_CLASS_ANY, true);
-			if (error != 0) {
+			if (error != 0 && error != EEXIST) {
 				module_error("recursive load failed for `%s' "
 				    "(`%s' required), error %d", mi->mi_name,
 				    buf, error);
@@ -1152,6 +1140,7 @@ module_do_load(const char *name, bool isdep, int flags,
 		module_thread_kick();
 	}
 	depth--;
+	module_print("module `%s' loaded successfully", mi->mi_name);
 	return 0;
 
  fail:
@@ -1182,13 +1171,16 @@ module_do_unload(const char *name, bool load_requires_force)
 	KASSERT(kernconfig_is_held());
 	KASSERT(name != NULL);
 
+	module_print("unload requested for '%s' (%s)", name,
+	    load_requires_force?"TRUE":"FALSE");
 	mod = module_lookup(name);
 	if (mod == NULL) {
 		module_error("module `%s' not found", name);
 		return ENOENT;
 	}
 	if (mod->mod_refcnt != 0) {
-		module_print("module `%s' busy", name);
+		module_print("module `%s' busy (%d refs)", name,
+		    mod->mod_refcnt);
 		return EBUSY;
 	}
 
@@ -1197,6 +1189,8 @@ module_do_unload(const char *name, bool load_requires_force)
 	 */
 	if (mod->mod_source == MODULE_SOURCE_KERNEL &&
 	    mod->mod_info->mi_class == MODULE_CLASS_SECMODEL) {
+		module_print("cannot unload built-in secmodel module `%s'",
+		    name);
 		return EPERM;
 	}
 
@@ -1368,7 +1362,10 @@ module_thread(void *cookie)
 			error = (*mi->mi_modcmd)(MODULE_CMD_AUTOUNLOAD, NULL);
 			if (error == 0 || error == ENOTTY) {
 				(void)module_do_unload(mi->mi_name, false);
-			}
+			} else
+				module_print("module `%s' declined to be "
+				    "auto-unloaded error=%d", mi->mi_name,
+				    error);
 		}
 		kernconfig_unlock();
 

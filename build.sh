@@ -1,5 +1,5 @@
 #! /usr/bin/env sh
-#	$NetBSD: build.sh,v 1.306 2015/02/01 18:49:25 christos Exp $
+#	$NetBSD: build.sh,v 1.309 2016/04/29 16:08:09 christos Exp $
 #
 # Copyright (c) 2001-2011 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -651,7 +651,7 @@ MACHINE=evbarm		MACHINE_ARCH=earmv7	ALIAS=evbearmv7-el
 MACHINE=evbarm		MACHINE_ARCH=earmv7eb	ALIAS=evbearmv7-eb
 MACHINE=evbarm		MACHINE_ARCH=earmv7hf	ALIAS=evbearmv7hf-el
 MACHINE=evbarm		MACHINE_ARCH=earmv7hfeb	ALIAS=evbearmv7hf-eb
-MACHINE=evbarm64	MACHINE_ARCH=aarch64	ALIAS=evbarm64-el
+MACHINE=evbarm64	MACHINE_ARCH=aarch64	ALIAS=evbarm64-el DEFAULT
 MACHINE=evbarm64	MACHINE_ARCH=aarch64eb	ALIAS=evbarm64-eb
 MACHINE=evbcf		MACHINE_ARCH=coldfire
 MACHINE=evbmips		MACHINE_ARCH=		NO_DEFAULT
@@ -1045,7 +1045,7 @@ Usage: ${progname} [-EhnorUuxy] [-a arch] [-B buildid] [-C cdextras]
                         RELEASEDIR/RELEASEMACHINEDIR/installation/liveimage.
     install-image       Create bootable installation image in
                         RELEASEDIR/RELEASEMACHINEDIR/installation/installimage.
-    disk-image=target   Creae bootable disk image in
+    disk-image=target   Create bootable disk image in
                         RELEASEDIR/RELEASEMACHINEDIR/binary/gzimg/target.img.gz.
     params              Display various make(1) parameters.
     list-arch           Display a list of valid MACHINE/MACHINE_ARCH values,
@@ -1593,21 +1593,28 @@ rebuildmake()
 	fi
 
 	# Build bootstrap ${toolprefix}make if needed.
-	if ${do_rebuildmake}; then
-		statusmsg "Bootstrapping ${toolprefix}make"
-		${runcmd} cd "${tmpdir}"
-		${runcmd} env CC="${HOST_CC-cc}" CPPFLAGS="${HOST_CPPFLAGS}" \
-			CFLAGS="${HOST_CFLAGS--O}" LDFLAGS="${HOST_LDFLAGS}" \
-			${HOST_SH} "${TOP}/tools/make/configure" ||
-		    ( cp ${tmpdir}/config.log ${tmpdir}-config.log
-		      bomb "Configure of ${toolprefix}make failed, see ${tmpdir}-config.log for details" )
-		${runcmd} ${HOST_SH} buildmake.sh ||
-		    bomb "Build of ${toolprefix}make failed"
-		make="${tmpdir}/${toolprefix}make"
-		${runcmd} cd "${TOP}"
-		${runcmd} rm -f usr.bin/make/*.o usr.bin/make/lst.lib/*.o
-		done_rebuildmake=true
+	if ! ${do_rebuildmake}; then
+		return
 	fi
+
+	statusmsg "Bootstrapping ${toolprefix}make"
+	${runcmd} cd "${tmpdir}"
+	${runcmd} env \
+\
+CC="${HOST_CC-cc}" \
+CPPFLAGS="${HOST_CPPFLAGS} -D_PATH_DEFSYSPATH="'\"'${NETBSDSRCDIR}/share/mk'\"' \
+CFLAGS="${HOST_CFLAGS--O}" \
+LDFLAGS="${HOST_LDFLAGS}" \
+\
+	    ${HOST_SH} "${TOP}/tools/make/configure" ||
+	( cp ${tmpdir}/config.log ${tmpdir}-config.log
+	      bomb "Configure of ${toolprefix}make failed, see ${tmpdir}-config.log for details" )
+	${runcmd} ${HOST_SH} buildmake.sh ||
+	    bomb "Build of ${toolprefix}make failed"
+	make="${tmpdir}/${toolprefix}make"
+	${runcmd} cd "${TOP}"
+	${runcmd} rm -f usr.bin/make/*.o usr.bin/make/lst.lib/*.o
+	done_rebuildmake=true
 }
 
 # validatemakeparams --
@@ -1869,7 +1876,7 @@ createmakewrapper()
 	eval cat <<EOF ${makewrapout}
 #! ${HOST_SH}
 # Set proper variables to allow easy "make" building of a NetBSD subtree.
-# Generated from:  \$NetBSD: build.sh,v 1.306 2015/02/01 18:49:25 christos Exp $
+# Generated from:  \$NetBSD: build.sh,v 1.309 2016/04/29 16:08:09 christos Exp $
 # with these arguments: ${_args}
 #
 

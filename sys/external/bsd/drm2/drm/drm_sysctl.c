@@ -1,3 +1,5 @@
+/*	$NetBSD: drm_sysctl.c,v 1.6 2015/07/30 04:36:48 riastradh Exp $	*/
+
 /*-
  * Copyright (c) 2014 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -27,7 +29,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: drm_sysctl.c,v 1.4 2014/11/24 17:29:02 prlw1 Exp $");
+__KERNEL_RCSID(0, "$NetBSD: drm_sysctl.c,v 1.6 2015/07/30 04:36:48 riastradh Exp $");
 
 #include <sys/param.h>
 #include <sys/types.h>
@@ -96,6 +98,8 @@ drm_sysctl_get_type(const struct linux_module_param_info *p)
 		return CTLTYPE_BOOL;
 	case MTYPE_int:
 		return CTLTYPE_INT;
+	case MTYPE_charp:
+		return CTLTYPE_STRING;
 	default:
 		aprint_error("unhandled module param type %d for %s\n",
 		    p->type, p->name);

@@ -1,4 +1,4 @@
-/*	$NetBSD: imx6var.h,v 1.2 2014/10/07 09:32:47 ryo Exp $	*/
+/*	$NetBSD: imx6var.h,v 1.4 2015/12/31 12:14:01 ryo Exp $	*/
 
 /*
  * Copyright (c) 2014 Ryo Shimizu <ryo@nerv.org>
@@ -41,17 +41,17 @@ struct axi_attach_args {
 	int aa_irqbase;
 };
 
-extern struct bus_space imx_bs_tag;
+extern struct bus_space armv7_generic_bs_tag;
 extern struct arm32_bus_dma_tag imx_bus_dma_tag;
 extern bus_space_tag_t imx6_armcore_bst;
 extern bus_space_handle_t imx6_armcore_bsh;
 
 /* iomux utility functions in imx6_iomux.c */
 struct iomux_conf {
-	u_int pin;
-#define IOMUX_CONF_EOT	((u_int)(-1))
-	u_short mux;
-	u_short pad;
+	uint32_t pin;	/* ((MUXADDR<<16)|PADADDR) */
+#define IOMUX_CONF_EOT	((uint32_t)(-1))
+	uint32_t mux:8,
+	         pad:24;
 };
 
 uint32_t iomux_read(uint32_t);

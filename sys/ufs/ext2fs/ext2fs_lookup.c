@@ -1,4 +1,4 @@
-/*	$NetBSD: ext2fs_lookup.c,v 1.77 2014/06/03 19:30:29 joerg Exp $	*/
+/*	$NetBSD: ext2fs_lookup.c,v 1.79 2016/01/12 21:29:29 riastradh Exp $	*/
 
 /*
  * Modified for NetBSD 1.2E
@@ -48,7 +48,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ext2fs_lookup.c,v 1.77 2014/06/03 19:30:29 joerg Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ext2fs_lookup.c,v 1.79 2016/01/12 21:29:29 riastradh Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -180,7 +180,7 @@ ext2fs_readdir(void *v)
 	}
 	aiov.iov_base = dirbuf;
 
-	error = VOP_READ(ap->a_vp, &auio, 0, ap->a_cred);
+	error = UFS_BUFRD(ap->a_vp, &auio, 0, ap->a_cred);
 	if (error == 0) {
 		readcnt = e2fs_count - auio.uio_resid;
 		for (dp = (struct ext2fs_direct *)dirbuf;
@@ -768,7 +768,7 @@ ext2fs_direnter(struct inode *ip, struct vnode *dvp,
 		auio.uio_iovcnt = 1;
 		auio.uio_rw = UIO_WRITE;
 		UIO_SETUP_SYSSPACE(&auio);
-		error = VOP_WRITE(dvp, &auio, IO_SYNC, cnp->cn_cred);
+		error = ext2fs_bufwr(dvp, &auio, IO_SYNC, cnp->cn_cred);
 		if (dirblksiz > dvp->v_mount->mnt_stat.f_bsize)
 			/* XXX should grow with balloc() */
 			panic("ext2fs_direnter: frag size");
@@ -952,8 +952,8 @@ ext2fs_dirempty(struct inode *ip, ino_t parentino, kauth_cred_t cred)
 #define	MINDIRSIZ (sizeof (struct ext2fs_dirtemplate) / 2)
 
 	for (off = 0; off < ext2fs_size(ip); off += fs2h16(dp->e2d_reclen)) {
-		error = vn_rdwr(UIO_READ, ITOV(ip), (void *)dp, MINDIRSIZ, off,
-		   UIO_SYSSPACE, IO_NODELOCKED, cred, &count, NULL);
+		error = ufs_bufio(UIO_READ, ITOV(ip), (void *)dp, MINDIRSIZ,
+		    off, IO_NODELOCKED, cred, &count, NULL);
 		/*
 		 * Since we read MINDIRSIZ, residual must
 		 * be 0 unless we're at end of file.

@@ -1,7 +1,7 @@
-/*	$NetBSD: rndc.c,v 1.11 2014/12/10 04:37:52 christos Exp $	*/
+/*	$NetBSD: rndc.c,v 1.14 2016/03/10 04:01:33 christos Exp $	*/
 
 /*
- * Copyright (C) 2004-2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2004-2016  Internet Systems Consortium, Inc. ("ISC")
  * Copyright (C) 2000-2003  Internet Software Consortium.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -34,6 +34,7 @@
 #include <isc/log.h>
 #include <isc/net.h>
 #include <isc/mem.h>
+#include <isc/print.h>
 #include <isc/random.h>
 #include <isc/socket.h>
 #include <isc/stdtime.h>
@@ -81,7 +82,7 @@ static isc_uint32_t algorithm;
 static isccc_region_t secret;
 static isc_boolean_t failed = ISC_FALSE;
 static isc_boolean_t c_flag = ISC_FALSE;
-static isc_mem_t *mctx;
+static isc_mem_t *rndc_mctx;
 static int sends, recvs, connects;
 static char *command;
 static char *args;
@@ -107,7 +108,7 @@ command is one of the following:\n\
 		Add zone to given view. Requires new-zone-file option.\n\
   delzone [-clean] zone [class [view]]\n\
 		Removes zone from given view. Requires new-zone-file option.\n\
-  dumpdb [-all|-cache|-zones] [view ...]\n\
+  dumpdb [-all|-cache|-zones|-adb|-bad|-fail] [view ...]\n\
 		Dump cache(s) to the dump file (named_dump.db).\n\
   flush 	Flushes all of the server's caches.\n\
   flush [view]	Flushes the server's cache for a view.\n\
@@ -256,8 +257,8 @@ rndc_recvdone(isc_task_t *task, isc_event_t *event) {
 	   isccc_cc_fromwire(&source, &response, algorithm, &secret));
 
 	data = isccc_alist_lookup(response, "_data");
-	if (data == NULL)
-		fatal("no data section in response");
+	if (!isccc_alist_alistp(data))
+		fatal("bad or missing data section in response");
 	result = isccc_cc_lookupstring(data, "err", &errormsg);
 	if (result == ISC_R_SUCCESS) {
 		failed = ISC_TRUE;
@@ -309,7 +310,7 @@ rndc_recvnonce(isc_task_t *task, isc_event_t *event) {
 		      " the command protocol,\n"
 		      "* this host is not authorized to connect,\n"
 		      "* the clocks are not synchronized,\n"
-		      "* the the key signing algorithm is incorrect, or\n"
+		      "* the key signing algorithm is incorrect, or\n"
 		      "* the key is invalid.");
 
 	if (ccmsg.result != ISC_R_SUCCESS)
@@ -322,8 +323,8 @@ rndc_recvnonce(isc_task_t *task, isc_event_t *event) {
 	   isccc_cc_fromwire(&source, &response, algorithm, &secret));
 
 	_ctrl = isccc_alist_lookup(response, "_ctrl");
-	if (_ctrl == NULL)
-		fatal("_ctrl section missing");
+	if (!isccc_alist_alistp(_ctrl))
+		fatal("bad or missing ctrl section in response");
 	nonce = 0;
 	if (isccc_cc_lookupuint32(_ctrl, "_nonce", &nonce) != ISC_R_SUCCESS)
 		nonce = 0;
@@ -417,7 +418,7 @@ rndc_connected(isc_task_t *task, isc_event_t *event) {
 	r.length = len;
 	r.base = databuf;
 
-	isccc_ccmsg_init(mctx, sock, &ccmsg);
+	isccc_ccmsg_init(rndc_mctx, sock, &ccmsg);
 	isccc_ccmsg_setmaxsize(&ccmsg, 1024 * 1024);
 
 	DO("schedule recv", isccc_ccmsg_readmessage(&ccmsg, task,
@@ -840,12 +841,12 @@ main(int argc, char **argv) {
 
 	isc_random_get(&serial);
 
-	DO("create memory context", isc_mem_create(0, 0, &mctx));
-	DO("create socket manager", isc_socketmgr_create(mctx, &socketmgr));
-	DO("create task manager", isc_taskmgr_create(mctx, 1, 0, &taskmgr));
+	DO("create memory context", isc_mem_create(0, 0, &rndc_mctx));
+	DO("create socket manager", isc_socketmgr_create(rndc_mctx, &socketmgr));
+	DO("create task manager", isc_taskmgr_create(rndc_mctx, 1, 0, &taskmgr));
 	DO("create task", isc_task_create(taskmgr, 0, &task));
 
-	DO("create logging context", isc_log_create(mctx, &log, &logconfig));
+	DO("create logging context", isc_log_create(rndc_mctx, &log, &logconfig));
 	isc_log_setcontext(log);
 	DO("setting log tag", isc_log_settag(logconfig, progname));
 	logdest.file.stream = stderr;
@@ -859,7 +860,7 @@ main(int argc, char **argv) {
 	DO("enabling log channel", isc_log_usechannel(logconfig, "stderr",
 						      NULL, NULL));
 
-	parse_config(mctx, log, keyname, &pctx, &config);
+	parse_config(rndc_mctx, log, keyname, &pctx, &config);
 
 	isccc_result_register();
 
@@ -874,7 +875,7 @@ main(int argc, char **argv) {
 	for (i = 0; i < argc; i++)
 		argslen += strlen(argv[i]) + 1;
 
-	args = isc_mem_get(mctx, argslen);
+	args = isc_mem_get(rndc_mctx, argslen);
 	if (args == NULL)
 		DO("isc_mem_get", ISC_R_NOMEMORY);
 
@@ -898,7 +899,7 @@ main(int argc, char **argv) {
 	if (nserveraddrs == 0)
 		get_addresses(servername, (in_port_t) remoteport);
 
-	DO("post event", isc_app_onrun(mctx, task, rndc_start, NULL));
+	DO("post event", isc_app_onrun(rndc_mctx, task, rndc_start, NULL));
 
 	result = isc_app_run();
 	if (result != ISC_R_SUCCESS)
@@ -916,15 +917,15 @@ main(int argc, char **argv) {
 	cfg_obj_destroy(pctx, &config);
 	cfg_parser_destroy(&pctx);
 
-	isc_mem_put(mctx, args, argslen);
+	isc_mem_put(rndc_mctx, args, argslen);
 	isccc_ccmsg_invalidate(&ccmsg);
 
 	dns_name_destroy();
 
 	if (show_final_mem)
-		isc_mem_stats(mctx, stderr);
+		isc_mem_stats(rndc_mctx, stderr);
 
-	isc_mem_destroy(&mctx);
+	isc_mem_destroy(&rndc_mctx);
 
 	if (failed)
 		return (1);

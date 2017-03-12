@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.1.1.3 2014/02/27 09:11:34 mrg Exp $
+#	$NetBSD: Makefile,v 1.4 2016/03/31 15:06:39 martin Exp $
 
 REQUIRETOOLS=	yes
 NOLINT=		# defined
@@ -16,15 +16,26 @@ LIB=		gcc
 
 .cc: # disable .cc->NULL transform
 
-# XXX handle this better?
+# XXX handle this better?  GCC 4.8 moved them.
 .if ${MACHINE} == "emips"
 G_LIB2ADD_HACK+=	${GNUHOSTDIST}/gcc/config/floatunsidf.c \
 			${GNUHOSTDIST}/gcc/config/floatunsisf.c
 .endif
 
-SRCS+=		${LIB2FUNCS} ${LIB2FUNCS_ST} ${LIB2DIVMOD} \
-		${G_LIB2ADD_HACK:T:S/.asm/.S/} ${G_LIB2ADD:T:S/.asm/.S/} \
-		${G_LIB2ADD_ST} ${LIB1ASMFUNCS}
+# XXX avoid duplicate softfloat symbols in libc and libgcc.a,
+# which would break the /rescue build
+.if ${MKSOFTFLOAT} == "yes"
+LIB2ADD_EDITED=	${G_LIB2ADD:T:Nfloatsisf.c:Nfloatunsisf.c:Nfloatsidf.c:Nfloatunsidf.c:Nfixsfsi.c:Nextendsfdf2.c:Naddsf3.c:Nmulsf3.c:Ndivsf3.c:Nadddf3.c:Nsubdf3.c:Nmuldf3.c:Ndivdf3.c:Nfixdfsi.c:Nxfgnulib.c:Nfpgnulib.c:S/.asm/.S/}
+LIB2FUNCS_EDITED=	${LIB2FUNCS:N_floatundisf.c:N_floatundidf.c:N_floatundixf.c:N_floatunditf.c:N_fixsfdi.c:N_fixdfdi.c:N_fixxfdi.c:N_fixtfdi.c:N_addvsi3.c:N_addvdi3.c:N_subvsi3.c:N_subvdi3.c:N_mulvsi3.c:N_mulvdi3.c:N_muldi3.c}
+LIB1ASMFUNCS_EDITED=	${LIB1ASMFUNCS:N_float.S:N_double.S:N_gedf2.S:N_eqdf2.S:N_nedf2.S:N_ltdf2.S:N_gesf2.S:N_gtdf2.S:N_ledf2.S:N_lesf2.S}
+.else
+LIB2ADD_EDITED= ${G_LIB2ADD:T:S/.asm/.S/}
+LIB2FUNCS_EDITED=	${LIB2FUNCS}
+LIB1ASMFUNCS_EDITED=	${LIB1ASMFUNCS}
+.endif
+SRCS+=		${LIB2FUNCS_EDITED} ${LIB2FUNCS_ST} ${LIB2DIVMOD} \
+		${LIB2ADD_EDITED} ${G_LIB2ADD_HACK:T:S/.asm/.S/} \
+		${G_LIB2ADD_ST:T} ${LIB1ASMFUNCS_EDITED}
 .if ${MKPIC} == "no"
 .if empty(LIBGCC_MACHINE_ARCH:Mearm*)
 SRCS+=		${LIB2_EH} ${LIB2_EHASM}
@@ -33,16 +44,6 @@ PICFLAGS=
 .else
 CPPFLAGS+=	-DPIC
 .endif
-
-# These usually just have "foo.S", we need to link from the
-# gcc/config/$PLATFORM/foo.asm to it.  So far, only rs6000 uses it,
-# so we hack it for now.
-#.for file in ${G_LIB2ADD_ST}
-.   if ${LIBGCC_MACHINE_ARCH} == "powerpc"  # XXX XXX why does the above work?*
-.for file in crtsavfpr.S crtresfpr.S crtsavgpr.S crtresgpr.S crtresxfpr.S crtresxgpr.S
-BUILDSYMLINKS+=	${GNUHOSTDIST}/gcc/config/rs6000/${file:S/.S$/.asm/} ${file}
-.endfor
-.   endif
 
 # Force building libgcc.a.  It will be PIC from -DPIC above and also
 # the -fpic/-FPIC present in ${G_LIBGCC2_CFLAGS}.
@@ -61,11 +62,11 @@ CLEANFILES+=	${SOBJS:=.tmp1} ${SOBJS:=.tmp2}
 	${NM} -pg ${.TARGET}.tmp1 | \
 	    ${TOOL_AWK} 'NF == 3 { print "\t.hidden", $$3 }' | \
 	    ${CC} ${COPTS} -r -nostdinc -nostdlib ${CPUFLAGS} -o ${.TARGET}.tmp2 ${.TARGET}.tmp1 -xassembler -
-	${OBJCOPY} -R .note.netbsd.mcmodel ${.TARGET}.tmp2
+	${OBJCOPY} ${OBJCOPYLIBFLAGS} ${.TARGET}.tmp2
 .if defined(COPTS) && !empty(COPTS:M*-g*)
 	mv ${.TARGET}.tmp2 ${.TARGET}
 .else
-	${OBJCOPY} ${OBJCOPYLIBFLAGS} ${.TARGET}.tmp2 ${.TARGET}
+	${LD} -r ${.TARGET}.tmp2 -o ${.TARGET}
 	rm -f ${.TARGET}.tmp2
 .endif
 	rm -f ${.TARGET}.tmp1
@@ -76,11 +77,11 @@ CLEANFILES+=	${SOBJS:=.tmp1} ${SOBJS:=.tmp2}
 	${NM} -pg ${.TARGET}.tmp1 | \
 	    ${TOOL_AWK} 'NF == 3 { print "\t.hidden", $$3 }' | \
 	    ${CC} ${COPTS} -r -nostdinc -nostdlib -o ${.TARGET}.tmp2 ${.TARGET}.tmp1 -xassembler -
-	${OBJCOPY} -R .note.netbsd.mcmodel ${.TARGET}.tmp2
+	${OBJCOPY} ${OBJCOPYLIBFLAGS} ${.TARGET}.tmp2
 .if defined(COPTS) && !empty(COPTS:M*-g*)
 	mv ${.TARGET}.tmp2 ${.TARGET}
 .else
-	${OBJCOPY} ${OBJCOPYLIBFLAGS} ${.TARGET}.tmp2 ${.TARGET}
+	${LD} -r ${.TARGET}.tmp2 -o ${.TARGET}
 	rm -f ${.TARGET}.tmp2
 .endif
 	rm -f ${.TARGET}.tmp1

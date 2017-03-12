@@ -1,8 +1,8 @@
-/*	$NetBSD: stdnoreturn.in.h,v 1.2 2014/12/19 20:43:20 christos Exp $	*/
+/*	$NetBSD: stdnoreturn.in.h,v 1.4 2016/01/08 21:35:41 christos Exp $	*/
 
 /* A substitute for ISO C11 <stdnoreturn.h>.
 
-   Copyright 2012-2014 Free Software Foundation, Inc.
+   Copyright 2012-2015 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU Lesser General Public License as published by

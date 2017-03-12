@@ -1,4 +1,4 @@
-/*	$NetBSD: vfs_syscalls.c,v 1.492 2014/11/26 10:50:36 manu Exp $	*/
+/*	$NetBSD: vfs_syscalls.c,v 1.504 2015/11/28 15:26:29 dholland Exp $	*/
 
 /*-
  * Copyright (c) 2008, 2009 The NetBSD Foundation, Inc.
@@ -70,7 +70,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: vfs_syscalls.c,v 1.492 2014/11/26 10:50:36 manu Exp $");
+__KERNEL_RCSID(0, "$NetBSD: vfs_syscalls.c,v 1.504 2015/11/28 15:26:29 dholland Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_fileassoc.h"
@@ -108,7 +108,6 @@ __KERNEL_RCSID(0, "$NetBSD: vfs_syscalls.c,v 1.492 2014/11/26 10:50:36 manu Exp 
 #include <sys/buf.h>
 
 #include <miscfs/genfs/genfs.h>
-#include <miscfs/syncfs/syncfs.h>
 #include <miscfs/specfs/specdev.h>
 
 #include <nfs/rpcv2.h>
@@ -328,11 +327,11 @@ mount_update(struct lwp *l, struct vnode *vp, const char *path, int flags,
 	mp->mnt_flag &= ~MNT_OP_FLAGS;
 	mp->mnt_iflag &= ~IMNT_WANTRDWR;
 	if ((mp->mnt_flag & (MNT_RDONLY | MNT_ASYNC)) == 0) {
-		if (mp->mnt_syncer == NULL)
-			error = vfs_allocate_syncvnode(mp);
+		if ((mp->mnt_iflag & IMNT_ONWORKLIST) == 0)
+			vfs_syncer_add_to_worklist(mp);
 	} else {
-		if (mp->mnt_syncer != NULL)
-			vfs_deallocate_syncvnode(mp);
+		if ((mp->mnt_iflag & IMNT_ONWORKLIST) != 0)
+			vfs_syncer_remove_from_worklist(mp);
 	}
 	mutex_exit(&mp->mnt_updating);
 	vfs_unbusy(mp, false, NULL);
@@ -361,13 +360,20 @@ mount_update(struct lwp *l, struct vnode *vp, const char *path, int flags,
 }
 
 static int
-mount_get_vfsops(const char *fstype, struct vfsops **vfsops)
+mount_get_vfsops(const char *fstype, enum uio_seg type_seg,
+    struct vfsops **vfsops)
 {
 	char fstypename[sizeof(((struct statvfs *)NULL)->f_fstypename)];
 	int error;
 
-	/* Copy file-system type from userspace.  */
-	error = copyinstr(fstype, fstypename, sizeof(fstypename), NULL);
+	if (type_seg == UIO_USERSPACE) {
+		/* Copy file-system type from userspace.  */
+		error = copyinstr(fstype, fstypename, sizeof(fstypename), NULL);
+	} else {
+		error = copystr(fstype, fstypename, sizeof(fstypename), NULL);
+		KASSERT(error == 0);
+	}
+
 	if (error) {
 		/*
 		 * Historically, filesystem types were identified by numbers.
@@ -446,25 +452,22 @@ sys___mount50(struct lwp *l, const struct sys___mount50_args *uap, register_t *r
 		syscallarg(size_t) data_len;
 	} */
 
-	return do_sys_mount(l, NULL, SCARG(uap, type), SCARG(uap, path),
+	return do_sys_mount(l, SCARG(uap, type), UIO_USERSPACE, SCARG(uap, path),
 	    SCARG(uap, flags), SCARG(uap, data), UIO_USERSPACE,
 	    SCARG(uap, data_len), retval);
 }
 
 int
-do_sys_mount(struct lwp *l, struct vfsops *vfsops, const char *type,
+do_sys_mount(struct lwp *l, const char *type, enum uio_seg type_seg,
     const char *path, int flags, void *data, enum uio_seg data_seg,
     size_t data_len, register_t *retval)
 {
+	struct vfsops *vfsops = NULL;	/* XXX gcc4.8 */
 	struct vnode *vp;
 	void *data_buf = data;
 	bool vfsopsrele = false;
 	size_t alloc_sz = 0;
 	int error;
-
-	/* XXX: The calling convention of this routine is totally bizarre */
-	if (vfsops)
-		vfsopsrele = true;
 
 	/*
 	 * Get vnode to be covered
@@ -475,16 +478,14 @@ do_sys_mount(struct lwp *l, struct vfsops *vfsops, const char *type,
 		goto done;
 	}
 
-	if (vfsops == NULL) {
-		if (flags & (MNT_GETARGS | MNT_UPDATE)) {
-			vfsops = vp->v_mount->mnt_op;
-		} else {
-			/* 'type' is userspace */
-			error = mount_get_vfsops(type, &vfsops);
-			if (error != 0)
-				goto done;
-			vfsopsrele = true;
-		}
+	if (flags & (MNT_GETARGS | MNT_UPDATE)) {
+		vfsops = vp->v_mount->mnt_op;
+	} else {
+		/* 'type' is userspace */
+		error = mount_get_vfsops(type, type_seg, &vfsops);
+		if (error != 0)
+			goto done;
+		vfsopsrele = true;
 	}
 
 	/*
@@ -574,7 +575,7 @@ sys_unmount(struct lwp *l, const struct sys_unmount_args *uap, register_t *retva
 		return error;
 	}
 
-	NDINIT(&nd, LOOKUP, LOCKLEAF | TRYEMULROOT, pb);
+	NDINIT(&nd, LOOKUP, NOFOLLOW | LOCKLEAF | TRYEMULROOT, pb);
 	if ((error = namei(&nd)) != 0) {
 		pathbuf_destroy(pb);
 		return error;
@@ -1951,7 +1952,7 @@ dofhopen(struct lwp *l, const void *ufhp, size_t fhsize, int oflags,
 	struct vnode *vp = NULL;
 	kauth_cred_t cred = l->l_cred;
 	file_t *nfp;
-	int indx, error = 0;
+	int indx, error;
 	struct vattr va;
 	fhandle_t *fh;
 	int flags;
@@ -2407,6 +2408,8 @@ do_sys_linkat(struct lwp *l, int fdpath, const char *path, int fdlink,
 		goto abortop;
 	}
 	error = VOP_LINK(nd.ni_dvp, vp, &nd.ni_cnd);
+	VOP_UNLOCK(nd.ni_dvp);
+	vrele(nd.ni_dvp);
 out2:
 	pathbuf_destroy(linkpb);
 out1:
@@ -2758,15 +2761,16 @@ sys_lseek(struct lwp *l, const struct sys_lseek_args *uap, register_t *retval)
 		goto out;
 	}
 
+	vn_lock(vp, LK_SHARED | LK_RETRY);
+
 	switch (SCARG(uap, whence)) {
 	case SEEK_CUR:
 		newoff = fp->f_offset + SCARG(uap, offset);
 		break;
 	case SEEK_END:
-		vn_lock(vp, LK_SHARED | LK_RETRY);
 		error = VOP_GETATTR(vp, &vattr, cred);
-		VOP_UNLOCK(vp);
 		if (error) {
+			VOP_UNLOCK(vp);
 			goto out;
 		}
 		newoff = SCARG(uap, offset) + vattr.va_size;
@@ -2776,8 +2780,10 @@ sys_lseek(struct lwp *l, const struct sys_lseek_args *uap, register_t *retval)
 		break;
 	default:
 		error = EINVAL;
+		VOP_UNLOCK(vp);
 		goto out;
 	}
+	VOP_UNLOCK(vp);
 	if ((error = VOP_SEEK(vp, fp->f_offset, newoff, cred)) == 0) {
 		*(off_t *)retval = fp->f_offset = newoff;
 	}
@@ -4196,7 +4202,7 @@ do_sys_renameat(struct lwp *l, int fromfd, const char *from, int tofd,
 	 * locked yet, but (a) namei is insane, and (b) VOP_RENAME is
 	 * insane, so for the time being we need to leave it like this.
 	 */
-	NDINIT(&fnd, DELETE, (LOCKPARENT | TRYEMULROOT | INRENAME), fpb);
+	NDINIT(&fnd, DELETE, (LOCKPARENT | TRYEMULROOT), fpb);
 	if ((error = fd_nameiat(l, fromfd, &fnd)) != 0)
 		goto out2;
 
@@ -4249,7 +4255,7 @@ do_sys_renameat(struct lwp *l, int fromfd, const char *from, int tofd,
 	 * XXX Why not pass CREATEDIR always?
 	 */
 	NDINIT(&tnd, RENAME,
-	    (LOCKPARENT | NOCACHE | TRYEMULROOT | INRENAME |
+	    (LOCKPARENT | NOCACHE | TRYEMULROOT |
 		((fvp->v_type == VDIR)? CREATEDIR : 0)),
 	    tpb);
 	if ((error = fd_nameiat(l, tofd, &tnd)) != 0)
@@ -4281,12 +4287,14 @@ do_sys_renameat(struct lwp *l, int fromfd, const char *from, int tofd,
 	 * until the VOP_RENAME protocol changes, because file systems
 	 * will no doubt begin to depend on this check.
 	 */
-	if (((tnd.ni_cnd.cn_namelen == 1) &&
-		(tnd.ni_cnd.cn_nameptr[0] == '.')) ||
-	    ((tnd.ni_cnd.cn_namelen == 2) &&
-		(tnd.ni_cnd.cn_nameptr[0] == '.') &&
-		(tnd.ni_cnd.cn_nameptr[1] == '.'))) {
-		error = EINVAL;	/* XXX EISDIR?  */
+	if ((tnd.ni_cnd.cn_namelen == 1) && (tnd.ni_cnd.cn_nameptr[0] == '.')) {
+		error = EISDIR;
+		goto abort1;
+	}
+	if ((tnd.ni_cnd.cn_namelen == 2) &&
+	    (tnd.ni_cnd.cn_nameptr[0] == '.') &&
+	    (tnd.ni_cnd.cn_nameptr[1] == '.')) {
+		error = EINVAL;
 		goto abort1;
 	}
 
@@ -4716,12 +4724,14 @@ sys_posix_fallocate(struct lwp *l, const struct sys_posix_fallocate_args *uap,
 	len = SCARG(uap, len);
 	
 	if (pos < 0 || len < 0 || len > OFF_T_MAX - pos) {
-		return EINVAL;
+		*retval = EINVAL;
+		return 0;
 	}
 	
 	error = fd_getvnode(fd, &fp);
 	if (error) {
-		return error;
+		*retval = error;
+		return 0;
 	}
 	if ((fp->f_flag & FWRITE) == 0) {
 		error = EBADF;
@@ -4739,7 +4749,8 @@ sys_posix_fallocate(struct lwp *l, const struct sys_posix_fallocate_args *uap,
 
 fail:
 	fd_putfile(fd);
-	return error;
+	*retval = error;
+	return 0;
 }
 
 /*

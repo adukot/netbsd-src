@@ -1,4 +1,4 @@
-/*	$NetBSD: md.c,v 1.73 2015/01/02 19:42:06 christos Exp $	*/
+/*	$NetBSD: md.c,v 1.76 2016/01/04 16:24:52 hannken Exp $	*/
 
 /*
  * Copyright (c) 1995 Gordon W. Ross, Leo Weppelman.
@@ -40,7 +40,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: md.c,v 1.73 2015/01/02 19:42:06 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: md.c,v 1.76 2016/01/04 16:24:52 hannken Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_md.h"
@@ -65,6 +65,7 @@ __KERNEL_RCSID(0, "$NetBSD: md.c,v 1.73 2015/01/02 19:42:06 christos Exp $");
 
 #include <dev/md.h>
 
+#include "ioconf.h"
 /*
  * The user-space functionality is included by default.
  * Use  `options MEMORY_DISK_SERVER=0' to turn it off.
@@ -92,8 +93,6 @@ struct md_softc {
 #define sc_addr sc_md.md_addr
 #define sc_size sc_md.md_size
 #define sc_type sc_md.md_type
-
-void	mdattach(int);
 
 static void	md_attach(device_t, device_t, void *);
 static int	md_detach(device_t, int);
@@ -132,7 +131,9 @@ const struct cdevsw md_cdevsw = {
 	.d_flag = D_DISK
 };
 
-static struct dkdriver mddkdriver = { mdstrategy, NULL };
+static struct dkdriver mddkdriver = {
+	.d_strategy = mdstrategy
+};
 
 extern struct cfdriver md_cd;
 CFATTACH_DECL3_NEW(md, sizeof(struct md_softc),
@@ -527,6 +528,7 @@ mdioctl(dev_t dev, u_long cmd, void *data, int flag, struct lwp *l)
 static void
 md_set_disklabel(struct md_softc *sc)
 {
+	struct disk_geom *dg = &sc->sc_dkdev.dk_geom;
 	struct disklabel *lp = sc->sc_dkdev.dk_label;
 	struct partition *pp;
 
@@ -566,6 +568,16 @@ md_set_disklabel(struct md_softc *sc)
 	lp->d_magic = DISKMAGIC;
 	lp->d_magic2 = DISKMAGIC;
 	lp->d_checksum = dkcksum(lp);
+
+	memset(dg, 0, sizeof(*dg));
+
+	dg->dg_secsize = lp->d_secsize;
+	dg->dg_secperunit = lp->d_secperunit;
+	dg->dg_nsectors = lp->d_nsectors;
+	dg->dg_ntracks = lp->d_ntracks = 64;;
+	dg->dg_ncylinders = lp->d_ncylinders;
+
+	disk_set_info(sc->sc_dev, &sc->sc_dkdev, NULL);
 }
 
 /*

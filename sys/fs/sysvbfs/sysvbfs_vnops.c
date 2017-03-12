@@ -1,4 +1,4 @@
-/*	$NetBSD: sysvbfs_vnops.c,v 1.56 2014/12/26 15:23:21 hannken Exp $	*/
+/*	$NetBSD: sysvbfs_vnops.c,v 1.59 2015/11/13 13:36:54 pooka Exp $	*/
 
 /*-
  * Copyright (c) 2004 The NetBSD Foundation, Inc.
@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: sysvbfs_vnops.c,v 1.56 2014/12/26 15:23:21 hannken Exp $");
+__KERNEL_RCSID(0, "$NetBSD: sysvbfs_vnops.c,v 1.59 2015/11/13 13:36:54 pooka Exp $");
 
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -426,7 +426,7 @@ sysvbfs_read(void *arg)
 	struct sysvbfs_node *bnode = v->v_data;
 	struct bfs_inode *inode = bnode->inode;
 	vsize_t sz, filesz = bfs_file_size(inode);
-	int err;
+	int err, uerr;
 	const int advice = IO_ADV_DECODE(a->a_ioflag);
 
 	DPRINTF("%s: type=%d\n", __func__, v->v_type);
@@ -439,6 +439,7 @@ sysvbfs_read(void *arg)
 		return EINVAL;
 	}
 
+	err = 0;
 	while (uio->uio_resid > 0) {
 		if ((sz = MIN(filesz - uio->uio_offset, uio->uio_resid)) == 0)
 			break;
@@ -450,7 +451,11 @@ sysvbfs_read(void *arg)
 		DPRINTF("%s: read %ldbyte\n", __func__, sz);
 	}
 
-	return sysvbfs_update(v, NULL, NULL, UPDATE_WAIT);
+	uerr = sysvbfs_update(v, NULL, NULL, UPDATE_WAIT);
+	if (err == 0)
+		err = uerr;
+
+	return err;
 }
 
 int
@@ -637,15 +642,18 @@ sysvbfs_readdir(void *v)
 	if ((i + n) > bfs->n_dirent)
 		n = bfs->n_dirent - i;
 
-	for (file = &bfs->dirent[i]; i < n; file++) {
-		if (file->inode == 0)
-			continue;
+	DPRINTF("%s 1: %d %d %d\n", __func__, i, n, bfs->n_dirent);
+	for (file = &bfs->dirent[i]; n > 0; file++, i++) {
 		if (i == bfs->max_dirent) {
 			DPRINTF("%s: file system inconsistent.\n",
 			    __func__);
 			break;
 		}
-		i++;
+		if (file->inode == 0)
+			continue;
+
+		/* ok, we have a live one here */
+		n--;
 		memset(dp, 0, sizeof(struct dirent));
 		dp->d_fileno = file->inode;
 		dp->d_type = file->inode == BFS_ROOT_INODE ? DT_DIR : DT_REG;
@@ -658,7 +666,7 @@ sysvbfs_readdir(void *v)
 			return error;
 		}
 	}
-	DPRINTF("%s: %d %d %d\n", __func__, i, n, bfs->n_dirent);
+	DPRINTF("%s 2: %d %d %d\n", __func__, i, n, bfs->n_dirent);
 	*ap->a_eofflag = (i == bfs->n_dirent);
 
 	free(dp, M_BFS);

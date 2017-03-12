@@ -1,4 +1,4 @@
-/*	$NetBSD: dbcool.c,v 1.41 2014/08/10 16:44:35 tls Exp $ */
+/*	$NetBSD: dbcool.c,v 1.44 2015/12/16 08:05:38 jdc Exp $ */
 
 /*-
  * Copyright (c) 2008 The NetBSD Foundation, Inc.
@@ -50,7 +50,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: dbcool.c,v 1.41 2014/08/10 16:44:35 tls Exp $");
+__KERNEL_RCSID(0, "$NetBSD: dbcool.c,v 1.44 2015/12/16 08:05:38 jdc Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -731,6 +731,10 @@ static char dbcool_cur_behav[16];
 CFATTACH_DECL_NEW(dbcool, sizeof(struct dbcool_softc),
     dbcool_match, dbcool_attach, dbcool_detach, NULL);
 
+static const char * dbcool_compats[] = {
+	"i2c-adm1031",
+	NULL
+};
 int
 dbcool_match(device_t parent, cfdata_t cf, void *aux)
 {
@@ -742,12 +746,19 @@ dbcool_match(device_t parent, cfdata_t cf, void *aux)
 	dc.dc_readreg = dbcool_readreg;
 	dc.dc_writereg = dbcool_writereg;
 
-	/* no probing if we attach to iic, but verify chip id  and address */
-	if ((ia->ia_addr & DBCOOL_ADDRMASK) != DBCOOL_ADDR)
-		return 0;
-	if (dbcool_chip_ident(&dc) >= 0)
-		return 1;
-
+	/* Direct config - match compats */
+	if (ia->ia_name) {
+		if (ia->ia_ncompat > 0) {
+			if (iic_compat_match(ia, dbcool_compats))
+				return 1;
+		}
+	/* Indirect config - check address and chip ID */
+	} else {
+		if ((ia->ia_addr & DBCOOL_ADDRMASK) != DBCOOL_ADDR)
+			return 0;
+		if (dbcool_chip_ident(&dc) >= 0)
+			return 1;
+	}
 	return 0;
 }
 
@@ -2161,7 +2172,7 @@ dbcool_set_fan_limits(struct dbcool_softc *sc, int idx,
 	}
 }
 
-MODULE(MODULE_CLASS_DRIVER, dbcool, "iic");
+MODULE(MODULE_CLASS_DRIVER, dbcool, "i2cexec,sysmon_envsys");
 
 #ifdef _MODULE
 #include "ioconf.c"

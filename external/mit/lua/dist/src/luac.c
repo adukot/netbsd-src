@@ -1,5 +1,7 @@
+/*	$NetBSD: luac.c,v 1.6 2016/01/28 14:41:39 lneto Exp $	*/
+
 /*
-** $Id: luac.c,v 1.3 2015/02/02 14:03:05 lneto Exp $
+** Id: luac.c,v 1.75 2015/03/12 01:58:27 lhf Exp 
 ** Lua compiler (saves bytecodes to files; also lists bytecodes)
 ** See Copyright Notice in lua.h
 */
@@ -206,7 +208,7 @@ int main(int argc, char* argv[])
 }
 
 /*
-** $Id: luac.c,v 1.3 2015/02/02 14:03:05 lneto Exp $
+** Id: luac.c,v 1.75 2015/03/12 01:58:27 lhf Exp 
 ** print bytecodes
 ** See Copyright Notice in lua.h
 */
@@ -226,7 +228,7 @@ int main(int argc, char* argv[])
 static void PrintString(const TString* ts)
 {
  const char* s=getstr(ts);
- size_t i,n=ts->len;
+ size_t i,n=tsslen(ts);
  printf("%c",'"');
  for (i=0; i<n; i++)
  {
@@ -265,7 +267,11 @@ static void PrintConstant(const Proto* f, int i)
   case LUA_TNUMFLT:
 	{
 	char buff[100];
+#ifndef __NetBSD__
 	sprintf(buff,LUA_NUMBER_FMT,fltvalue(o));
+#else /* __NetBSD__ */
+	l_sprintf(buff, sizeof(buff), LUA_NUMBER_FMT,fltvalue(o));
+#endif /* __NetBSD__ */
 	printf("%s",buff);
 	if (buff[strspn(buff,"-0123456789")]=='\0') printf(".0");
 	break;

@@ -1,5 +1,5 @@
 %{
-/* $NetBSD: scan.l,v 1.60 2014/10/18 08:33:30 snj Exp $ */
+/* $NetBSD: scan.l,v 1.65 2016/02/27 21:37:14 christos Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -35,7 +35,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: scan.l,v 1.60 2014/10/18 08:33:30 snj Exp $");
+__RCSID("$NetBSD: scan.l,v 1.65 2016/02/27 21:37:14 christos Exp $");
 #endif
 
 #include <stdlib.h>
@@ -49,7 +49,7 @@ __RCSID("$NetBSD: scan.l,v 1.60 2014/10/18 08:33:30 snj Exp $");
 #include "lint1.h"
 #include "cgram.h"
 
-#define CHAR_MASK	(~(~0 << CHAR_BIT))
+#define CHAR_MASK	((int)(~(~0U << CHAR_BIT)))
 
 /* Current position (its also updated when an included file is parsed) */
 pos_t	curr_pos = { 1, "", 0 };
@@ -86,9 +86,11 @@ static	int	wcstrg(void);
 
 %}
 
+
 L	[_A-Za-z]
 D	[0-9]
 NZD	[1-9]
+BD	[0-1]
 OD	[0-7]
 HD	[0-9A-Fa-f]
 EX	([eE][+-]?[0-9]+)
@@ -100,6 +102,7 @@ TL	([fFlL]?[i]?)
 %%
 
 {L}({L}|{D})*		 	return (name());
+0[bB]{BD}+[lLuU]*		return (icon(2));
 0{OD}*[lLuU]*			return (icon(8));
 {NZD}{D}*[lLuU]*		return (icon(10));
 0[xX]{HD}+[lLuU]*		return (icon(16));
@@ -291,6 +294,12 @@ static	struct	kwtab {
 	{ "volatile",	T_QUAL,		0,	0,	VOLATILE, 1, 0, 0, 0 },
 	{ "__volatile__", T_QUAL,	0,	0,	VOLATILE, 0, 0, 0, 0 },
 	{ "__volatile",	T_QUAL,		0,	0,	VOLATILE, 0, 0, 0, 0 },
+	{ "visibility", T_AT_VISIBILITY,0,	0,	0,	  0, 0, 1, 1 },
+	{ "__visibility",T_AT_VISIBILITY,0,	0,	0,	  0, 0, 1, 1 },
+	{ "__visibility__",T_AT_VISIBILITY,0,	0,	0,	  0, 0, 1, 1 },
+	{ "weak",	T_AT_WEAK,	0,	0,	0,	  0, 0, 1, 1 },
+	{ "__weak",	T_AT_WEAK,	0,	0,	0,	  0, 0, 1, 1 },
+	{ "__weak__",	T_AT_WEAK,	0,	0,	0,	  0, 0, 1, 1 },
 	{ "while",	T_WHILE,	0,	0,	0,	  0, 0, 0, 0 },
 	{ NULL,		0,		0,	0,	0,	  0, 0, 0, 0 }
 };
@@ -532,8 +541,8 @@ icon(int base)
 	cp = yytext;
 	len = yyleng;
 
-	/* skip 0x */
-	if (base == 16) {
+	/* skip 0[xX] or 0[bB] */
+	if (base == 16 || base == 2) {
 		cp += 2;
 		len -= 2;
 	}

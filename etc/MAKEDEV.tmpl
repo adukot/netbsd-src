@@ -1,5 +1,5 @@
 #!/bin/sh -
-#	$NetBSD: MAKEDEV.tmpl,v 1.173 2014/09/19 09:00:23 matt Exp $
+#	$NetBSD: MAKEDEV.tmpl,v 1.179 2016/01/28 19:06:39 riz Exp $
 #
 # Copyright (c) 2003,2007,2008 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -244,6 +244,7 @@
 #	fd	file descriptors
 #	grf*	graphics frame buffer device
 #	hdaudio* High Definition audio control device
+#	hdmicec* HDMI CEC devices
 #	hil	HP300 HIL input devices
 #	icp	ICP-Vortex/Intel RAID control interface
 #	iic*	IIC bus device
@@ -817,6 +818,7 @@ all)
 	makedev dk8 dk9 dk10 dk11 dk12 dk13 dk14 dk15
 	makedev ccd0 ccd1 ccd2 ccd3
 	makedev cgd0 cgd1 cgd2 cgd3
+	makedev filemon
 	makedev fss0 fss1 fss2 fss3
 	makedev md0 md1
 	makedev raid0 raid1 raid2 raid3 raid4 raid5 raid6 raid7
@@ -839,6 +841,8 @@ all)
 	makedev altmem
 	makedev zfs
 	makedev lua
+	makedev hdmicec0
+	makedev dtrace
 	makedev local # do this last
 	;;
 
@@ -921,6 +925,7 @@ std)
 	mkdev		kmem	c %mem_chr% 1	640 $g_kmem
 	mkdev		mem	c %mem_chr% 0	640 $g_kmem
 	mkdev		null	c %mem_chr% 2	666
+	mkdev		full	c %mem_chr% 11	666
 	mkdev		zero	c %mem_chr% 12	666
 	mkdev		klog	c %log_chr% 0	600
 	mkdev		ksyms	c %ksyms_chr% 0 444
@@ -988,6 +993,10 @@ ttyY[0-9]*)
 	mkdev ctyY$unit c %ucycom_chr% $(($unit + $callunit)) "" "" $u_uucp
 	;;
 
+ucom[0-9]*)
+	makedev ttyU${i#ucom}
+	;;
+
 ttyU[0-9]*)
 	unit=${i#ttyU}
 	mkdev ttyU$unit c %ucom_chr% $(($unit + $dialin	 )) "" "" $u_uucp
@@ -1005,11 +1014,17 @@ ugen[0-9]*)
 
 wscons)
 	makedev ttyE0 ttyE1 ttyE2 ttyE3 ttyE4 ttyE5 ttyE6 ttyE7
+	makedev ttyF0 ttyF1 ttyF2 ttyF3 ttyF4 ttyF5 ttyF6 ttyF7
+	makedev ttyG0 ttyG1 ttyG2 ttyG3 ttyG4 ttyG5 ttyG6 ttyG7
+	makedev ttyH0 ttyH1 ttyH2 ttyH3 ttyH4 ttyH5 ttyH6 ttyH7
 	makedev wsmouse0 wsmouse1 wsmouse2 wsmouse3
 	makedev wskbd0 wskbd1 wskbd2 wskbd3
 	makedev wsmux0 wsmux1 wsmux2 wsmux3
 	makedev wsmouse wskbd
 	makedev ttyEcfg ttyEstat
+	makedev ttyFcfg ttyFstat
+	makedev ttyGcfg ttyGstat
+	makedev ttyHcfg ttyHstat
 	makedev wsfont
 	;;
 
@@ -1050,6 +1065,45 @@ ttyEcfg)
 ttyE[0-9]*)
 	unit=${i#ttyE}
 	mkdev ttyE$unit c %wsdisplay_chr% $unit
+	;;
+
+ttyFstat)
+	mkdev ttyFstat c %wsdisplay_chr% 510
+	;;
+
+ttyFcfg)
+	mkdev ttyFcfg c %wsdisplay_chr% 511
+	;;
+
+ttyF[0-9]*)
+	unit=${i#ttyF}
+	mkdev ttyF$unit c %wsdisplay_chr% $(($unit + 256))
+	;;
+
+ttyGstat)
+	mkdev ttyGstat c %wsdisplay_chr% 766
+	;;
+
+ttyGcfg)
+	mkdev ttyGcfg c %wsdisplay_chr% 767
+	;;
+
+ttyG[0-9]*)
+	unit=${i#ttyG}
+	mkdev ttyG$unit c %wsdisplay_chr% $(($unit + 512))
+	;;
+
+ttyHstat)
+	mkdev ttyHstat c %wsdisplay_chr% 1022
+	;;
+
+ttyHcfg)
+	mkdev ttyHcfg c %wsdisplay_chr% 1023
+	;;
+
+ttyH[0-9]*)
+	unit=${i#ttyH}
+	mkdev ttyH$unit c %wsdisplay_chr% $(($unit + 768))
 	;;
 
 wsmouse[0-9]*)
@@ -1464,6 +1518,11 @@ audio|audio[0-9]*)
 hdaudio[0-9]*)
 	unit=${i#hdaudio}
 	mkdev hdaudio$unit c %hdaudio_chr% $unit 644
+	;;
+
+hdmicec[0-9]*)
+	uint=${i#hdmicec}
+	mkdev hdmicec$unit c %hdmicec_chr% $unit 644
 	;;
 
 gpio[0-9]*)
@@ -2106,6 +2165,10 @@ tpm)
 dtrace)
 	makedir dtrace 755
 	mkdev dtrace/dtrace c %dtrace_chr% 0 600
+	;;
+
+filemon)
+	mkdev filemon c %filemon_chr% 0 666
 	;;
 
 fw[0-9]*)

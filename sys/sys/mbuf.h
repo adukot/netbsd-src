@@ -1,4 +1,4 @@
-/*	$NetBSD: mbuf.h,v 1.156 2014/09/05 05:48:59 matt Exp $	*/
+/*	$NetBSD: mbuf.h,v 1.161 2016/04/20 08:56:32 knakahara Exp $	*/
 
 /*-
  * Copyright (c) 1996, 1997, 1999, 2001, 2007 The NetBSD Foundation, Inc.
@@ -75,6 +75,7 @@
 #include <sys/queue.h>
 #if defined(_KERNEL)
 #include <sys/percpu_types.h>
+#include <sys/socket.h>	/* for AF_UNSPEC */
 #endif /* defined(_KERNEL) */
 
 /* For offsetof() */
@@ -169,6 +170,9 @@ struct m_hdr {
  * be bit-wise inverted (the final step in the calculation of an IP
  * checksum) -- this is so we can accumulate the checksum for fragmented
  * packets during reassembly.
+ *
+ * Size ILP32: 36
+ *       LP64: 56
  */
 struct	pkthdr {
 	struct ifnet	*rcvif;			/* rcv interface */
@@ -177,6 +181,14 @@ struct	pkthdr {
 	int		csum_flags;		/* checksum flags */
 	uint32_t	csum_data;		/* checksum data */
 	u_int		segsz;			/* segment size */
+
+	/*
+	 * Following three fields are open-coded struct altq_pktattr
+	 * to rearrange struct pkthdr fields flexibly.
+	 */
+	void	*pattr_class;		/* ALTQ: sched class set by classifier */
+	void	*pattr_hdr;		/* ALTQ: saved header position in mbuf */
+	int	pattr_af;		/* ALTQ: address family */
 };
 
 /*
@@ -322,29 +334,34 @@ MBUF_DEFINE(_mbuf_dummy, 1, 1);
 MBUF_DEFINE(mbuf, MHLEN, MLEN);
 
 /* mbuf flags */
-#define	M_EXT		0x00001	/* has associated external storage */
-#define	M_PKTHDR	0x00002	/* start of record */
-#define	M_EOR		0x00004	/* end of record */
-#define	M_PROTO1	0x00008	/* protocol-specific */
+#define	M_EXT		0x00000001	/* has associated external storage */
+#define	M_PKTHDR	0x00000002	/* start of record */
+#define	M_EOR		0x00000004	/* end of record */
+#define	M_PROTO1	0x00000008	/* protocol-specific */
 
 /* mbuf pkthdr flags, also in m_flags */
-#define M_AUTHIPHDR	0x00010	/* data origin authentication for IP header */
-#define M_DECRYPTED	0x00020	/* confidentiality */
-#define M_LOOP		0x00040	/* for Mbuf statistics */
-#define M_AUTHIPDGM     0x00080  /* data origin authentication */
-#define	M_BCAST		0x00100	/* send/received as link-level broadcast */
-#define	M_MCAST		0x00200	/* send/received as link-level multicast */
-#define	M_CANFASTFWD	0x00400	/* used by filters to indicate packet can
-				   be fast-forwarded */
-#define	M_ANYCAST6	0x00800	/* received as IPv6 anycast */
-#define	M_LINK0		0x01000	/* link layer specific flag */
-#define	M_LINK1		0x02000	/* link layer specific flag */
-#define	M_LINK2		0x04000	/* link layer specific flag */
-#define	M_LINK3		0x08000	/* link layer specific flag */
-#define	M_LINK4		0x10000	/* link layer specific flag */
-#define	M_LINK5		0x20000	/* link layer specific flag */
-#define	M_LINK6		0x40000	/* link layer specific flag */
-#define	M_LINK7		0x80000	/* link layer specific flag */
+#define	M_AUTHIPHDR	0x00000010	/* data origin authentication for
+					 * IP header */
+#define	M_DECRYPTED	0x00000020	/* confidentiality */
+#define	M_LOOP		0x00000040	/* for Mbuf statistics */
+#define	M_AUTHIPDGM     0x00000080	/* data origin authentication */
+#define	M_BCAST		0x00000100	/* send/received as link-level
+					 * broadcast */
+#define	M_MCAST		0x00000200	/* send/received as link-level
+					 * multicast */
+#define	M_CANFASTFWD	0x00000400	/* used by filters to indicate
+					 * packet can be fast-forwarded */
+#define	M_ANYCAST6	0x00000800	/* received as IPv6 anycast */
+
+#define	M_LINK0		0x00001000	/* link layer specific flag */
+#define	M_LINK1		0x00002000	/* link layer specific flag */
+#define	M_LINK2		0x00004000	/* link layer specific flag */
+
+#define	M_LINK3		0x00008000	/* link layer specific flag */
+#define	M_LINK4		0x00010000	/* link layer specific flag */
+#define	M_LINK5		0x00020000	/* link layer specific flag */
+#define	M_LINK6		0x00040000	/* link layer specific flag */
+#define	M_LINK7		0x00080000	/* link layer specific flag */
 
 /* additional flags for M_EXT mbufs */
 #define	M_EXT_FLAGS	0xff000000
@@ -355,6 +372,7 @@ MBUF_DEFINE(mbuf, MHLEN, MLEN);
 
 /* for source-level compatibility */
 #define	M_CLUSTER	M_EXT_CLUSTER
+#define	M_NOTIFICATION	M_PROTO1
 
 #define M_FLAGS_BITS \
     "\20\1EXT\2PKTHDR\3EOR\4PROTO1\5AUTHIPHDR\6DECRYPTED\7LOOP\10AUTHIPDGM" \
@@ -908,6 +926,8 @@ struct	m_tag *m_tag_next(struct mbuf *, struct m_tag *);
 						    * loop detection/recovery
 						    */
 
+#define	PACKET_TAG_MPLS				29 /* Indicate it's for MPLS */
+
 /*
  * Return the number of bytes in the mbuf chain, m.
  */
@@ -924,6 +944,42 @@ m_length(const struct mbuf *m)
 	for (m0 = m; m0 != NULL; m0 = m0->m_next)
 		pktlen += m0->m_len;
 	return pktlen;
+}
+
+static __inline void
+m_hdr_init(struct mbuf *m, short type, struct mbuf *next, char *data, int len)
+{
+
+	KASSERT(m != NULL);
+
+	mowner_init(m, type);
+	m->m_ext_ref = m; /* default */
+	m->m_type = type;
+	m->m_len = len;
+	m->m_next = next;
+	m->m_nextpkt = NULL; /* default */
+	m->m_data = data;
+	m->m_flags = 0; /* default */
+}
+
+static __inline void
+m_pkthdr_init(struct mbuf *m)
+{
+
+	KASSERT(m != NULL);
+
+	m->m_data = m->m_pktdat;
+	m->m_flags = M_PKTHDR;
+
+	m->m_pkthdr.rcvif = NULL;
+	m->m_pkthdr.len = 0;
+	m->m_pkthdr.csum_flags = 0;
+	m->m_pkthdr.csum_data = 0;
+	SLIST_INIT(&m->m_pkthdr.tags);
+
+	m->m_pkthdr.pattr_class = NULL;
+	m->m_pkthdr.pattr_af = AF_UNSPEC;
+	m->m_pkthdr.pattr_hdr = NULL;
 }
 
 void m_print(const struct mbuf *, const char *, void (*)(const char *, ...)

@@ -1,4 +1,4 @@
-# $NetBSD: mkvars.mk,v 1.15 2014/01/26 21:33:53 joerg Exp $
+# $NetBSD: mkvars.mk,v 1.26 2016/02/21 04:16:36 christos Exp $
 
 MKEXTRAVARS= \
 	MACHINE \
@@ -6,6 +6,7 @@ MKEXTRAVARS= \
 	MACHINE_CPU \
 	HAVE_GCC \
 	HAVE_GDB \
+	HAVE_BINUTILS \
 	HAVE_LIBGCC_EH \
 	HAVE_SSP \
 	OBJECT_FMT \
@@ -14,6 +15,7 @@ MKEXTRAVARS= \
 	MKMANZ \
 	MKBFD \
 	MKCOMPAT \
+	MKCOMPATTESTS \
 	MKCOMPATMODULES \
 	MKDYNAMICROOT \
 	MKMANPAGES \
@@ -21,7 +23,7 @@ MKEXTRAVARS= \
 	MKSOFTFLOAT \
 	MKXORG \
 	MKXORG_SERVER \
-	X11FLAVOR \
+	MKRADEONFIRMWARE \
 	USE_INET6 \
 	USE_KERBEROS \
 	USE_LDAP \
@@ -43,13 +45,23 @@ MKMANPAGES=no
 MKMANPAGES=yes
 .endif
 
+.if ${MKCOMPAT} != "no"
+ARCHDIR_SUBDIR:=
+.include "${NETBSDSRCDIR}/compat/archdirs.mk"
+COMPATARCHDIRS:=${ARCHDIR_SUBDIR:T}
+.endif
+
+.if ${MKKMOD} != "no" && ${MKCOMPATMODULES} != "no"
+ARCHDIR_SUBDIR:=
+.include "${NETBSDSRCDIR}/sys/modules/arch/archdirs.mk"
+KMODARCHDIRS:=${ARCHDIR_SUBDIR:T}
+.endif
+
 .if ${MKX11} != "no"
-. if ${X11FLAVOUR} == "Xorg"
 MKXORG:=yes
+# We have to force this off, because "MKX11" is still an option
+# that is in _MKVARS.
 MKX11:=no
-. else
-MKXORG:=no
-. endif
 .endif
 
 .if (!empty(MACHINE_ARCH:Mearm*))
@@ -80,9 +92,19 @@ mkextravars: .PHONY
 .for i in ${MKEXTRAVARS}
 	@echo $i="${$i}"
 .endfor
+.if ${MKCOMPAT} != "no"
+	@echo COMPATARCHDIRS=${COMPATARCHDIRS} | ${TOOL_SED} -e's/ /,/g'
+.else
+	@echo COMPATARCHDIRS=
+.endif
+.if ${MKKMOD} != "no" && ${MKCOMPATMODULES} != "no"
+	@echo KMODARCHDIRS=${KMODARCHDIRS} | ${TOOL_SED} -e's/ /,/g'
+.else
+	@echo KMODARCHDIRS=
+.endif
 
 mksolaris: .PHONY
-.if (${MKDTRACE} != "no" || ${MKZFS} != "no")
+.if (${MKDTRACE} != "no" || ${MKZFS} != "no" || ${MKCTF} != "no")
 	@echo MKSOLARIS="yes"
 .else
 	@echo MKSOLARIS="no"

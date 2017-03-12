@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.31 2015/01/29 20:46:31 joerg Exp $
+#	$NetBSD: Makefile,v 1.33 2016/03/16 23:02:23 christos Exp $
 
 WARNS=3
 CWARNFLAGS.clang+=	-Wno-error=cast-qual

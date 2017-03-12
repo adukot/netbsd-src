@@ -1,7 +1,7 @@
-/*	$NetBSD: dig.h,v 1.10 2014/12/10 04:37:51 christos Exp $	*/
+/*	$NetBSD: dig.h,v 1.12 2015/12/17 04:00:41 christos Exp $	*/
 
 /*
- * Copyright (C) 2004-2009, 2011-2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2004-2009, 2011-2015  Internet Systems Consortium, Inc. ("ISC")
  * Copyright (C) 2000-2003  Internet Software Consortium.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,8 +16,6 @@
  * OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
  * PERFORMANCE OF THIS SOFTWARE.
  */
-
-/* Id: dig.h,v 1.114 2011/12/07 17:23:28 each Exp  */
 
 #ifndef DIG_H
 #define DIG_H
@@ -137,7 +135,8 @@ struct dig_lookup {
 #ifdef ISC_PLATFORM_USESIT
 		sit,
 #endif
-		nsid;   /*% Name Server ID (RFC 5001) */
+		nsid,   /*% Name Server ID (RFC 5001) */
+		ednsneg;
 #ifdef DIG_SIGCHASE
 isc_boolean_t	sigchase;
 #if DIG_SIGCHASE_TD
@@ -195,6 +194,10 @@ isc_boolean_t	sigchase;
 #ifdef ISC_PLATFORM_USESIT
 	char *sitvalue;
 #endif
+	dns_ednsopt_t *ednsopts;
+	unsigned int ednsoptscnt;
+	unsigned int ednsflags;
+	dns_opcode_t opcode;
 };
 
 /*% The dig_query structure */
@@ -269,7 +272,6 @@ extern isc_boolean_t check_ra, have_ipv4, have_ipv6, specified_source,
 extern in_port_t port;
 extern unsigned int timeout;
 extern isc_mem_t *mctx;
-extern dns_messageid_t id;
 extern int sendcount;
 extern int ndots;
 extern int lookup_counter;
@@ -347,6 +349,10 @@ setup_system(void);
 
 isc_result_t
 parse_uint(isc_uint32_t *uip, const char *value, isc_uint32_t max,
+	   const char *desc);
+
+isc_result_t
+parse_xint(isc_uint32_t *uip, const char *value, isc_uint32_t max,
 	   const char *desc);
 
 isc_result_t
@@ -430,6 +436,8 @@ chase_scanname(dns_name_t *name, dns_rdatatype_t type, dns_rdatatype_t covers);
 void
 chase_sig(dns_message_t *msg);
 #endif
+
+void save_opt(dig_lookup_t *lookup, char *code, char *value);
 
 ISC_LANG_ENDDECLS
 

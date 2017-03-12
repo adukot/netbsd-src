@@ -1,5 +1,6 @@
-#	$NetBSD: shlib_version,v 1.7 2014/03/20 08:57:48 mrg Exp $
+#	$NetBSD: shlib_version,v 1.9 2015/07/20 04:10:40 mrg Exp $
 #
-major=17
-minor=2
-teeny=11
+# try to keep this in sync with builds/unix/configure.ac:version_info=
+major=18
+minor=0
+teeny=12

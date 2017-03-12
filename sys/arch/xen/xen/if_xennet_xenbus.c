@@ -1,4 +1,4 @@
-/*      $NetBSD: if_xennet_xenbus.c,v 1.63 2014/08/10 16:44:35 tls Exp $      */
+/*      $NetBSD: if_xennet_xenbus.c,v 1.67 2016/02/16 08:41:32 bouyer Exp $      */
 
 /*
  * Copyright (c) 2006 Manuel Bouyer.
@@ -85,7 +85,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_xennet_xenbus.c,v 1.63 2014/08/10 16:44:35 tls Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_xennet_xenbus.c,v 1.67 2016/02/16 08:41:32 bouyer Exp $");
 
 #include "opt_xen.h"
 #include "opt_nfs_boot.h"
@@ -97,7 +97,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_xennet_xenbus.c,v 1.63 2014/08/10 16:44:35 tls Ex
 #include <sys/proc.h>
 #include <sys/systm.h>
 #include <sys/intr.h>
-#include <sys/rnd.h>
+#include <sys/rndsource.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -362,6 +362,7 @@ xennet_xenbus_attach(device_t parent, device_t self, void *aux)
 	    ether_sprintf(sc->sc_enaddr));
 	/* Initialize ifnet structure and attach interface */
 	strlcpy(ifp->if_xname, device_xname(self), IFNAMSIZ);
+	sc->sc_ethercom.ec_capabilities |= ETHERCAP_VLAN_MTU;
 	ifp->if_softc = sc;
 	ifp->if_start = xennet_start;
 	ifp->if_ioctl = xennet_ioctl;
@@ -421,6 +422,7 @@ xennet_xenbus_detach(device_t self, int flags)
 	DPRINTF(("%s: xennet_xenbus_detach\n", device_xname(self)));
 	s0 = splnet();
 	xennet_stop(ifp, 1);
+	event_remove_handler(sc->sc_evtchn, &xennet_handler, sc);
 	/* wait for pending TX to complete, and collect pending RX packets */
 	xennet_handler(sc);
 	while (sc->sc_tx_ring.sring->rsp_prod != sc->sc_tx_ring.rsp_cons) {
@@ -456,7 +458,6 @@ xennet_xenbus_detach(device_t self, int flags)
 	uvm_km_free(kernel_map, (vaddr_t)sc->sc_rx_ring.sring, PAGE_SIZE,
 	    UVM_KMF_WIRED);
 	softint_disestablish(sc->sc_softintr);
-	event_remove_handler(sc->sc_evtchn, &xennet_handler, sc);
 	splx(s0);
 
 	pmf_device_deregister(self);
@@ -1106,7 +1107,7 @@ again:
 		ifp->if_ipackets++;
 
 		/* Pass the packet up. */
-		(*ifp->if_input)(ifp, m);
+		if_percpuq_enqueue(ifp->if_percpuq, m);
 	}
 	xen_rmb();
 	sc->sc_rx_ring.rsp_cons = i;

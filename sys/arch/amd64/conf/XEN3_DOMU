@@ -1,4 +1,4 @@
-# $NetBSD: XEN3_DOMU,v 1.60 2014/11/16 16:01:40 manu Exp $
+# $NetBSD: XEN3_DOMU,v 1.64 2015/11/10 13:01:41 tnn Exp $
 
 include 	"arch/amd64/conf/std.xen"
 
@@ -43,7 +43,6 @@ options 	BUFQ_PRIOCSCAN
 # Diagnostic/debugging support options
 options 	DIAGNOSTIC	# inexpensive kernel consistency checks
 #options 	DEBUG		# expensive debugging checks/support
-options 	KMEMSTATS	# kernel memory statistics (vmstat -m)
 options 	DDB		# in-kernel debugger
 options 	DDB_ONPANIC=1	# see also sysctl(7): `ddb.onpanic'
 options 	DDB_HISTORY_SIZE=512	# enable history editing in DDB
@@ -117,7 +116,7 @@ options 	UFS_EXTATTR	# Extended attribute support for UFS1
 #options 	GATEWAY		# packet forwarding
 options 	INET		# IP + ICMP + TCP + UDP
 options 	INET6		# IPV6
-#options 	IPSEC		# IP security
+options 	IPSEC		# IP security
 #options 	IPSEC_DEBUG	# debug for IP security
 #options 	MROUTING	# IP multicast routing
 #options 	PIM		# Protocol Independent Multicast
@@ -143,6 +142,12 @@ options 	IPFILTER_COMPAT # Compat for IP-Filter
 #options 	ALTQ_RED	# Random Early Detection
 #options 	ALTQ_RIO	# RED with IN/OUT
 #options 	ALTQ_WFQ	# Weighted Fair Queueing
+
+# pseudo-device support for sysmon and its sub-components
+options 	SYSMON_POWER
+options 	SYSMON_ENVSYS
+options 	SYSMON_WDOG
+options 	SYSMON_TASKQ
 
 options 	NFS_BOOT_DHCP,NFS_BOOT_BOOTPARAM
 #options 	NFS_BOOT_BOOTSTATIC
@@ -239,6 +244,11 @@ pseudo-device	vcoda			# coda minicache <-> venus comm.
 
 # a pseudo device needed for SMBFS
 pseudo-device	nsmb			# experimental - SMB requester
+
+# iSCSI initiator and dependencies
+#scsibus* at scsi?
+#sd*	at scsibus? target ? lun ?
+#pseudo-device	iscsi
 
 # userland interface to drivers, including autoconf and properties retrieval
 pseudo-device	drvctl

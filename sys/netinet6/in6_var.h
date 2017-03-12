@@ -1,4 +1,4 @@
-/*	$NetBSD: in6_var.h,v 1.71 2014/09/05 06:06:31 matt Exp $	*/
+/*	$NetBSD: in6_var.h,v 1.76 2016/02/04 02:48:37 riastradh Exp $	*/
 /*	$KAME: in6_var.h,v 1.81 2002/06/08 11:16:51 itojun Exp $	*/
 
 /*
@@ -65,6 +65,7 @@
 #define _NETINET6_IN6_VAR_H_
 
 #include <sys/callout.h>
+#include <sys/ioccom.h>
 
 /*
  * Interface address, Internet version.  One of these structures
@@ -88,6 +89,7 @@ struct in6_addrlifetime {
 	u_int32_t ia6t_pltime;	/* prefix lifetime */
 };
 
+struct lltable;
 struct nd_ifinfo;
 struct in6_ifextra {
 	struct in6_ifstat *in6_ifstat;
@@ -96,6 +98,7 @@ struct in6_ifextra {
 	struct scope6_id *scope6_id;
 	int nprefixes;
 	int ndefrouters;
+	struct lltable *lltable;
 };
 
 LIST_HEAD(in6_multihead, in6_multi);
@@ -499,6 +502,7 @@ extern const struct in6_addr zeroin6_addr;
 extern const u_char inet6ctlerrmap[];
 extern unsigned long in6_maxmtu;
 extern bool in6_present;
+extern callout_t in6_tmpaddrtimer_ch;
 
 /*
  * Macro for finding the internet address structure (in6_ifaddr) corresponding
@@ -685,7 +689,6 @@ int	in6_control(struct socket *, u_long, void *, struct ifnet *);
 int	in6_update_ifa(struct ifnet *, struct in6_aliasreq *,
 	struct in6_ifaddr *, int);
 void	in6_purgeaddr(struct ifaddr *);
-int	in6if_do_dad(struct ifnet *);
 void	in6_purgeif(struct ifnet *);
 void	in6_savemkludge(struct in6_ifaddr *);
 void	in6_setmaxmtu  (void);
@@ -693,13 +696,14 @@ int	in6_if2idlen  (struct ifnet *);
 void	*in6_domifattach(struct ifnet *);
 void	in6_domifdetach(struct ifnet *, void *);
 void	in6_restoremkludge(struct in6_ifaddr *, struct ifnet *);
-void	in6_ifremloop(struct ifaddr *);
-void	in6_ifaddloop(struct ifaddr *);
+void	in6_ifremlocal(struct ifaddr *);
+void	in6_ifaddlocal(struct ifaddr *);
 void	in6_createmkludge(struct ifnet *);
 void	in6_purgemkludge(struct ifnet *);
 struct in6_ifaddr *in6ifa_ifpforlinklocal(const struct ifnet *, int);
 struct in6_ifaddr *in6ifa_ifpwithaddr(const struct ifnet *,
     const struct in6_addr *);
+struct in6_ifaddr *in6ifa_ifwithaddr(const struct in6_addr *, uint32_t);
 char	*ip6_sprintf(const struct in6_addr *);
 int	in6_matchlen(struct in6_addr *, struct in6_addr *);
 int	in6_are_prefix_equal(struct in6_addr *, struct in6_addr *, int);
@@ -711,6 +715,9 @@ int	ip6flow_fastforward(struct mbuf **); /* IPv6 fast forward routine */
 int in6_src_ioctl(u_long, void *);
 int	in6_is_addr_deprecated(struct sockaddr_in6 *);
 struct in6pcb;
+
+#define	LLTABLE6(ifp)	(((struct in6_ifextra *)(ifp)->if_afdata[AF_INET6])->lltable)
+
 #endif /* _KERNEL */
 
 #endif /* !_NETINET6_IN6_VAR_H_ */

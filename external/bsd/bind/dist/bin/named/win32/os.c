@@ -1,7 +1,7 @@
-/*	$NetBSD: os.c,v 1.7 2014/12/10 04:37:52 christos Exp $	*/
+/*	$NetBSD: os.c,v 1.9 2015/12/17 04:00:41 christos Exp $	*/
 
 /*
- * Copyright (C) 2004, 2005, 2007-2009, 2012-2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2004, 2005, 2007-2009, 2012-2015  Internet Systems Consortium, Inc. ("ISC")
  * Copyright (C) 1999-2002  Internet Software Consortium.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -16,8 +16,6 @@
  * OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
  * PERFORMANCE OF THIS SOFTWARE.
  */
-
-/* Id: os.c,v 1.39 2012/02/06 23:46:44 tbox Exp  */
 
 #include <config.h>
 #include <stdarg.h>
@@ -82,9 +80,10 @@ ns_paths_init(void) {
 static void
 version_check(const char *progname) {
 
-	if(isc_win32os_majorversion() < 5)
+	if ((isc_win32os_versioncheck(4, 0, 0, 0) >= 0) &&
+	    (isc_win32os_versioncheck(5, 0, 0, 0) < 0))
 		return;	/* No problem with Version 4.0 */
-	if(isc_win32os_versioncheck(5, 0, 2, 0) < 0)
+	if (isc_win32os_versioncheck(5, 0, 2, 0) < 0)
 		if (ntservice_isservice())
 			NTReportError(progname, version_error);
 		else

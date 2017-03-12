@@ -1,4 +1,4 @@
-/*	$NetBSD: eval.c,v 1.110 2015/01/02 19:56:20 christos Exp $	*/
+/*	$NetBSD: eval.c,v 1.122 2016/05/03 13:47:58 kre Exp $	*/
 
 /*-
  * Copyright (c) 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)eval.c	8.9 (Berkeley) 6/8/95";
 #else
-__RCSID("$NetBSD: eval.c,v 1.110 2015/01/02 19:56:20 christos Exp $");
+__RCSID("$NetBSD: eval.c,v 1.122 2016/05/03 13:47:58 kre Exp $");
 #endif
 #endif /* not lint */
 
@@ -45,6 +45,7 @@ __RCSID("$NetBSD: eval.c,v 1.110 2015/01/02 19:56:20 christos Exp $");
 #include <stdlib.h>
 #include <signal.h>
 #include <stdio.h>
+#include <string.h>
 #include <errno.h>
 #include <limits.h>
 #include <unistd.h>
@@ -80,6 +81,7 @@ __RCSID("$NetBSD: eval.c,v 1.110 2015/01/02 19:56:20 christos Exp $");
 #include "mystring.h"
 #include "main.h"
 #ifndef SMALL
+#include "nodenames.h"
 #include "myhistedit.h"
 #endif
 
@@ -220,7 +222,9 @@ evalstring(char *s, int flag)
 	setinputstring(s, 1);
 
 	while ((n = parsecmd(0)) != NEOF) {
-		evaltree(n, flag);
+		TRACE(("evalstring: "); showtree(n));
+		if (nflag == 0)
+			evaltree(n, flag);
 		popstackmark(&smark);
 	}
 	popfile();
@@ -240,38 +244,44 @@ evaltree(union node *n, int flags)
 	bool do_etest;
 
 	do_etest = false;
-	if (n == NULL) {
-		TRACE(("evaltree(NULL) called\n"));
-		exitstatus = 0;
+	if (n == NULL || nflag) {
+		TRACE(("evaltree(%s) called\n", n == NULL ? "NULL" : "-n"));
+		if (nflag == 0)
+			exitstatus = 0;
 		goto out;
 	}
 #ifndef SMALL
 	displayhist = 1;	/* show history substitutions done with fc */
 #endif
-	TRACE(("pid %d, evaltree(%p: %d, %d) called\n",
+#ifdef NODETYPENAME
+	TRACE(("pid %d, evaltree(%p: %s(%d), %#x) called\n",
+	    getpid(), n, NODETYPENAME(n->type), n->type, flags));
+#else
+	TRACE(("pid %d, evaltree(%p: %d, %#x) called\n",
 	    getpid(), n, n->type, flags));
+#endif
 	switch (n->type) {
 	case NSEMI:
 		evaltree(n->nbinary.ch1, flags & EV_TESTED);
-		if (evalskip)
+		if (nflag || evalskip)
 			goto out;
 		evaltree(n->nbinary.ch2, flags);
 		break;
 	case NAND:
 		evaltree(n->nbinary.ch1, EV_TESTED);
-		if (evalskip || exitstatus != 0)
+		if (nflag || evalskip || exitstatus != 0)
 			goto out;
 		evaltree(n->nbinary.ch2, flags);
 		break;
 	case NOR:
 		evaltree(n->nbinary.ch1, EV_TESTED);
-		if (evalskip || exitstatus == 0)
+		if (nflag || evalskip || exitstatus == 0)
 			goto out;
 		evaltree(n->nbinary.ch2, flags);
 		break;
 	case NREDIR:
 		expredir(n->nredir.redirect);
-		redirect(n->nredir.redirect, REDIR_PUSH);
+		redirect(n->nredir.redirect, REDIR_PUSH | REDIR_KEEP);
 		evaltree(n->nredir.n, flags);
 		popredir();
 		break;
@@ -284,7 +294,7 @@ evaltree(union node *n, int flags)
 		break;
 	case NIF: {
 		evaltree(n->nif.test, EV_TESTED);
-		if (evalskip)
+		if (nflag || evalskip)
 			goto out;
 		if (exitstatus == 0)
 			evaltree(n->nif.ifpart, flags);
@@ -321,7 +331,11 @@ evaltree(union node *n, int flags)
 		do_etest = !(flags & EV_TESTED);
 		break;
 	default:
+#ifdef NODETYPENAME
+		out1fmt("Node type = %d(%s)\n", n->type, NODETYPENAME(n->type));
+#else
 		out1fmt("Node type = %d\n", n->type);
+#endif
 		flushout(&output);
 		break;
 	}
@@ -340,8 +354,20 @@ evalloop(union node *n, int flags)
 
 	loopnest++;
 	status = 0;
+
+#ifdef NODETYPENAME
+	TRACE(("evalloop %s: ", NODETYPENAME(n->type)));
+#else
+	TRACE(("evalloop %s: ", n->type == NWHILE ? "while" : "until"));
+#endif
+	TRACE((""); showtree(n->nbinary.ch1));
+	TRACE(("evalloop    do: "); showtree(n->nbinary.ch2));
+	TRACE(("evalloop  done\n"));
+
 	for (;;) {
 		evaltree(n->nbinary.ch1, EV_TESTED);
+		if (nflag)
+			break;
 		if (evalskip) {
 skipping:	  if (evalskip == SKIPCONT && --skipcount <= 0) {
 				evalskip = SKIPNONE;
@@ -376,7 +402,9 @@ evalfor(union node *n, int flags)
 	union node *argp;
 	struct strlist *sp;
 	struct stackmark smark;
-	int status = 0;
+	int status;
+
+	status = nflag ? exitstatus : 0;
 
 	setstackmark(&smark);
 	arglist.lastp = &arglist.list;
@@ -392,6 +420,8 @@ evalfor(union node *n, int flags)
 		setvar(n->nfor.var, sp->text, 0);
 		evaltree(n->nfor.body, flags & EV_TESTED);
 		status = exitstatus;
+		if (nflag)
+			break;
 		if (evalskip) {
 			if (evalskip == SKIPCONT && --skipcount <= 0) {
 				evalskip = SKIPNONE;
@@ -457,12 +487,11 @@ evalsubshell(union node *n, int flags)
 		INTON;
 		if (backgnd)
 			flags &=~ EV_TESTED;
-		redirect(n->nredir.redirect, 0);
+		redirect(n->nredir.redirect, REDIR_KEEP);
 		/* never returns */
 		evaltree(n->nredir.n, flags | EV_EXIT);
 	}
-	if (! backgnd)
-		exitstatus = waitforjob(jp);
+	exitstatus = backgnd ? 0 : waitforjob(jp);
 	INTON;
 }
 
@@ -479,6 +508,7 @@ expredir(union node *n)
 
 	for (redir = n ; redir ; redir = redir->nfile.next) {
 		struct arglist fn;
+
 		fn.lastp = &fn.list;
 		switch (redir->type) {
 		case NFROMTO:
@@ -537,18 +567,11 @@ evalpipe(union node *n)
 		}
 		if (forkshell(jp, lp->n, n->npipe.backgnd ? FORK_BG : FORK_FG) == 0) {
 			INTON;
-			if (prevfd > 0) {
-				close(0);
-				copyfd(prevfd, 0, 1);
-				close(prevfd);
-			}
+			if (prevfd > 0)
+				movefd(prevfd, 0);
 			if (pip[1] >= 0) {
 				close(pip[0]);
-				if (pip[1] != 1) {
-					close(1);
-					copyfd(pip[1], 1, 1);
-					close(pip[1]);
-				}
+				movefd(pip[1], 1);
 			}
 			evaltree(lp->n, EV_EXIT);
 		}
@@ -560,7 +583,8 @@ evalpipe(union node *n)
 	if (n->npipe.backgnd == 0) {
 		exitstatus = waitforjob(jp);
 		TRACE(("evalpipe:  job done exit status %d\n", exitstatus));
-	}
+	} else
+		exitstatus = 0;
 	INTON;
 }
 
@@ -585,7 +609,7 @@ evalbackcmd(union node *n, struct backcmd *result)
 	result->buf = NULL;
 	result->nleft = 0;
 	result->jp = NULL;
-	if (n == NULL) {
+	if (nflag || n == NULL) {
 		goto out;
 	}
 #ifdef notyet
@@ -608,11 +632,7 @@ evalbackcmd(union node *n, struct backcmd *result)
 		if (forkshell(jp, n, FORK_NOJOB) == 0) {
 			FORCEINTON;
 			close(pip[0]);
-			if (pip[1] != 1) {
-				close(1);
-				copyfd(pip[1], 1, 1);
-				close(pip[1]);
-			}
+			movefd(pip[1], 1);
 			eflag = 0;
 			evaltree(n, EV_EXIT);
 			/* NOTREACHED */
@@ -778,9 +798,25 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 		char sep = 0;
 		out2str(ps4val());
 		for (sp = varlist.list ; sp ; sp = sp->next) {
+			char *p;
+
 			if (sep != 0)
 				outc(sep, &errout);
-			out2shstr(sp->text);
+
+			/*
+			 * The "var=" part should not be quoted, regardless
+			 * of the value, or it would not represent an
+			 * assignment, but rather a command
+			 */
+			p = strchr(sp->text, '=');
+			if (p != NULL) {
+				*p = '\0';	/*XXX*/
+				out2shstr(sp->text);
+				out2c('=');
+				*p++ = '=';	/*XXX*/
+			} else
+				p = sp->text;
+			out2shstr(p);
 			sep = ' ';
 		}
 		for (sp = arglist.list ; sp ; sp = sp->next) {
@@ -924,11 +960,7 @@ normal_fork:
 				FORCEINTON;
 			}
 			close(pip[0]);
-			if (pip[1] != 1) {
-				close(1);
-				copyfd(pip[1], 1, 1);
-				close(pip[1]);
-			}
+			movefd(pip[1], 1);
 		}
 		flags |= EV_EXIT;
 	}
@@ -1072,7 +1104,8 @@ normal_fork:
 #ifdef DEBUG
 		trputs("normal command:  ");  trargs(argv);
 #endif
-		redirect(cmd->ncmd.redirect, vforked ? REDIR_VFORK : 0);
+		redirect(cmd->ncmd.redirect, 
+		    (vforked ? REDIR_VFORK : 0) | REDIR_KEEP);
 		if (!vforked)
 			for (sp = varlist.list ; sp ; sp = sp->next)
 				setvareq(sp->text, VEXPORT|VSTACK);
@@ -1083,6 +1116,7 @@ normal_fork:
 	goto out;
 
 parent:	/* parent process gets here (if we forked) */
+	exitstatus = 0;		/* if not altered just below */
 	if (mode == FORK_FG) {	/* argument to fork */
 		exitstatus = waitforjob(jp);
 	} else if (mode == FORK_NOJOB) {
@@ -1121,19 +1155,19 @@ prehash(union node *n)
 				     pathval());
 }
 
-STATIC int
+int
 in_function(void)
 {
 	return funcnest;
 }
 
-STATIC enum skipstate
+enum skipstate
 current_skipstate(void)
 {
 	return evalskip;
 }
 
-STATIC void
+void
 stop_skipping(void)
 {
 	evalskip = SKIPNONE;
@@ -1226,10 +1260,14 @@ find_dot_file(char *basename)
 	struct stat statb;
 
 	/* don't try this for absolute or relative paths */
-	if (strchr(basename, '/'))
-		return basename;
-
-	while ((fullname = padvance(&path, basename)) != NULL) {
+	if (strchr(basename, '/')) {
+		if (stat(basename, &statb) == 0) {
+			if (S_ISREG(statb.st_mode))
+				return basename;
+			error("%s: not a regular file", basename);
+			/* NOTREACHED */
+		}
+	} else while ((fullname = padvance(&path, basename)) != NULL) {
 		if ((stat(fullname, &statb) == 0) && S_ISREG(statb.st_mode)) {
 			/*
 			 * Don't bother freeing here, since it will

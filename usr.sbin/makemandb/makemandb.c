@@ -1,4 +1,4 @@
-/*	$NetBSD: makemandb.c,v 1.25 2014/10/18 08:33:31 snj Exp $	*/
+/*	$NetBSD: makemandb.c,v 1.37 2016/04/13 11:48:29 christos Exp $	*/
 /*
  * Copyright (c) 2011 Abhinav Upadhyay <er.abhinav.upadhyay@gmail.com>
  * Copyright (c) 2011 Kristaps Dzonsons <kristaps@bsd.lv>
@@ -17,13 +17,12 @@
  */
 
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: makemandb.c,v 1.25 2014/10/18 08:33:31 snj Exp $");
+__RCSID("$NetBSD: makemandb.c,v 1.37 2016/04/13 11:48:29 christos Exp $");
 
 #include <sys/stat.h>
 #include <sys/types.h>
 
 #include <assert.h>
-#include <ctype.h>
 #include <dirent.h>
 #include <err.h>
 #include <archive.h>
@@ -39,7 +38,6 @@ __RCSID("$NetBSD: makemandb.c,v 1.25 2014/10/18 08:33:31 snj Exp $");
 #include "dist/man.h"
 #include "dist/mandoc.h"
 #include "dist/mdoc.h"
-#include "sqlite3.h"
 
 #define BUFLEN 1024
 #define MDOC 0	//If the page is of mdoc(7) type
@@ -73,9 +71,9 @@ typedef struct mandb_rec {
 	secbuff exit_status; // EXIT STATUS
 	secbuff diagnostics; // DIAGNOSTICS
 	secbuff errors; // ERRORS
-	char section[2];
+	char *section;
 
-	int xr_found;
+	int xr_found; // To track whether a .Xr was seen when parsing a section
 
 	/* Fields for mandb_meta table */
 	char *md5_hash;
@@ -129,129 +127,161 @@ static makemandb_flags mflags = { .verbosity = 1 };
 
 typedef	void (*pman_nf)(const struct man_node *n, mandb_rec *);
 typedef	void (*pmdoc_nf)(const struct mdoc_node *n, mandb_rec *);
-static	const pmdoc_nf mdocs[MDOC_MAX] = {
+static	const pmdoc_nf mdocs[MDOC_MAX + 1] = {
 	NULL, /* Ap */
 	NULL, /* Dd */
 	NULL, /* Dt */
 	NULL, /* Os */
+
 	pmdoc_Sh, /* Sh */
 	NULL, /* Ss */
 	pmdoc_Pp, /* Pp */
 	NULL, /* D1 */
+
 	NULL, /* Dl */
 	NULL, /* Bd */
 	NULL, /* Ed */
 	NULL, /* Bl */
+
 	NULL, /* El */
 	NULL, /* It */
 	NULL, /* Ad */
 	NULL, /* An */
+
 	NULL, /* Ar */
 	NULL, /* Cd */
 	NULL, /* Cm */
 	NULL, /* Dv */
+
 	NULL, /* Er */
 	NULL, /* Ev */
 	NULL, /* Ex */
 	NULL, /* Fa */
+
 	NULL, /* Fd */
 	NULL, /* Fl */
 	NULL, /* Fn */
 	NULL, /* Ft */
+
 	NULL, /* Ic */
 	NULL, /* In */
 	NULL, /* Li */
 	pmdoc_Nd, /* Nd */
+
 	pmdoc_Nm, /* Nm */
 	NULL, /* Op */
 	NULL, /* Ot */
 	NULL, /* Pa */
+
 	NULL, /* Rv */
 	NULL, /* St */
 	NULL, /* Va */
 	NULL, /* Vt */
+
 	pmdoc_Xr, /* Xr */
 	NULL, /* %A */
 	NULL, /* %B */
 	NULL, /* %D */
+
 	NULL, /* %I */
 	NULL, /* %J */
 	NULL, /* %N */
 	NULL, /* %O */
+
 	NULL, /* %P */
 	NULL, /* %R */
 	NULL, /* %T */
 	NULL, /* %V */
+
 	NULL, /* Ac */
 	NULL, /* Ao */
 	NULL, /* Aq */
 	NULL, /* At */
+
 	NULL, /* Bc */
 	NULL, /* Bf */
 	NULL, /* Bo */
 	NULL, /* Bq */
+
 	NULL, /* Bsx */
 	NULL, /* Bx */
 	NULL, /* Db */
 	NULL, /* Dc */
+
 	NULL, /* Do */
 	NULL, /* Dq */
 	NULL, /* Ec */
 	NULL, /* Ef */
+
 	NULL, /* Em */
 	NULL, /* Eo */
 	NULL, /* Fx */
 	NULL, /* Ms */
+
 	NULL, /* No */
 	NULL, /* Ns */
 	NULL, /* Nx */
 	NULL, /* Ox */
+
 	NULL, /* Pc */
 	NULL, /* Pf */
 	NULL, /* Po */
 	NULL, /* Pq */
+
 	NULL, /* Qc */
 	NULL, /* Ql */
 	NULL, /* Qo */
 	NULL, /* Qq */
+
 	NULL, /* Re */
 	NULL, /* Rs */
 	NULL, /* Sc */
 	NULL, /* So */
+
 	NULL, /* Sq */
 	NULL, /* Sm */
 	NULL, /* Sx */
 	NULL, /* Sy */
+
 	NULL, /* Tn */
 	NULL, /* Ux */
 	NULL, /* Xc */
 	NULL, /* Xo */
+
 	NULL, /* Fo */
 	NULL, /* Fc */
 	NULL, /* Oo */
 	NULL, /* Oc */
+
 	NULL, /* Bk */
 	NULL, /* Ek */
 	NULL, /* Bt */
 	NULL, /* Hf */
+
 	NULL, /* Fr */
 	NULL, /* Ud */
 	NULL, /* Lb */
 	NULL, /* Lp */
+
 	NULL, /* Lk */
 	NULL, /* Mt */
 	NULL, /* Brq */
 	NULL, /* Bro */
+
 	NULL, /* Brc */
 	NULL, /* %C */
 	NULL, /* Es */
 	NULL, /* En */
+
 	NULL, /* Dx */
 	NULL, /* %Q */
 	NULL, /* br */
 	NULL, /* sp */
+
 	NULL, /* %U */
 	NULL, /* Ta */
+	NULL, /* ll */
+	NULL, /* text */
 };
 
 static	const pman_nf mans[MAN_MAX] = {
@@ -276,7 +306,6 @@ static	const pman_nf mans[MAN_MAX] = {
 	NULL,	//I
 	NULL,	//IR
 	NULL,	//RI
-	NULL,	//na
 	NULL,	//sp
 	NULL,	//nf
 	NULL,	//fi
@@ -288,6 +317,12 @@ static	const pman_nf mans[MAN_MAX] = {
 	NULL,	//AT
 	NULL,	//in
 	NULL,	//ft
+	NULL,	//OP
+	NULL,	//EX
+	NULL,	//EE
+	NULL,	//UR
+	NULL,	//UE
+	NULL,	//ll
 };
 
 
@@ -295,6 +330,7 @@ int
 main(int argc, char *argv[])
 {
 	FILE *file;
+	struct mchars *mchars;
 	const char *sqlstr, *manconf = NULL;
 	char *line, *command, *parent;
 	char *errmsg;
@@ -336,7 +372,10 @@ main(int argc, char *argv[])
 	memset(&rec, 0, sizeof(rec));
 
 	init_secbuffs(&rec);
-	mp = mparse_alloc(MPARSE_AUTO, MANDOCLEVEL_FATAL, NULL, NULL, NULL);
+	mchars = mchars_alloc();
+	if (mchars == NULL)
+		errx(EXIT_FAILURE, "Can't allocate mchars");
+	mp = mparse_alloc(0, MANDOCLEVEL_BADARG, NULL, mchars, NULL);
 
 	if (manconf) {
 		char *arg;
@@ -390,6 +429,7 @@ main(int argc, char *argv[])
 	if (errmsg != NULL) {
 		warnx("%s", errmsg);
 		free(errmsg);
+		close_db(db);
 		exit(EXIT_FAILURE);
 	}
 
@@ -433,6 +473,7 @@ main(int argc, char *argv[])
 		printf("Performing index update\n");
 	update_db(db, mp, &rec);
 	mparse_free(mp);
+	mchars_free(mchars);
 	free_secbuffs(&rec);
 
 	/* Commit the transaction */
@@ -440,6 +481,7 @@ main(int argc, char *argv[])
 	if (errmsg != NULL) {
 		warnx("%s", errmsg);
 		free(errmsg);
+		close_db(db);
 		exit(EXIT_FAILURE);
 	}
 
@@ -661,7 +703,7 @@ read_and_decompress(const char *file, void **bufp, size_t *len)
 	for (;;) {
 		r = archive_read_data(a, buf + off, *len - off);
 		if (r == ARCHIVE_OK) {
-			archive_read_close(a);
+			archive_read_finish(a);
 			*bufp = buf;
 			*len = off;
 			return 0;
@@ -677,7 +719,7 @@ read_and_decompress(const char *file, void **bufp, size_t *len)
 				if (mflags.verbosity)
 					warnx("File too large: %s", file);
 				free(buf);
-				archive_read_close(a);
+				archive_read_finish(a);
 				return -1;
 			}
 			buf = erealloc(buf, *len);
@@ -686,7 +728,7 @@ read_and_decompress(const char *file, void **bufp, size_t *len)
 
 archive_error:
 	warnx("Error while reading `%s': %s", file, archive_error_string(a));
-	archive_read_close(a);
+	archive_read_finish(a);
 	return -1;
 }
 
@@ -732,7 +774,7 @@ update_db(sqlite3 *db, struct mparse *mp, mandb_rec *rec)
 	rc = sqlite3_prepare_v2(db, sqlstr, -1, &stmt, NULL);
 	if (rc != SQLITE_OK) {
 		if (mflags.verbosity)
-		warnx("%s", sqlite3_errmsg(db));
+			warnx("%s", sqlite3_errmsg(db));
 		close_db(db);
 		errx(EXIT_FAILURE, "Could not query file cache");
 	}
@@ -767,7 +809,8 @@ update_db(sqlite3 *db, struct mparse *mp, mandb_rec *rec)
 			err_count++;
 			continue;
 		}
-		md5_status = check_md5(file, db, "mandb_meta", &md5sum, buf, buflen);
+		md5_status = check_md5(file, db, "mandb_meta", &md5sum, buf,
+		    buflen);
 		assert(md5sum != NULL);
 		if (md5_status == -1) {
 			if (mflags.verbosity)
@@ -801,16 +844,24 @@ update_db(sqlite3 *db, struct mparse *mp, mandb_rec *rec)
 			 * This means is either a new file or an updated file.
 			 * We should go ahead with parsing.
 			 */
+			if (chdir(parent) == -1) {
+				if (mflags.verbosity)
+					warn("chdir failed for `%s', could "
+					    "not index `%s'", parent, file);
+				err_count++;
+				free(md5sum);
+				continue;
+			}
+
 			if (mflags.verbosity == 2)
 				printf("Parsing: %s\n", file);
 			rec->md5_hash = md5sum;
 			rec->file_path = estrdup(file);
 			// file_path is freed by insert_into_db itself.
-			chdir(parent);
 			begin_parse(file, mp, rec, buf, buflen);
 			if (insert_into_db(db, rec) < 0) {
 				if (mflags.verbosity)
-					warnx("Error in indexing %s", file);
+					warnx("Error in indexing `%s'", file);
 				err_count++;
 			} else {
 				new_count++;
@@ -820,12 +871,12 @@ update_db(sqlite3 *db, struct mparse *mp, mandb_rec *rec)
 
 	if (mflags.verbosity == 2) {
 		printf("Total Number of new or updated pages encountered = %d\n"
-			"Total number of (hard or symbolic) links found = %d\n"
-			"Total number of pages that were successfully"
-			" indexed/updated = %d\n"
-			"Total number of pages that could not be indexed"
-			" due to errors = %d\n",
-			total_count - link_count, link_count, new_count, err_count);
+		    "Total number of (hard or symbolic) links found = %d\n"
+		    "Total number of pages that were successfully"
+		    " indexed/updated = %d\n"
+		    "Total number of pages that could not be indexed"
+		    " due to errors = %d\n",
+		    total_count - link_count, link_count, new_count, err_count);
 	}
 
 	if (mflags.recreate)
@@ -865,7 +916,7 @@ begin_parse(const char *file, struct mparse *mp, mandb_rec *rec,
 
 	rec->xr_found = 0;
 
-	if (mparse_readmem(mp, buf, len, file) >= MANDOCLEVEL_FATAL) {
+	if (mparse_readmem(mp, buf, len, file) >= MANDOCLEVEL_BADARG) {
 		/* Printing this warning at verbosity level 2
 		 * because some packages from pkgsrc might trigger several
 		 * of such warnings.
@@ -875,7 +926,7 @@ begin_parse(const char *file, struct mparse *mp, mandb_rec *rec,
 		return;
 	}
 
-	mparse_result(mp, &mdoc, &man);
+	mparse_result(mp, &mdoc, &man, NULL);
 	if (mdoc == NULL && man == NULL) {
 		if (mflags.verbosity == 2)
 			warnx("Not a man(7) or mdoc(7) page");
@@ -903,11 +954,21 @@ set_section(const struct mdoc *md, const struct man *m, mandb_rec *rec)
 {
 	if (md) {
 		const struct mdoc_meta *md_meta = mdoc_meta(md);
-		rec->section[0] = md_meta->msec[0];
+		if (md_meta->msec == NULL) {
+			easprintf(&rec->section, "%s", "?");
+		} else
+			rec->section = estrdup(md_meta->msec);
 	} else if (m) {
 		const struct man_meta *m_meta = man_meta(m);
-		rec->section[0] = m_meta->msec[0];
-	}
+		if (m_meta->msec == NULL)
+			easprintf(&rec->section, "%s", "?");
+		else
+			rec->section = estrdup(m_meta->msec);
+	} else
+		return;
+
+	if (rec->section[0] == '?' && mflags.verbosity == 2)
+		warnx("%s: Missing section number", rec->file_path);
 }
 
 /*
@@ -961,7 +1022,9 @@ pmdoc_Nm(const struct mdoc_node *n, mandb_rec *rec)
 
 	for (n = n->child; n; n = n->next) {
 		if (n->type == MDOC_TEXT) {
-			concat(&rec->name, n->string);
+			char *escaped_name = parse_escape(n->string);
+			concat(&rec->name, escaped_name);
+			free(escaped_name);
 		}
 	}
 }
@@ -973,32 +1036,27 @@ pmdoc_Nm(const struct mdoc_node *n, mandb_rec *rec)
 static void
 pmdoc_Nd(const struct mdoc_node *n, mandb_rec *rec)
 {
-	/*
-	 * A static variable for keeping track of whether a Xr macro was seen
-	 * previously.
-	 */
 	char *buf = NULL;
-	char *temp;
+	char *name;
 	char *nd_text;
 
-	if (n == NULL)
+	if (n == NULL || (n->type != MDOC_TEXT && n->tok == MDOC_MAX))
 		return;
 
 	if (n->type == MDOC_TEXT) {
 		if (rec->xr_found && n->next) {
 			/*
 			 * An Xr macro was seen previously, so parse this
-			 * and the next node.
+			 * and the next node, as "Name(Section)".
 			 */
-			temp = estrdup(n->string);
+			name = n->string;
 			n = n->next;
-			easprintf(&buf, "%s(%s)", temp, n->string);
+			assert(n->type == MDOC_TEXT);
+			easprintf(&buf, "%s(%s)", name, n->string);
 			concat(&rec->name_desc, buf);
 			free(buf);
-			free(temp);
 		} else {
-			nd_text = estrdup(n->string);
-			replace_hyph(nd_text);
+			nd_text = parse_escape(n->string);
 			concat(&rec->name_desc, nd_text);
 			free(nd_text);
 		}
@@ -1052,13 +1110,8 @@ pmdoc_macro_handler(const struct mdoc_node *n, mandb_rec *rec, enum mdoct doct)
 			n = n->next;
 
 		if (n && n->type == MDOC_TEXT) {
-			size_t len = strlen(sn->string);
-			char *buf = emalloc(len + 4);
-			memcpy(buf, sn->string, len);
-			buf[len] = '(';
-			buf[len + 1] = n->string[0];
-			buf[len + 2] = ')';
-			buf[len + 3] = 0;
+			char *buf;
+			easprintf(&buf, "%s(%s)", sn->string, n->string);
 			mdoc_parse_section(n->sec, buf, rec);
 			free(buf);
 		}
@@ -1104,7 +1157,7 @@ pmdoc_Pp(const struct mdoc_node *n, mandb_rec *rec)
 static void
 pmdoc_Sh(const struct mdoc_node *n, mandb_rec *rec)
 {
-	if (n == NULL)
+	if (n == NULL || (n->type != MDOC_TEXT && n->tok == MDOC_MAX))
 		return;
 	int xr_found = 0;
 
@@ -1200,8 +1253,6 @@ pman_node(const struct man_node *n, mandb_rec *rec)
 	switch (n->type) {
 	case (MAN_BODY):
 		/* FALLTHROUGH */
-	case (MAN_TAIL):
-		/* FALLTHROUGH */
 	case (MAN_BLOCK):
 		/* FALLTHROUGH */
 	case (MAN_ELEM):
@@ -1288,7 +1339,7 @@ pman_sh(const struct man_node *n, mandb_rec *rec)
 	};
 	const struct man_node *head;
 	char *name_desc;
-	int sz;
+	size_t sz;
 	size_t i;
 
 	if ((head = n->parent->head) == NULL || (head = head->child) == NULL ||
@@ -1533,7 +1584,7 @@ insert_into_db(sqlite3 *db, mandb_rec *rec)
 		char *tmp;
 		rec->links = estrdup(rec->name);
 		free(rec->name);
-		int sz = strcspn(rec->links, " \0");
+		size_t sz = strcspn(rec->links, " \0");
 		rec->name = emalloc(sz + 1);
 		memcpy(rec->name, rec->links, sz);
 		if(rec->name[sz - 1] == ',')
@@ -1586,7 +1637,8 @@ insert_into_db(sqlite3 *db, mandb_rec *rec)
 	}
 
 	idx = sqlite3_bind_parameter_index(stmt, ":lib");
-	rc = sqlite3_bind_text(stmt, idx, rec->lib.data, rec->lib.offset + 1, NULL);
+	rc = sqlite3_bind_text(stmt, idx, rec->lib.data,
+	    rec->lib.offset + 1, NULL);
 	if (rc != SQLITE_OK) {
 		sqlite3_finalize(stmt);
 		goto Out;
@@ -1601,7 +1653,8 @@ insert_into_db(sqlite3 *db, mandb_rec *rec)
 	}
 
 	idx = sqlite3_bind_parameter_index(stmt, ":env");
-	rc = sqlite3_bind_text(stmt, idx, rec->env.data, rec->env.offset + 1, NULL);
+	rc = sqlite3_bind_text(stmt, idx, rec->env.data,
+	    rec->env.offset + 1, NULL);
 	if (rc != SQLITE_OK) {
 		sqlite3_finalize(stmt);
 		goto Out;
@@ -1939,6 +1992,9 @@ cleanup(mandb_rec *rec)
 
 	free(rec->md5_hash);
 	rec->md5_hash = NULL;
+
+	free(rec->section);
+	rec->section = NULL;
 }
 
 /*

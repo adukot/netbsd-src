@@ -1,7 +1,7 @@
-/*	$NetBSD: socket.c,v 1.16 2014/12/10 04:38:01 christos Exp $	*/
+/*	$NetBSD: socket.c,v 1.18 2015/12/17 04:00:45 christos Exp $	*/
 
 /*
- * Copyright (C) 2004-2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2004-2015  Internet Systems Consortium, Inc. ("ISC")
  * Copyright (C) 1998-2003  Internet Software Consortium.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -1390,7 +1390,7 @@ process_cmsg(isc__socket_t *sock, struct msghdr *msg, isc_socketevent_t *dev) {
 			|| cmsgp->cmsg_type == IP_RECVTOS
 #endif
 			)) {
-			dev->dscp = (int) *(uint8_t *)CMSG_DATA(cmsgp);
+			dev->dscp = (int) *(unsigned char *)CMSG_DATA(cmsgp);
 			dev->dscp >>= 2;
 			dev->attributes |= ISC_SOCKEVENTATTR_DSCP;
 			goto next;
@@ -2268,6 +2268,7 @@ allocate_socket(isc__socketmgr_t *manager, isc_sockettype_t type,
 	sock->dscp = 0;		/* TOS/TCLASS is zero until set. */
 	sock->dupped = 0;
 	sock->statsindex = NULL;
+	sock->active = 0;
 
 	ISC_LINK_INIT(sock, link);
 
@@ -2414,6 +2415,62 @@ free_socket(isc__socket_t **socketp) {
 
 	*socketp = NULL;
 }
+
+#ifdef SO_RCVBUF
+static isc_once_t	rcvbuf_once = ISC_ONCE_INIT;
+static int		rcvbuf = RCVBUFSIZE;
+
+static void
+set_rcvbuf(void) {
+	int fd;
+	int max = rcvbuf, min;
+	ISC_SOCKADDR_LEN_T len;
+
+	fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+#if defined(ISC_PLATFORM_HAVEIPV6)
+	if (fd == -1) {
+		switch (errno) {
+		case EPROTONOSUPPORT:
+		case EPFNOSUPPORT:
+		case EAFNOSUPPORT:
+		/*
+		 * Linux 2.2 (and maybe others) return EINVAL instead of
+		 * EAFNOSUPPORT.
+		 */
+		case EINVAL:
+			fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+			break;
+		}
+	}
+#endif
+	if (fd == -1)
+		return;
+
+	len = sizeof(min);
+	if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, (void *)&min, &len) >= 0 &&
+	    min < rcvbuf) {
+ again:
+		if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (void *)&rcvbuf,
+			       sizeof(rcvbuf)) == -1) {
+			if (errno == ENOBUFS && rcvbuf > min) {
+				max = rcvbuf - 1;
+				rcvbuf = (rcvbuf + min) / 2;
+				goto again;
+			} else {
+				rcvbuf = min;
+				goto cleanup;
+			}
+		} else
+			min = rcvbuf;
+		if (min != max) {
+			rcvbuf = max;
+			goto again;
+		}
+	}
+ cleanup:
+	close (fd);
+}
+#endif
 
 #ifdef SO_BSDCOMPAT
 /*
@@ -2787,15 +2844,15 @@ opensocket(isc__socketmgr_t *manager, isc__socket_t *sock,
 #if defined(SO_RCVBUF)
 		optlen = sizeof(size);
 		if (getsockopt(sock->fd, SOL_SOCKET, SO_RCVBUF,
-			       (void *)&size, &optlen) >= 0 &&
-		     size < RCVBUFSIZE) {
-			size = RCVBUFSIZE;
+			       (void *)&size, &optlen) >= 0 && size < rcvbuf) {
+			RUNTIME_CHECK(isc_once_do(&rcvbuf_once,
+						  set_rcvbuf) == ISC_R_SUCCESS);
 			if (setsockopt(sock->fd, SOL_SOCKET, SO_RCVBUF,
-				       (void *)&size, sizeof(size)) == -1) {
+			       (void *)&rcvbuf, sizeof(rcvbuf)) == -1) {
 				isc__strerror(errno, strbuf, sizeof(strbuf));
 				UNEXPECTED_ERROR(__FILE__, __LINE__,
 					"setsockopt(%d, SO_RCVBUF, %d) %s: %s",
-					sock->fd, size,
+					sock->fd, rcvbuf,
 					isc_msgcat_get(isc_msgcat,
 						       ISC_MSGSET_GENERAL,
 						       ISC_MSG_FAILED,
@@ -2887,7 +2944,6 @@ socket_create(isc_socketmgr_t *manager0, int pf, isc_sockettype_t type,
 		INSIST(0);
 	}
 
-	sock->active = 0;
 	sock->pf = pf;
 
 	result = opensocket(manager, sock, (isc__socket_t *)dup_socket);
@@ -6312,33 +6368,33 @@ isc__socketmgr_dispatch(isc_socketmgr_t *manager0, isc_socketwait_t *swait) {
 
 void
 isc__socket_setname(isc_socket_t *socket0, const char *name, void *tag) {
-	isc__socket_t *socket = (isc__socket_t *)socket0;
+	isc__socket_t *sock = (isc__socket_t *)socket0;
 
 	/*
-	 * Name 'socket'.
+	 * Name 'sock'.
 	 */
 
-	REQUIRE(VALID_SOCKET(socket));
+	REQUIRE(VALID_SOCKET(sock));
 
-	LOCK(&socket->lock);
-	memset(socket->name, 0, sizeof(socket->name));
-	strncpy(socket->name, name, sizeof(socket->name) - 1);
-	socket->tag = tag;
-	UNLOCK(&socket->lock);
+	LOCK(&sock->lock);
+	memset(sock->name, 0, sizeof(sock->name));
+	strncpy(sock->name, name, sizeof(sock->name) - 1);
+	sock->tag = tag;
+	UNLOCK(&sock->lock);
 }
 
 const char *
 isc__socket_getname(isc_socket_t *socket0) {
-	isc__socket_t *socket = (isc__socket_t *)socket0;
+	isc__socket_t *sock = (isc__socket_t *)socket0;
 
-	return (socket->name);
+	return (sock->name);
 }
 
 void *
 isc__socket_gettag(isc_socket_t *socket0) {
-	isc__socket_t *socket = (isc__socket_t *)socket0;
+	isc__socket_t *sock = (isc__socket_t *)socket0;
 
-	return (socket->tag);
+	return (sock->tag);
 }
 
 isc_result_t
@@ -6348,9 +6404,9 @@ isc__socket_register(void) {
 
 int
 isc__socket_getfd(isc_socket_t *socket0) {
-	isc__socket_t *socket = (isc__socket_t *)socket0;
+	isc__socket_t *sock = (isc__socket_t *)socket0;
 
-	return ((short) socket->fd);
+	return ((short) sock->fd);
 }
 
 #if defined(HAVE_LIBXML2) || defined(HAVE_JSON)

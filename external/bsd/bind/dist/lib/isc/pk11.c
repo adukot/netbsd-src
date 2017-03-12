@@ -1,7 +1,7 @@
-/*	$NetBSD: pk11.c,v 1.1.1.4 2014/12/10 03:34:43 christos Exp $	*/
+/*	$NetBSD: pk11.c,v 1.1.1.6 2015/12/17 03:22:10 christos Exp $	*/
 
 /*
- * Copyright (C) 2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2014, 2015  Internet Systems Consortium, Inc. ("ISC")
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -119,6 +119,7 @@
 #include <isc/mem.h>
 #include <isc/once.h>
 #include <isc/platform.h>
+#include <isc/print.h>
 #include <isc/stdio.h>
 #include <isc/thread.h>
 #include <isc/util.h>
@@ -132,7 +133,10 @@
 #include <pkcs11/cryptoki.h>
 #include <pkcs11/pkcs11.h>
 
-#define PINLEN	32
+/* was 32 octets, Petr Spacek suggested 1024, SoftHSMv2 uses 256... */
+#ifndef PINLEN
+#define PINLEN	256
+#endif
 
 #ifndef PK11_NO_LOGERR
 #define PK11_NO_LOGERR 1
@@ -165,7 +169,7 @@ struct pk11_token {
 	char			manuf[32];
 	char			model[16];
 	char			serial[16];
-	char			pin[PINLEN];
+	char			pin[PINLEN + 1];
 };
 static ISC_LIST(pk11_token_t) tokens;
 
@@ -500,7 +504,9 @@ pk11_get_session(pk11_context_t *ctx, pk11_optype_t optype,
 
 	/* Override the token's PIN */
 	if (logon && pin != NULL && *pin != '\0') {
-		memset(token->pin, 0, PINLEN);
+		if (strlen(pin) > PINLEN)
+			return ISC_R_RANGE;
+		memset(token->pin, 0, PINLEN + 1);
 		strncpy(token->pin, pin, PINLEN);
 	}
 
@@ -1101,7 +1107,7 @@ pk11_parse_uri(pk11_object_t *obj, const char *label,
 	char *uri, *p, *a, *na, *v;
 	size_t len, l;
 	FILE *stream = NULL;
-	char pin[PINLEN];
+	char pin[PINLEN + 1];
 	isc_boolean_t gotpin = ISC_FALSE;
 	isc_result_t ret;
 
@@ -1209,10 +1215,12 @@ pk11_parse_uri(pk11_object_t *obj, const char *label,
 			ret = isc_stdio_open(v, "r", &stream);
 			if (ret != ISC_R_SUCCESS)
 				goto err;
-			memset(pin, 0, PINLEN);
-			ret = isc_stdio_read(pin, 1, PINLEN - 1, stream, NULL);
+			memset(pin, 0, PINLEN + 1);
+			ret = isc_stdio_read(pin, 1, PINLEN + 1, stream, &l);
 			if ((ret != ISC_R_SUCCESS) && (ret != ISC_R_EOF))
 				goto err;
+			if (l > PINLEN)
+				DST_RET(ISC_R_RANGE);
 			ret = isc_stdio_close(stream);
 			stream = NULL;
 			if (ret != ISC_R_SUCCESS)
@@ -1240,7 +1248,7 @@ pk11_parse_uri(pk11_object_t *obj, const char *label,
 		DST_RET(ISC_R_NOTFOUND);
 	obj->slot = token->slotid;
 	if (gotpin) {
-		memmove(token->pin, pin, PINLEN);
+		memmove(token->pin, pin, PINLEN + 1);
 		obj->reqlogon = ISC_TRUE;
 	}
 

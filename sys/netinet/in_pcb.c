@@ -1,4 +1,4 @@
-/*	$NetBSD: in_pcb.c,v 1.155 2014/11/25 19:09:13 seanb Exp $	*/
+/*	$NetBSD: in_pcb.c,v 1.163 2016/02/15 14:59:03 rtr Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -93,10 +93,12 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: in_pcb.c,v 1.155 2014/11/25 19:09:13 seanb Exp $");
+__KERNEL_RCSID(0, "$NetBSD: in_pcb.c,v 1.163 2016/02/15 14:59:03 rtr Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_inet.h"
 #include "opt_ipsec.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -287,6 +289,8 @@ in_pcbbind_addr(struct inpcb *inp, struct sockaddr_in *sin, kauth_cred_t cred)
 			ia = ifatoia(ifa_ifwithaddr(sintosa(sin)));
 		if (ia == NULL)
 			return (EADDRNOTAVAIL);
+		if (ia->ia4_flags & (IN_IFF_NOTREADY | IN_IFF_DETACHED))
+			return (EADDRNOTAVAIL);
 	}
 
 	inp->inp_laddr = sin->sin_addr;
@@ -343,10 +347,7 @@ in_pcbbind_port(struct inpcb *inp, struct sockaddr_in *sin, kauth_cred_t cred)
 			return (EACCES);
 
 #ifdef INET6
-		memset(&mapped, 0, sizeof(mapped));
-		mapped.s6_addr16[5] = 0xffff;
-		memcpy(&mapped.s6_addr32[3], &sin->sin_addr,
-		    sizeof(mapped.s6_addr32[3]));
+		in6_in_2_v4mapin6(&sin->sin_addr, &mapped);
 		t6 = in6_pcblookup_port(table, &mapped, sin->sin_port, wild, &vestige);
 		if (t6 && (reuseport & t6->in6p_socket->so_options) == 0)
 			return (EADDRINUSE);
@@ -401,10 +402,9 @@ in_pcbbind_port(struct inpcb *inp, struct sockaddr_in *sin, kauth_cred_t cred)
 }
 
 int
-in_pcbbind(void *v, struct mbuf *nam, struct lwp *l)
+in_pcbbind(void *v, struct sockaddr_in *sin, struct lwp *l)
 {
 	struct inpcb *inp = v;
-	struct sockaddr_in *sin = NULL; /* XXXGCC */
 	struct sockaddr_in lsin;
 	int error;
 
@@ -416,9 +416,8 @@ in_pcbbind(void *v, struct mbuf *nam, struct lwp *l)
 	if (inp->inp_lport || !in_nullhost(inp->inp_laddr))
 		return (EINVAL);
 
-	if (nam != NULL) {
-		sin = mtod(nam, struct sockaddr_in *);
-		if (nam->m_len != sizeof (*sin))
+	if (NULL != sin) {
+		if (sin->sin_len != sizeof(*sin))
 			return (EINVAL);
 	} else {
 		lsin = *((const struct sockaddr_in *)
@@ -449,19 +448,18 @@ in_pcbbind(void *v, struct mbuf *nam, struct lwp *l)
  * then pick one.
  */
 int
-in_pcbconnect(void *v, struct mbuf *nam, struct lwp *l)
+in_pcbconnect(void *v, struct sockaddr_in *sin, struct lwp *l)
 {
 	struct inpcb *inp = v;
 	struct in_ifaddr *ia = NULL;
 	struct sockaddr_in *ifaddr = NULL;
-	struct sockaddr_in *sin = mtod(nam, struct sockaddr_in *);
 	vestigial_inpcb_t vestige;
 	int error;
 
 	if (inp->inp_af != AF_INET)
 		return (EINVAL);
 
-	if (nam->m_len != sizeof (*sin))
+	if (sin->sin_len != sizeof (*sin))
 		return (EINVAL);
 	if (sin->sin_family != AF_INET)
 		return (EAFNOSUPPORT);
@@ -613,29 +611,23 @@ in_pcbdetach(void *v)
 }
 
 void
-in_setsockaddr(struct inpcb *inp, struct mbuf *nam)
+in_setsockaddr(struct inpcb *inp, struct sockaddr_in *sin)
 {
-	struct sockaddr_in *sin;
 
 	if (inp->inp_af != AF_INET)
 		return;
 
-	sin = mtod(nam, struct sockaddr_in *);
 	sockaddr_in_init(sin, &inp->inp_laddr, inp->inp_lport);
-	nam->m_len = sin->sin_len;
 }
 
 void
-in_setpeeraddr(struct inpcb *inp, struct mbuf *nam)
+in_setpeeraddr(struct inpcb *inp, struct sockaddr_in *sin)
 {
-	struct sockaddr_in *sin;
 
 	if (inp->inp_af != AF_INET)
 		return;
 
-	sin = mtod(nam, struct sockaddr_in *);
 	sockaddr_in_init(sin, &inp->inp_faddr, inp->inp_fport);
-	nam->m_len = sin->sin_len;
 }
 
 /*

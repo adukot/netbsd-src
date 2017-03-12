@@ -1,7 +1,7 @@
-/*	$NetBSD: rbt_serialize_test.c,v 1.1.1.3 2014/12/10 03:34:43 christos Exp $	*/
+/*	$NetBSD: rbt_serialize_test.c,v 1.1.1.5 2015/12/17 03:22:10 christos Exp $	*/
 
 /*
- * Copyright (C) 2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2014, 2015  Internet Systems Consortium, Inc. ("ISC")
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -23,6 +23,7 @@
 #include <config.h>
 #include <atf-c.h>
 #include <isc/mem.h>
+#include <isc/print.h>
 #include <isc/random.h>
 #include <isc/string.h>
 #include <fcntl.h>
@@ -195,7 +196,7 @@ fix_data(dns_rbtnode_t *p, void *base, size_t max, void *arg,
  * Load test data into the RBT.
  */
 static void
-add_test_data(isc_mem_t *mctx, dns_rbt_t *rbt) {
+add_test_data(isc_mem_t *mymctx, dns_rbt_t *rbt) {
 	char buffer[1024];
 	isc_buffer_t b;
 	isc_result_t result;
@@ -204,7 +205,7 @@ add_test_data(isc_mem_t *mctx, dns_rbt_t *rbt) {
 	dns_compress_t cctx;
 	rbt_testdata_t *testdatap = testdata;
 
-	dns_compress_init(&cctx, -1, mctx);
+	dns_compress_init(&cctx, -1, mymctx);
 
 	while (testdatap->name != NULL && testdatap->data.data != NULL) {
 		memmove(buffer, testdatap->name, testdatap->name_len);

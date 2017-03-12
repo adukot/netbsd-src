@@ -31,7 +31,7 @@
 
 #include <sys/cdefs.h>
 
-__KERNEL_RCSID(1, "$NetBSD: awin_io.c,v 1.42 2014/12/23 13:34:40 jmcneill Exp $");
+__KERNEL_RCSID(1, "$NetBSD: awin_io.c,v 1.45 2016/04/25 20:15:46 bouyer Exp $");
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -168,6 +168,7 @@ static const struct awin_locators awin_locators[] = {
 	{ "awiniic", OFFANDSIZE(A80_TWI2), 2, AWIN_A80_IRQ_TWI2, A80 },
 	{ "awiniic", OFFANDSIZE(A80_TWI3), 3, AWIN_A80_IRQ_TWI3, A80 },
 	{ "awiniic", OFFANDSIZE(A80_TWI4), 4, AWIN_A80_IRQ_TWI4, A80 },
+	{ "awintve", OFFANDSIZE(TVE0), 0, AWIN_IRQ_TVE, A20 },
 	{ "awinp2wi", OFFANDSIZE(A31_P2WI), NOPORT, AWIN_A31_IRQ_P2WI, A31 },
 	{ "awinp2wi", OFFANDSIZE(A80_RSB), NOPORT, AWIN_A80_IRQ_R_RSB, A80 },
 	{ "spi", OFFANDSIZE(SPI0), 0, AWIN_IRQ_SPI0, AANY },
@@ -189,6 +190,7 @@ static const struct awin_locators awin_locators[] = {
 	{ "awinir", OFFANDSIZE(IR1), 1, AWIN_IRQ_IR1, A10|A20 },
 	{ "awinir", OFFANDSIZE(A31_CIR), NOPORT, AWIN_A31_IRQ_CIR, A31 },
 	{ "awinir", OFFANDSIZE(A80_CIR), NOPORT, AWIN_A80_IRQ_R_CIR, A80 },
+	{ "awinlradc", OFFANDSIZE(LRADC), NOPORT, AWIN_IRQ_LRADC, A20 },
 };
 
 static int
@@ -219,8 +221,8 @@ awinio_attach(device_t parent, device_t self, void *aux)
 
 	sc->sc_dev = self;
 
-	sc->sc_bst = &awin_bs_tag;
-	sc->sc_a4x_bst = &awin_a4x_bs_tag;
+	sc->sc_bst = &armv7_generic_bs_tag;
+	sc->sc_a4x_bst = &armv7_generic_a4x_bs_tag;
 	sc->sc_bsh = awin_core_bsh;
 	sc->sc_dmat = &awin_dma_tag;
 	sc->sc_coherent_dmat = &awin_coherent_dma_tag;

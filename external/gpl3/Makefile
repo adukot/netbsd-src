@@ -1,9 +1,9 @@
-#	$NetBSD: Makefile,v 1.11 2015/01/05 01:52:23 mrg Exp $
+#	$NetBSD: Makefile,v 1.17 2016/01/26 17:48:56 christos Exp $
 
 .include <bsd.own.mk>
 
 .if ${MKBINUTILS} != "no"
-SUBDIR+=	binutils
+SUBDIR+=	${EXTERNAL_BINUTILS_SUBDIR}
 .endif
 
 .if ${MKGCC} != "no"
@@ -11,9 +11,7 @@ SUBDIR+=	${EXTERNAL_GCC_SUBDIR}
 .endif
 
 .if ${MKGDB} != "no"
-.if ${HAVE_GDB} == "7"
-SUBDIR+=        gdb
-.endif
+SUBDIR+=        ${EXTERNAL_GDB_SUBDIR}
 .endif
 
 .include <bsd.subdir.mk>

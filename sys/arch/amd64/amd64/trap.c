@@ -1,4 +1,4 @@
-/*	$NetBSD: trap.c,v 1.79 2014/10/18 08:33:24 snj Exp $	*/
+/*	$NetBSD: trap.c,v 1.83 2015/12/13 15:53:05 maxv Exp $	*/
 
 /*-
  * Copyright (c) 1998, 2000 The NetBSD Foundation, Inc.
@@ -68,7 +68,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: trap.c,v 1.79 2014/10/18 08:33:24 snj Exp $");
+__KERNEL_RCSID(0, "$NetBSD: trap.c,v 1.83 2015/12/13 15:53:05 maxv Exp $");
 
 #include "opt_ddb.h"
 #include "opt_kgdb.h"
@@ -342,6 +342,16 @@ kernelfault:
 		/* Get %rsp value before fault - there may be a pad word
 		 * below the trap frame. */
 		vframe = (void *)frame->tf_rsp;
+		if (frame->tf_rip == 0) {
+			/*
+			 * Assume that if we jumped to null we
+			 * probably did it via a null function
+			 * pointer, so print the return address.
+			 */
+			printf("kernel jumped to null; return addr was %p\n",
+			       *(void **)frame->tf_rsp);
+			goto we_re_toast;
+		}
 		switch (*(uint16_t *)frame->tf_rip) {
 		case 0xcf48:	/* iretq */
 			/*
@@ -505,6 +515,14 @@ kernelfault:
 		}
 
 		cr2 = rcr2();
+
+		if (frame->tf_err & PGEX_X) {
+			/* SMEP might have brought us here */
+			if (cr2 > VM_MIN_ADDRESS && cr2 <= VM_MAXUSER_ADDRESS)
+				panic("prevented execution of %p (SMEP)",
+				    (void *)cr2);
+		}
+
 		goto faultcommon;
 
 	case T_PAGEFLT|T_USER: {	/* page fault */
@@ -608,15 +626,6 @@ faultcommon:
 			}
 			goto out;
 		}
-		KSI_INIT_TRAP(&ksi);
-		ksi.ksi_trap = type & ~T_USER;
-		ksi.ksi_addr = (void *)cr2;
-		if (error == EACCES) {
-			ksi.ksi_code = SEGV_ACCERR;
-			error = EFAULT;
-		} else {
-			ksi.ksi_code = SEGV_MAPERR;
-		}
 
 		if (type == T_PAGEFLT) {
 			onfault = onfault_handler(pcb, frame);
@@ -626,20 +635,38 @@ faultcommon:
 			    map, va, ftype, error);
 			goto kernelfault;
 		}
-		if (error == ENOMEM) {
-			ksi.ksi_signo = SIGKILL;
-			printf("UVM: pid %d.%d (%s), uid %d killed: out of swap\n",
-			       p->p_pid, l->l_lid, p->p_comm,
-			       l->l_cred ?
-			       kauth_cred_geteuid(l->l_cred) : -1);
-		} else {
-#ifdef TRAP_SIGDEBUG
-			printf("pid %d.%d (%s): SEGV at rip %lx addr %lx\n",
-			    p->p_pid, l->l_lid, p->p_comm, frame->tf_rip, va);
-			frame_dump(frame);
-#endif
+
+		KSI_INIT_TRAP(&ksi);
+		ksi.ksi_trap = type & ~T_USER;
+		ksi.ksi_addr = (void *)cr2;
+		switch (error) {
+		case EINVAL:
+			ksi.ksi_signo = SIGBUS;
+			ksi.ksi_code = BUS_ADRERR;
+			break;
+		case EACCES:
 			ksi.ksi_signo = SIGSEGV;
+			ksi.ksi_code = SEGV_ACCERR;
+			error = EFAULT;
+			break;
+		case ENOMEM:
+			ksi.ksi_signo = SIGKILL;
+			printf("UVM: pid %d.%d (%s), uid %d killed: "
+			    "out of swap\n", p->p_pid, l->l_lid, p->p_comm,
+			    l->l_cred ?  kauth_cred_geteuid(l->l_cred) : -1);
+			break;
+		default:
+			ksi.ksi_signo = SIGSEGV;
+			ksi.ksi_code = SEGV_MAPERR;
+			break;
 		}
+
+#ifdef TRAP_SIGDEBUG
+		printf("pid %d.%d (%s): signal %d at rip %lx addr %lx "
+		    "error %d\n", p->p_pid, l->l_lid, p->p_comm, ksi.ksi_signo,
+		    frame->tf_rip, va, error);
+		frame_dump(frame);
+#endif
 		(*p->p_emul->e_trapsignal)(l, &ksi);
 		break;
 	}
@@ -736,7 +763,7 @@ frame_dump(struct trapframe *tf)
 	printf("cs %lx  ds %lx  es %lx  fs %lx  gs %lx  ss %lx\n",
 		tf->tf_cs & 0xffff, tf->tf_ds & 0xffff, tf->tf_es & 0xffff,
 		tf->tf_fs & 0xffff, tf->tf_gs & 0xffff, tf->tf_ss & 0xffff);
-	
+
 	printf("\n");
 	printf("Stack dump:\n");
 	for (i = 0, p = (unsigned long *) tf; i < 20; i ++, p += 4)

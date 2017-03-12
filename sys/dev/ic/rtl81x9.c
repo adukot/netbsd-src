@@ -1,4 +1,4 @@
-/*	$NetBSD: rtl81x9.c,v 1.95 2014/08/10 16:44:35 tls Exp $	*/
+/*	$NetBSD: rtl81x9.c,v 1.97 2016/02/09 08:32:10 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 1997, 1998
@@ -86,7 +86,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: rtl81x9.c,v 1.95 2014/08/10 16:44:35 tls Exp $");
+__KERNEL_RCSID(0, "$NetBSD: rtl81x9.c,v 1.97 2016/02/09 08:32:10 ozaki-r Exp $");
 
 
 #include <sys/param.h>
@@ -106,7 +106,7 @@ __KERNEL_RCSID(0, "$NetBSD: rtl81x9.c,v 1.95 2014/08/10 16:44:35 tls Exp $");
 #include <net/if_media.h>
 
 #include <net/bpf.h>
-#include <sys/rnd.h>
+#include <sys/rndsource.h>
 
 #include <sys/bus.h>
 #include <machine/endian.h>
@@ -1077,7 +1077,7 @@ rtk_rxeof(struct rtk_softc *sc)
 
 		bpf_mtap(ifp, m);
 		/* pass it on. */
-		(*ifp->if_input)(ifp, m);
+		if_percpuq_enqueue(ifp->if_percpuq, m);
 	}
 }
 

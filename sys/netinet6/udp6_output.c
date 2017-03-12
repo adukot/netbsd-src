@@ -1,4 +1,4 @@
-/*	$NetBSD: udp6_output.c,v 1.47 2014/12/05 18:45:37 seanb Exp $	*/
+/*	$NetBSD: udp6_output.c,v 1.50 2015/08/24 22:21:27 pooka Exp $	*/
 /*	$KAME: udp6_output.c,v 1.43 2001/10/15 09:19:52 itojun Exp $	*/
 
 /*
@@ -62,9 +62,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: udp6_output.c,v 1.47 2014/12/05 18:45:37 seanb Exp $");
+__KERNEL_RCSID(0, "$NetBSD: udp6_output.c,v 1.50 2015/08/24 22:21:27 pooka Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_inet.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/mbuf.h>
@@ -80,7 +82,6 @@ __KERNEL_RCSID(0, "$NetBSD: udp6_output.c,v 1.47 2014/12/05 18:45:37 seanb Exp $
 #include <sys/domain.h>
 
 #include <net/if.h>
-#include <net/route.h>
 #include <net/if_types.h>
 
 #include <netinet/in.h>
@@ -112,10 +113,9 @@ __KERNEL_RCSID(0, "$NetBSD: udp6_output.c,v 1.47 2014/12/05 18:45:37 seanb Exp $
 
 int
 udp6_output(struct in6pcb * const in6p, struct mbuf *m,
-    struct mbuf * const addr6, struct mbuf * const control,
+    struct sockaddr_in6 * const addr6, struct mbuf * const control,
     struct lwp * const l)
 {
-	struct rtentry *rt;
 	u_int32_t ulen = m->m_pkthdr.len;
 	u_int32_t plen = sizeof(struct udphdr) + ulen;
 	struct ip6_hdr *ip6;
@@ -138,11 +138,7 @@ udp6_output(struct in6pcb * const in6p, struct mbuf *m,
 	struct sockaddr_in6 tmp;
 
 	if (addr6) {
-		if (addr6->m_len != sizeof(*sin6)) {
-			error = EINVAL;
-			goto release;
-		}
-		sin6 = mtod(addr6, struct sockaddr_in6 *);
+		sin6 = addr6;
 		if (sin6->sin6_family != AF_INET6) {
 			error = EAFNOSUPPORT;
 			goto release;
@@ -358,9 +354,7 @@ udp6_output(struct in6pcb * const in6p, struct mbuf *m,
 		ip6->ip6_plen	= htons((u_int16_t)plen);
 #endif
 		ip6->ip6_nxt	= IPPROTO_UDP;
-		ip6->ip6_hlim	= in6_selecthlim(in6p,
-		    (rt = rtcache_validate(&in6p->in6p_route)) != NULL
-		        ? rt->rt_ifp : NULL);
+		ip6->ip6_hlim	= in6_selecthlim_rt(in6p);
 		ip6->ip6_src	= *laddr;
 		ip6->ip6_dst	= *faddr;
 

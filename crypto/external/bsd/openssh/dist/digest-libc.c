@@ -1,4 +1,4 @@
-/* $OpenBSD: digest-libc.c,v 1.3 2014/06/24 01:13:21 djm Exp $ */
+/* $OpenBSD: digest-libc.c,v 1.5 2015/05/05 02:48:17 jsg Exp $ */
 /*
  * Copyright (c) 2013 Damien Miller <djm@mindrot.org>
  * Copyright (c) 2014 Markus Friedl.  All rights reserved.
@@ -16,7 +16,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "includes.h"
-__RCSID("$NetBSD: digest-libc.c,v 1.2 2014/10/19 16:30:58 christos Exp $");
+__RCSID("$NetBSD: digest-libc.c,v 1.4 2015/07/03 01:00:00 christos Exp $");
 
 #include <sys/types.h>
 #include <limits.h>
@@ -126,6 +126,26 @@ ssh_digest_by_alg(int alg)
 	return &(digests[alg]);
 }
 
+int
+ssh_digest_alg_by_name(const char *name)
+{
+	int alg;
+
+	for (alg = 0; alg < SSH_DIGEST_MAX; alg++) {
+		if (strcasecmp(name, digests[alg].name) == 0)
+			return digests[alg].id;
+	}
+	return -1;
+}
+
+const char *
+ssh_digest_alg_name(int alg)
+{
+	const struct ssh_digest *digest = ssh_digest_by_alg(alg);
+
+	return digest == NULL ? NULL : digest->name;
+}
+
 size_t
 ssh_digest_bytes(int alg)
 {
@@ -148,7 +168,7 @@ ssh_digest_start(int alg)
 	const struct ssh_digest *digest = ssh_digest_by_alg(alg);
 	struct ssh_digest_ctx *ret;
 
-	if (digest == NULL || (ret = calloc(1, sizeof(ret))) == NULL)
+	if (digest == NULL || (ret = calloc(1, sizeof(*ret))) == NULL)
 		return NULL;
 	if ((ret->mdctx = calloc(1, digest->ctx_len)) == NULL) {
 		free(ret);

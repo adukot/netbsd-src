@@ -1,5 +1,5 @@
-/*	$NetBSD: channels.h,v 1.9 2014/10/19 16:30:58 christos Exp $	*/
-/* $OpenBSD: channels.h,v 1.115 2014/07/15 15:54:14 millert Exp $ */
+/*	$NetBSD: channels.h,v 1.11 2015/07/03 00:59:59 christos Exp $	*/
+/* $OpenBSD: channels.h,v 1.118 2015/07/01 02:26:31 djm Exp $ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -111,7 +111,7 @@ struct Channel {
 	time_t	notbefore;	/* Pause IO until deadline (time_t) */
 	int     delayed;	/* post-select handlers for newly created
 				 * channels are delayed until the first call
-				 * to a matching pre-select handler. 
+				 * to a matching pre-select handler.
 				 * this way post-select handlers are not
 				 * accidentally called if a FD gets reused */
 	Buffer  input;		/* data read from socket, to be sent over
@@ -233,17 +233,17 @@ void	 channel_send_window_changes(void);
 
 /* protocol handler */
 
-void	 channel_input_close(int, u_int32_t, void *);
-void	 channel_input_close_confirmation(int, u_int32_t, void *);
-void	 channel_input_data(int, u_int32_t, void *);
-void	 channel_input_extended_data(int, u_int32_t, void *);
-void	 channel_input_ieof(int, u_int32_t, void *);
-void	 channel_input_oclose(int, u_int32_t, void *);
-void	 channel_input_open_confirmation(int, u_int32_t, void *);
-void	 channel_input_open_failure(int, u_int32_t, void *);
-void	 channel_input_port_open(int, u_int32_t, void *);
-void	 channel_input_window_adjust(int, u_int32_t, void *);
-void	 channel_input_status_confirm(int, u_int32_t, void *);
+int	 channel_input_close(int, u_int32_t, void *);
+int	 channel_input_close_confirmation(int, u_int32_t, void *);
+int	 channel_input_data(int, u_int32_t, void *);
+int	 channel_input_extended_data(int, u_int32_t, void *);
+int	 channel_input_ieof(int, u_int32_t, void *);
+int	 channel_input_oclose(int, u_int32_t, void *);
+int	 channel_input_open_confirmation(int, u_int32_t, void *);
+int	 channel_input_open_failure(int, u_int32_t, void *);
+int	 channel_input_port_open(int, u_int32_t, void *);
+int	 channel_input_window_adjust(int, u_int32_t, void *);
+int	 channel_input_status_confirm(int, u_int32_t, void *);
 
 /* file descriptor handling (read/write) */
 
@@ -287,12 +287,13 @@ int	 permitopen_port(const char *);
 
 /* x11 forwarding */
 
+void	 channel_set_x11_refuse_time(u_int);
 int	 x11_connect_display(void);
 int	 x11_create_display_inet(int, int, int, u_int *, int **);
-void     x11_input_open(int, u_int32_t, void *);
+int      x11_input_open(int, u_int32_t, void *);
 void	 x11_request_forwarding_with_spoofing(int, const char *, const char *,
 	     const char *, int);
-void	 deny_input_open(int, u_int32_t, void *);
+int	 deny_input_open(int, u_int32_t, void *);
 
 /* agent forwarding */
 

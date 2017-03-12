@@ -1,7 +1,7 @@
-/*	$NetBSD: dnssec-settime.c,v 1.11 2014/12/10 04:37:51 christos Exp $	*/
+/*	$NetBSD: dnssec-settime.c,v 1.13 2015/12/17 04:00:41 christos Exp $	*/
 
 /*
- * Copyright (C) 2009-2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2009-2015  Internet Systems Consortium, Inc. ("ISC")
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -117,8 +117,8 @@ printtime(dst_key_t *key, int type, const char *tag, isc_boolean_t epoch,
 	} else if (epoch) {
 		fprintf(stream, "%d\n", (int) when);
 	} else {
-		time_t time = when;
-		output = ctime(&time);
+		time_t timet = when;
+		output = ctime(&timet);
 		fprintf(stream, "%s", output);
 	}
 }
@@ -171,7 +171,7 @@ main(int argc, char **argv) {
 	if (result != ISC_R_SUCCESS)
 		fatal("Out of memory");
 
-	setup_logging(verbose, mctx, &log);
+	setup_logging(mctx, &log);
 
 #ifdef PKCS11CRYPTO
 	pk11_result_register();
@@ -345,7 +345,6 @@ main(int argc, char **argv) {
 	isc_entropy_stopcallbacksources(ectx);
 
 	if (predecessor != NULL) {
-		char keystr[DST_KEY_FORMATSIZE];
 		int major, minor;
 
 		if (prepub == -1)
@@ -412,7 +411,6 @@ main(int argc, char **argv) {
 					"inactive.\n", program);
 
 		changed = setpub = setact = ISC_TRUE;
-		dst_key_free(&prevkey);
 	} else {
 		if (prepub < 0)
 			prepub = 0;
@@ -603,6 +601,8 @@ main(int argc, char **argv) {
 		printf("%s\n", newname);
 	}
 
+	if (prevkey != NULL)
+		dst_key_free(&prevkey);
 	dst_key_free(&key);
 	dst_lib_destroy();
 	isc_hash_destroy();

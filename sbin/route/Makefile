@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.26 2014/11/06 21:29:32 christos Exp $
+#	$NetBSD: Makefile,v 1.29 2015/09/14 05:12:52 ozaki-r Exp $
 #	@(#)Makefile	8.1 (Berkeley) 6/5/93
 
 .include <bsd.own.mk>
@@ -6,6 +6,13 @@
 RUMPPRG=route
 MAN=	route.8
 SRCS=	route.c show.c keywords.c rtutil.c
+
+.PATH:		${.CURDIR}/../../lib/libc/net
+RUMPSRCS=	getaddrinfo.c getifaddrs.c getnameinfo.c
+RUMPSRCS+=	if_indextoname.c if_nametoindex.c
+.if (${MKRUMP} != "no")
+CPPFLAGS+= -DRUMP_ACTION
+.endif
 
 .if (${USE_INET6} != "no")
 CPPFLAGS+=-DINET6

@@ -1,4 +1,4 @@
-/*	$NetBSD: if_pcn.c,v 1.58 2014/08/10 16:44:36 tls Exp $	*/
+/*	$NetBSD: if_pcn.c,v 1.61 2016/02/09 08:32:11 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 2001 Wasabi Systems, Inc.
@@ -65,7 +65,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_pcn.c,v 1.58 2014/08/10 16:44:36 tls Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_pcn.c,v 1.61 2016/02/09 08:32:11 ozaki-r Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -79,7 +79,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_pcn.c,v 1.58 2014/08/10 16:44:36 tls Exp $");
 #include <sys/device.h>
 #include <sys/queue.h>
 
-#include <sys/rnd.h>
+#include <sys/rndsource.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -982,6 +982,7 @@ pcn_start(struct ifnet *ifp)
 				printf("%s: unable to load Tx buffer, "
 				    "error = %d\n", device_xname(sc->sc_dev),
 				    error);
+				m_freem(m);
 				break;
 			}
 		}
@@ -1550,7 +1551,7 @@ pcn_rxintr(struct pcn_softc *sc)
 		bpf_mtap(ifp, m);
 
 		/* Pass it on. */
-		(*ifp->if_input)(ifp, m);
+		if_percpuq_enqueue(ifp->if_percpuq, m);
 		ifp->if_ipackets++;
 	}
 

@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.44 2014/12/27 18:00:13 martin Exp $
+# $NetBSD: Makefile,v 1.49 2015/12/22 14:25:58 christos Exp $
 
 .include <bsd.own.mk>
 
@@ -17,10 +17,8 @@ TESTS_C+=	t_floatunditf
 TESTS_C+=	t_fmtcheck
 TESTS_C+=	t_fnmatch
 TESTS_C+=	t_fpclassify
-.if ${MACHINE_CPU} != "aarch64"
 TESTS_C+=	t_fpsetmask
 TESTS_C+=	t_fpsetround
-.endif
 TESTS_C+=	t_ftok
 TESTS_C+=	t_getcwd
 TESTS_C+=	t_getgrent
@@ -41,14 +39,10 @@ TESTS_C+=	t_time
 TESTS_C+=	t_ttyname
 TESTS_C+=	t_vis
 
-.if ${MACHINE_CPU} == "aarch64" || ${MACHINE_CPU} == "arm" \
-    || ${MACHINE_ARCH} == "sparc" || ${MACHINE_ARCH} == "sparc64" \
-    || ${MACHINE_ARCH} == "i386" || ${MACHINE_ARCH} == "x86_64"
-CPPFLAGS.t_siginfo.c+=	-DHAVE_FENV
+CPPFLAGS.t_siginfo.c+=-D__TEST_FENV
+
 LDADD.t_siginfo+=	-lm
 DPADD.t_siginfo+=	${LIBM}
-.endif
-
 LDADD.t_fpclassify+=	-lm
 DPADD.t_fpclassify+=	${LIBM}
 LDADD.t_fpsetround+=	-lm

@@ -1,4 +1,4 @@
-/*	$NetBSD: namespace.h,v 1.176 2014/09/26 19:28:03 christos Exp $	*/
+/*	$NetBSD: namespace.h,v 1.180 2016/04/03 00:19:42 christos Exp $	*/
 
 /*-
  * Copyright (c) 1997-2004 The NetBSD Foundation, Inc.
@@ -65,12 +65,16 @@
 #define strtod_l	_strtod_l
 #define strtof		_strtof
 #define strtof_l	_strtof_l
+#define strtoi		_strtoi
+#define strtoi_l	_strtoi_l
 #define strtoimax	_strtoimax
 #define strtoimax_l	_strtoimax_l
 #define strtold		_strtold
 #define strtold_l	_strtold_l
 #define strtoll		_strtoll
 #define strtoll_l	_strtoll_l
+#define strtou		_strtou
+#define strtou_l	_strtou_l
 #define strtoull	_strtoull
 #define strtoull_l	_strtoull_l
 #define strtoumax	_strtoumax
@@ -166,6 +170,7 @@
 #define a64l			_a64l
 #define adjtime			_adjtime
 #define alarm			_alarm
+#define allocaddrinfo		_allocaddrinfo
 #define alphasort		_alphasort
 #define arc4random		_arc4random
 #define arc4random_addrandom	_arc4random_addrandom
@@ -547,6 +552,7 @@
 #define readdir			_readdir
 #define readdir_r		_readdir_r
 #define readlink		_readlink
+#define reallocarr		_reallocarr
 #define realpath		_realpath
 #define regcomp			_regcomp
 #define regerror		_regerror
@@ -753,6 +759,7 @@
 #define wait			_wait
 #define wait3			_wait3
 #define wait4			_wait4
+#define waitid			_waitid
 #define waitpid			_waitpid
 #define wcscasecmp		_wcscasecmp
 #define wcscasecmp_l		_wcscasecmp_l

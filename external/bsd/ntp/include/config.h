@@ -289,7 +289,7 @@
 #define DFLT_RLIMIT_MEMLOCK 32
 
 /* Default number of 4k pages for RLIMIT_STACK */
-#define DFLT_RLIMIT_STACK 50
+#define DFLT_RLIMIT_STACK 64
 
 /* Directory separator character, usually / or \\ */
 #define DIR_SEP '/'
@@ -303,8 +303,14 @@
 /* The number of minutes in a DST adjustment */
 #define DSTMINUTES 60
 
+/* support dynamic interleave? */
+#define DYNAMIC_INTERLEAVE 0
+
 /* number of args to el_init() */
 #define EL_INIT_ARGS 4
+
+/* Provide the explicit 127.0.0.0/8 martian filter? */
+#define ENABLE_BUG3020_FIX 1
 
 /* nls support in libopts */
 /* #undef ENABLE_NLS */
@@ -328,8 +334,14 @@
    */
 /* #undef HAVE_ALLOCA_H */
 
+/* Define to 1 if you have the `arc4random_buf' function. */
+#define HAVE_ARC4RANDOM_BUF 1
+
 /* Define to 1 if you have the <arpa/nameser.h> header file. */
 #define HAVE_ARPA_NAMESER_H 1
+
+/* Define to 1 if you have the `atomic_thread_fence' function. */
+/* #undef HAVE_ATOMIC_THREAD_FENCE */
 
 /* Do we have audio support? */
 #define HAVE_AUDIO /**/
@@ -386,6 +398,9 @@
 
 /* Define to 1 if you have the <errno.h> header file. */
 #define HAVE_ERRNO_H 1
+
+/* Define to 1 if you have the `EVP_MD_do_all_sorted' function. */
+#define HAVE_EVP_MD_DO_ALL_SORTED 1
 
 /* Define to 1 if you have the `fchmod' function. */
 #define HAVE_FCHMOD 1
@@ -824,7 +839,10 @@
 /* Define to 1 if you have the <stdarg.h> header file. */
 #define HAVE_STDARG_H 1
 
-/* Define to 1 if you have the <stdbool.h> header file. */
+/* Define to 1 if you have the <stdatomic.h> header file. */
+/* #undef HAVE_STDATOMIC_H */
+
+/* Define to 1 if stdbool.h conforms to C99. */
 #define HAVE_STDBOOL_H 1
 
 /* Define to 1 if you have the <stddef.h> header file. */
@@ -1136,7 +1154,7 @@
 /* #undef HAVE_UNIXWARE_SIGWAIT */
 
 /* Define to 1 if the system has the type `unsigned long long int'. */
-/* #undef HAVE_UNSIGNED_LONG_LONG_INT */
+#define HAVE_UNSIGNED_LONG_LONG_INT 1
 
 /* Define to 1 if you have the `updwtmp' function. */
 /* #undef HAVE_UPDWTMP */
@@ -1194,6 +1212,9 @@
 
 /* define if select implicitly yields */
 #define HAVE_YIELDING_SELECT 1
+
+/* Define to 1 if the system has the type `_Bool'. */
+#define HAVE__BOOL 1
 
 /* Define to 1 if you have the `_exit' function. */
 #define HAVE__EXIT 1
@@ -1321,6 +1342,9 @@
 /* define to 1 if library is thread safe */
 #define LDAP_API_FEATURE_X_OPENLDAP_THREAD_SAFE 1
 
+/* leap smear mechanism */
+/* #undef LEAP_SMEAR */
+
 /* Define to any value to include libseccomp sandboxing. */
 /* #undef LIBSECCOMP */
 
@@ -1336,6 +1360,13 @@
 
 /* Should we recommend a minimum value for tickadj? */
 /* #undef MIN_REC_TICKADJ */
+
+/* Define to 1 if the compiler does not support C99's structure
+   initialization. */
+/* #undef MISSING_C99_STRUCT_INIT */
+
+/* having to fork the DNS worker early when doing chroot? */
+/* #undef NEED_EARLY_FORK */
 
 /* Do we need HPUX adjtime() library support? */
 /* #undef NEED_HPUX_ADJTIME */
@@ -1428,7 +1459,7 @@
 #define PACKAGE_NAME "ntp"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "ntp 4.2.8"
+#define PACKAGE_STRING "ntp 4.2.8p7"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "ntp"
@@ -1437,7 +1468,7 @@
 #define PACKAGE_URL "http://www.ntp.org./"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "4.2.8"
+#define PACKAGE_VERSION "4.2.8p7"
 
 /* data dir */
 #define PERLLIBDIR "/usr/local/share/ntp/lib"
@@ -1478,11 +1509,11 @@
 /* Do we want the SCO clock hacks? */
 /* #undef SCO5_CLOCK */
 
-/* The size of `char*', as computed by sizeof. */
+/* The size of `char *', as computed by sizeof. */
 #ifdef _LP64
-#define SIZEOF_CHARP 8
+#define SIZEOF_CHAR_P 8
 #else
-#define SIZEOF_CHARP 4
+#define SIZEOF_CHAR_P 4
 #endif
 
 /* The size of `int', as computed by sizeof. */
@@ -1538,7 +1569,7 @@
 /* #undef STRERROR_R_CHAR_P */
 
 /* canonical system (cpu-vendor-os) of where we should run */
-#define STR_SYSTEM  "NetBSD"
+#define STR_SYSTEM "NetBSD"
 
 /* Does Xettimeofday take 1 arg? */
 /* #undef SYSV_TIMEOFDAY */
@@ -1582,6 +1613,9 @@ typedef unsigned int	uintptr_t;
 /* Use OpenSSL's crypto random functions */
 #define USE_OPENSSL_CRYPTO_RAND 1
 
+/* OK to use snprintb()? */
+#define USE_SNPRINTB 1
+
 /* Can we use SIGPOLL for tty IO? */
 /* #undef USE_TTY_SIGPOLL */
 
@@ -1589,7 +1623,7 @@ typedef unsigned int	uintptr_t;
 /* #undef USE_UDP_SIGPOLL */
 
 /* Version number of package */
-#define VERSION "4.2.8"
+#define VERSION "4.2.8p7"
 
 /* vsnprintf expands "%m" to strerror(errno) */
 /* #undef VSNPRINTF_PERCENT_M */
@@ -1603,15 +1637,15 @@ typedef unsigned int	uintptr_t;
 #ifndef __NetBSD__
 /* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
    significant byte first (like Motorola and SPARC, unlike Intel). */
-#if defined AC_APPLE_UNIVERSAL_BUILD
+# if defined AC_APPLE_UNIVERSAL_BUILD
 # if defined __BIG_ENDIAN__
 #  define WORDS_BIGENDIAN 1
 # endif
-#else
-# ifndef WORDS_BIGENDIAN
-/* #  undef WORDS_BIGENDIAN */
+# else
+#  ifndef WORDS_BIGENDIAN
+ /* #  undef WORDS_BIGENDIAN */
+#  endif
 # endif
-#endif
 #else
 # include <sys/endian.h>
 # if _BYTE_ORDER == _BIG_ENDIAN

@@ -1,6 +1,6 @@
 /* Target-dependent code for the Xtensa port of GDB, the GNU debugger.
 
-   Copyright (C) 2003-2014 Free Software Foundation, Inc.
+   Copyright (C) 2003-2015 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -47,7 +47,6 @@
 
 #include "command.h"
 #include "gdbcmd.h"
-#include "gdb_assert.h"
 
 #include "xtensa-isa.h"
 #include "xtensa-tdep.h"
@@ -554,10 +553,6 @@ xtensa_pseudo_register_read (struct gdbarch *gdbarch,
   DEBUGTRACE ("xtensa_pseudo_register_read (... regnum = %d (%s) ...)\n",
 	      regnum, xtensa_register_name (gdbarch, regnum));
 
-  if (regnum == gdbarch_num_regs (gdbarch)
-		+ gdbarch_num_pseudo_regs (gdbarch) - 1)
-     regnum = gdbarch_tdep (gdbarch)->a0_base + 1;
-
   /* Read aliases a0..a15, if this is a Windowed ABI.  */
   if (gdbarch_tdep (gdbarch)->isa_use_windowed_registers
       && (regnum >= gdbarch_tdep (gdbarch)->a0_base)
@@ -653,10 +648,6 @@ xtensa_pseudo_register_write (struct gdbarch *gdbarch,
 
   DEBUGTRACE ("xtensa_pseudo_register_write (... regnum = %d (%s) ...)\n",
 	      regnum, xtensa_register_name (gdbarch, regnum));
-
-  if (regnum == gdbarch_num_regs (gdbarch)
-		+ gdbarch_num_pseudo_regs (gdbarch) -1)
-     regnum = gdbarch_tdep (gdbarch)->a0_base + 1;
 
   /* Renumber register, if aliase a0..a15 on Windowed ABI.  */
   if (gdbarch_tdep (gdbarch)->isa_use_windowed_registers
@@ -911,23 +902,18 @@ xtensa_gregset =
 };
 
 
-/* Return the appropriate register set for the core
-   section identified by SECT_NAME and SECT_SIZE.  */
+/* Iterate over supported core file register note sections. */
 
-static const struct regset *
-xtensa_regset_from_core_section (struct gdbarch *core_arch,
-				 const char *sect_name,
-				 size_t sect_size)
+static void
+xtensa_iterate_over_regset_sections (struct gdbarch *gdbarch,
+				     iterate_over_regset_sections_cb *cb,
+				     void *cb_data,
+				     const struct regcache *regcache)
 {
-  DEBUGTRACE ("xtensa_regset_from_core_section "
-	      "(..., sect_name==\"%s\", sect_size==%x)\n",
-	      sect_name, (unsigned int) sect_size);
+  DEBUGTRACE ("xtensa_iterate_over_regset_sections\n");
 
-  if (strcmp (sect_name, ".reg") == 0
-      && sect_size >= sizeof(xtensa_elf_gregset_t))
-    return &xtensa_gregset;
-
-  return NULL;
+  cb (".reg", sizeof (xtensa_elf_gregset_t), &xtensa_gregset,
+      NULL, cb_data);
 }
 
 
@@ -3281,8 +3267,8 @@ xtensa_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
   xtensa_add_reggroups (gdbarch);
   set_gdbarch_register_reggroup_p (gdbarch, xtensa_register_reggroup_p);
 
-  set_gdbarch_regset_from_core_section (gdbarch,
-					xtensa_regset_from_core_section);
+  set_gdbarch_iterate_over_regset_sections
+    (gdbarch, xtensa_iterate_over_regset_sections);
 
   set_solib_svr4_fetch_link_map_offsets
     (gdbarch, svr4_ilp32_fetch_link_map_offsets);

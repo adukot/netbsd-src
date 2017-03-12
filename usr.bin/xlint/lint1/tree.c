@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.78 2015/02/09 18:17:34 christos Exp $	*/
+/*	$NetBSD: tree.c,v 1.82 2015/10/14 18:31:52 christos Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: tree.c,v 1.78 2015/02/09 18:17:34 christos Exp $");
+__RCSID("$NetBSD: tree.c,v 1.82 2015/10/14 18:31:52 christos Exp $");
 #endif
 
 #include <stdlib.h>
@@ -431,11 +431,14 @@ strmemb(tnode_t *tn, op_t op, sym_t *msym)
 				error(103);
 			}
 		} else {
+			char buf[64];
 			/* left operand of "->" must be pointer to ... */
 			if (tflag && tn->tn_type->t_tspec == PTR) {
-				warning(104);
+				tyname(buf, sizeof(buf), tn->tn_type);
+				warning(104, buf);
 			} else {
-				error(104);
+				tyname(buf, sizeof(buf), tn->tn_type);
+				error(104, buf);
 			}
 		}
 	} else {
@@ -1240,19 +1243,24 @@ asgntypok(op_t op, int arg, tnode_t *ln, tnode_t *rn)
 	}
 
 	if ((lt == PTR && isityp(rt)) || (isityp(lt) && rt == PTR)) {
+		const char *lx = lt == PTR ? "pointer" : "integer";
+		const char *rx = rt == PTR ? "pointer" : "integer";
+		tyname(lbuf, sizeof(lbuf), ltp);
+		tyname(rbuf, sizeof(rbuf), rtp);
+
 		switch (op) {
 		case INIT:
 		case RETURN:
 			/* illegal combination of pointer and integer */
-			warning(183);
+			warning(183, lx, lbuf, rx, rbuf);
 			break;
 		case FARG:
 			/* illegal comb. of ptr. and int., arg #%d */
-			warning(154, arg);
+			warning(154, lx, lbuf, rx, rbuf, arg);
 			break;
 		default:
 			/* illegal comb. of ptr. and int., op %s */
-			warning(123, mp->m_name);
+			warning(123, lx, lbuf, rx, rbuf, mp->m_name);
 			break;
 		}
 		return (1);
@@ -2531,12 +2539,12 @@ bldcol(tnode_t *ln, tnode_t *rn)
 	} else if (lt == PTR && ln->tn_type->t_subt->t_tspec == VOID) {
 		if (rt != PTR)
 			LERROR("bldcol()");
-		rtp = ln->tn_type;
+		rtp = rn->tn_type;
 		mrgqual(&rtp, ln->tn_type, rn->tn_type);
 	} else if (rt == PTR && rn->tn_type->t_subt->t_tspec == VOID) {
 		if (lt != PTR)
 			LERROR("bldcol()");
-		rtp = rn->tn_type;
+		rtp = ln->tn_type;
 		mrgqual(&rtp, ln->tn_type, rn->tn_type);
 	} else {
 		if (lt != PTR || rt != PTR)
@@ -3792,14 +3800,14 @@ chkcomp(op_t op, tnode_t *ln, tnode_t *rn)
 
 	if ((hflag || pflag) && lt == CHAR && rn->tn_op == CON &&
 	    (rn->tn_val->v_quad < 0 ||
-	     rn->tn_val->v_quad > ~(~0 << (CHAR_BIT - 1)))) {
+	     rn->tn_val->v_quad > (int)~(~0U << (CHAR_BIT - 1)))) {
 		/* nonportable character comparison, op %s */
 		warning(230, mp->m_name);
 		return;
 	}
 	if ((hflag || pflag) && rt == CHAR && ln->tn_op == CON &&
 	    (ln->tn_val->v_quad < 0 ||
-	     ln->tn_val->v_quad > ~(~0 << (CHAR_BIT - 1)))) {
+	     ln->tn_val->v_quad > (int)~(~0U << (CHAR_BIT - 1)))) {
 		/* nonportable character comparison, op %s */
 		warning(230, mp->m_name);
 		return;

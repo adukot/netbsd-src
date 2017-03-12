@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.inc,v 1.25 2014/03/04 17:57:56 joerg Exp $
+#	$NetBSD: Makefile.inc,v 1.30 2016/05/01 07:25:46 martin Exp $
 
 .include <bsd.own.mk>
 
@@ -12,11 +12,20 @@ CPPFLAGS+=	-I${NETBSDSRCDIR}/libexec/ld.elf_so -I${COMMON_DIR} -I.
 
 OBJS+=		crt0.o gcrt0.o crti.o crtn.o
 OBJS+=		crtbegin.o crtend.o
+OBJS+=		sysident.o
 
 .if ${MKPIC} == "yes"
 OBJS+=		crtbeginS.o
 CFLAGS.crtbegin.c+= -fPIE
+# XXXGCC5 - GCC 5 miscompiles crtbeginS.c on many platforms.  on SPARC it
+# XXXGCC5   emits "clr %g1; call %g1", which is effectively jumping to zero.
+. if defined(HAVE_GCC) && ${HAVE_GCC} == 53 && \
+     !exists(${ARCHDIR}/crtbegin.S)
+CFLAGS.crt0-common.c+=	-O1
+CFLAGS.crtbeginS.c+=	-O1
+. endif
 .endif
+
 .if ${MACHINE_ARCH} == "alpha"
 OBJS+=		crtfm.o
 .endif
@@ -55,7 +64,7 @@ crtbeginS.o: crtbegin.S
 .else
 crtbeginS.o: crtbegin.c crtbegin.h
 	${_MKTARGET_COMPILE}
-	${COMPILE.c} ${PICFLAGS} -DSHARED ${COMMON_DIR}/crtbegin.c -o ${.TARGET}.o
+	${COMPILE.c} ${CFLAGS.crtbeginS.c} ${PICFLAGS} -DSHARED ${COMMON_DIR}/crtbegin.c -o ${.TARGET}.o
 .endif
 	${OBJCOPY} ${OBJCOPYLIBFLAGS} ${.TARGET}.o ${.TARGET} 
 	rm -f ${.TARGET}.o
@@ -81,7 +90,7 @@ MY_PICFLAGS=
 crt0.o: crt0.S crt0-common.c
 	${_MKTARGET_COMPILE}
 	${COMPILE.S} ${ARCHDIR}/crt0.S -o ${.TARGET}.S.o
-	${COMPILE.c} ${MY_PICFLAGS} ${COMMON_DIR}/crt0-common.c -o ${.TARGET}.c.o
+	${COMPILE.c} ${CFLAGS.crt0-common.c} ${MY_PICFLAGS} ${COMMON_DIR}/crt0-common.c -o ${.TARGET}.c.o
 	${LD} -r -o ${.TARGET}.o ${.TARGET}.S.o ${.TARGET}.c.o
 	${OBJCOPY} ${OBJCOPYLIBFLAGS} ${.TARGET}.o ${.TARGET} 
 	rm -f ${.TARGET}.S.o ${.TARGET}.c.o ${.TARGET}.o
@@ -121,6 +130,7 @@ CLEANFILES+=	sysident_assym.h
 
 crti.o: crti.S sysident_assym.h sysident.S
 crtn.o: crtn.S
+sysident.o:	sysident.S sysident_assym.h
 
 FILES=${OBJS}
 FILESDIR=${LIBDIR}

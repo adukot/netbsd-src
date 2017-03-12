@@ -1,4 +1,4 @@
-# $NetBSD: GENERIC,v 1.364 2015/01/06 17:50:24 macallan Exp $
+# $NetBSD: GENERIC,v 1.368 2016/03/19 23:21:02 gdt Exp $
 #
 # This machine description file is used to generate the default NetBSD
 # kernel.
@@ -19,7 +19,7 @@ include 	"arch/alpha/conf/std.alpha"
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-ident		"GENERIC-$Revision: 1.364 $"
+ident		"GENERIC-$Revision: 1.368 $"
 
 maxusers 32
 
@@ -56,7 +56,6 @@ options 	NTP			# kernel PLL for NTP
 # Diagnostic/debugging support options
 #options 	DIAGNOSTIC		# Cheap kernel consistency checks
 #options 	DEBUG			# Expensive debugging checks/support
-#options 	KMEMSTATS		# Collect kmem usage statistics
 options 	DDB			# kernel debugger
 options 	DDB_HISTORY_SIZE=512	# enable history editing in DDB
 #makeoptions	DEBUG="-g"
@@ -402,6 +401,7 @@ ld*	at iop? tid ?			# block devices
 #dpti*	at iop? tid 0			# DPT/Adaptec control interface
 
 # MII/PHY support
+brgphy* at mii? phy ?			# Broadcom BCM5400-family PHYs
 exphy*	at mii? phy ?			# 3Com internal PHYs
 icsphy*	at mii? phy ?			# Integrated Circuit Systems ICS189x
 inphy*	at mii? phy ?			# Intel 82555 PHYs
@@ -641,7 +641,7 @@ ukyopon* at uhub? port ?
 ucom*	at ukyopon? portno ?
 
 # USB scanners
-uscanner* at uhub? port ?
+#uscanner* at uhub? port ?
 
 # Y@P firmware loader
 uyap* at uhub? port ?
@@ -790,5 +790,4 @@ pseudo-device	putter			# for puffs and pud
 #options 	VERIFIED_EXEC_FP_MD5
 
 options PAX_MPROTECT=0			# PaX mprotect(2) restrictions
-#options PAX_SEGVGUARD=0			# PaX Segmentation fault guard
 options PAX_ASLR=0			# PaX Address Space Layout Randomization

@@ -1,4 +1,4 @@
-/*	$NetBSD: at24cxx.c,v 1.18 2014/07/25 08:10:37 dholland Exp $	*/
+/*	$NetBSD: at24cxx.c,v 1.21 2015/12/13 17:15:06 jmcneill Exp $	*/
 
 /*
  * Copyright (c) 2003 Wasabi Systems, Inc.
@@ -36,7 +36,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: at24cxx.c,v 1.18 2014/07/25 08:10:37 dholland Exp $");
+__KERNEL_RCSID(0, "$NetBSD: at24cxx.c,v 1.21 2015/12/13 17:15:06 jmcneill Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -113,7 +113,15 @@ static int seeprom_wait_idle(struct seeprom_softc *);
 static const char * seeprom_compats[] = {
 	"i2c-at24c64",
 	"i2c-at34c02",
+	"atmel,24c02",
 	NULL
+};
+
+static const struct seeprom_size {
+	const char *name;
+	int size;
+} seeprom_sizes[] = {
+	{ "atmel,24c02", 256 },
 };
 
 static int
@@ -122,8 +130,13 @@ seeprom_match(device_t parent, cfdata_t cf, void *aux)
 	struct i2c_attach_args *ia = aux;
 
 	if (ia->ia_name) {
-		if (iic_compat_match(ia, seeprom_compats))
-			return (1);
+		if (ia->ia_ncompat > 0) {
+			if (iic_compat_match(ia, seeprom_compats))
+				return (1);
+		} else {
+			if (strcmp(ia->ia_name, "seeprom") == 0)
+				return (1);
+		}
 	} else {
 		if ((ia->ia_addr & AT24CXX_ADDRMASK) == AT24CXX_ADDR)
 			return (1);
@@ -137,6 +150,7 @@ seeprom_attach(device_t parent, device_t self, void *aux)
 {
 	struct seeprom_softc *sc = device_private(self);
 	struct i2c_attach_args *ia = aux;
+	u_int n;
 
 	sc->sc_tag = ia->ia_tag;
 	sc->sc_address = ia->ia_addr;
@@ -168,6 +182,16 @@ seeprom_attach(device_t parent, device_t self, void *aux)
 		sc->sc_size = (device_cfdata(self)->cf_flags << 7);
 	else
 		sc->sc_size = ia->ia_size;
+
+	if (sc->sc_size == 0 && ia->ia_ncompat > 0) {
+		for (n = 0; n < __arraycount(seeprom_sizes); n++) {
+			if (!strcmp(seeprom_sizes[n].name, ia->ia_compat[n])) {
+				sc->sc_size = seeprom_sizes[n].size;
+				break;
+			}
+		}
+	}
+
 	switch (sc->sc_size) {
 	case 128:		/* 1Kbit */
 	case 256:		/* 2Kbit */
@@ -262,9 +286,6 @@ seeprom_read(dev_t dev, struct uio *uio, int flags)
 	 */
 
 	while (uio->uio_resid > 0 && uio->uio_offset < sc->sc_size) {
-		if ((error = iic_acquire_bus(sc->sc_tag, 0)) != 0)
-			return (error);
-
 		a = (int)uio->uio_offset;
 		if (sc->sc_cmdlen == 1) {
 			addr = sc->sc_address + (a >> 8);
@@ -274,6 +295,9 @@ seeprom_read(dev_t dev, struct uio *uio, int flags)
 			cmdbuf[0] = AT24CXX_ADDR_HI(a);
 			cmdbuf[1] = AT24CXX_ADDR_LO(a);
 		}
+
+		if ((error = iic_acquire_bus(sc->sc_tag, 0)) != 0)
+			return (error);
 		if ((error = iic_exec(sc->sc_tag, I2C_OP_READ_WITH_STOP,
 				      addr, cmdbuf, sc->sc_cmdlen,
 				      &ch, 1, 0)) != 0) {
@@ -282,11 +306,11 @@ seeprom_read(dev_t dev, struct uio *uio, int flags)
 			    "seeprom_read: byte read failed at 0x%x\n", a);
 			return (error);
 		}
+		iic_release_bus(sc->sc_tag, 0);
+
 		if ((error = uiomove(&ch, 1, uio)) != 0) {
-			iic_release_bus(sc->sc_tag, 0);
 			return (error);
 		}
-		iic_release_bus(sc->sc_tag, 0);
 	}
 
 	return (0);
@@ -313,9 +337,6 @@ seeprom_write(dev_t dev, struct uio *uio, int flags)
 	 */
 
 	while (uio->uio_resid > 0 && uio->uio_offset < sc->sc_size) {
-		if ((error = iic_acquire_bus(sc->sc_tag, 0)) != 0)
-			return (error);
-
 		a = (int)uio->uio_offset;
 		if (sc->sc_cmdlen == 1) {
 			addr = sc->sc_address + (a >> 8);
@@ -329,6 +350,9 @@ seeprom_write(dev_t dev, struct uio *uio, int flags)
 			iic_release_bus(sc->sc_tag, 0);
 			return (error);
 		}
+
+		if ((error = iic_acquire_bus(sc->sc_tag, 0)) != 0)
+			return (error);
 		if ((error = iic_exec(sc->sc_tag, I2C_OP_WRITE_WITH_STOP,
 				      addr, cmdbuf, sc->sc_cmdlen,
 				      &ch, 1, 0)) != 0) {
@@ -337,13 +361,12 @@ seeprom_write(dev_t dev, struct uio *uio, int flags)
 			    "seeprom_write: byte write failed at 0x%x\n", a);
 			return (error);
 		}
+		iic_release_bus(sc->sc_tag, 0);
 
 		/* Wait until the device commits the byte. */
 		if ((error = seeprom_wait_idle(sc)) != 0) {
-			iic_release_bus(sc->sc_tag, 0);
 			return (error);
 		}
-		iic_release_bus(sc->sc_tag, 0);
 	}
 
 	return (0);
@@ -355,6 +378,7 @@ seeprom_wait_idle(struct seeprom_softc *sc)
 	uint8_t cmdbuf[2] = { 0, 0 };
 	int rv, timeout;
 	u_int8_t dummy;
+	int error;
 
 	timeout = (1000 / hz) / AT24CXX_WRITE_CYCLE_MS;
 	if (timeout == 0)
@@ -366,8 +390,15 @@ seeprom_wait_idle(struct seeprom_softc *sc)
 	 * Read the byte at address 0.  This is just a dummy
 	 * read to wait for the EEPROM's write cycle to complete.
 	 */
-	while (iic_exec(sc->sc_tag, I2C_OP_READ_WITH_STOP, sc->sc_address,
-			cmdbuf, sc->sc_cmdlen, &dummy, 1, 0)) {
+	for (;;) {
+		if ((error = iic_acquire_bus(sc->sc_tag, 0)) != 0)
+			return error;
+		error = iic_exec(sc->sc_tag, I2C_OP_READ_WITH_STOP,
+		    sc->sc_address, cmdbuf, sc->sc_cmdlen, &dummy, 1, 0);
+		iic_release_bus(sc->sc_tag, 0);
+		if (error == 0)
+			break;
+
 		rv = tsleep(sc, PRIBIO | PCATCH, "seepromwr", timeout);
 		if (rv != EWOULDBLOCK)
 			return (rv);

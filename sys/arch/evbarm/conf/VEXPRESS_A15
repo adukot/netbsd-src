@@ -1,5 +1,5 @@
 #
-#	$NetBSD: VEXPRESS_A15,v 1.2 2015/02/11 07:51:10 ozaki-r Exp $
+#	$NetBSD: VEXPRESS_A15,v 1.6 2016/04/02 08:48:35 skrll Exp $
 #
 #	VEXPRESS_A15 -- Versatile Express A15 kernel
 #
@@ -17,15 +17,13 @@ options 	RTC_OFFSET=0	# hardware clock is this many mins. west of GMT
 
 # CPU options
 options 	CPU_CORTEX
-options 	CPU_CORTEXA7
 options 	CPU_CORTEXA15
 #options 	MULTIPROCESSOR
 
 options 	PMAPCOUNTERS
 options 	BUSDMA_COUNTERS
-#options 	EXYNOS_CONSOLE_EARLY
 #options 	UVMHIST
-#options 	USBHIST
+#options 	USB_DEBUG
 #options 	USBHIST_SIZE=100000
 #options 	UVMHIST_PRINT,KERNHIST_DELAY=0
 options 	__HAVE_MM_MD_DIRECT_MAPPED_PHYS
@@ -128,7 +126,6 @@ options 	DKWEDGE_METHOD_GPT	# Supports GPT partitions as wedges
 
 # Miscellaneous kernel options
 options 	KTRACE		# system call tracing, a la ktrace(1)
-#options 	KMEMSTATS	# kernel memory statistics
 #options 	SCSIVERBOSE	# Verbose SCSI errors
 options 	MIIVERBOSE	# Verbose MII autoconfuration messages
 #options 	DDB_KEYCODE=0x40

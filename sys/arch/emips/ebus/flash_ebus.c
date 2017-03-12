@@ -1,4 +1,4 @@
-/*	$NetBSD: flash_ebus.c,v 1.15 2015/01/02 19:42:05 christos Exp $	*/
+/*	$NetBSD: flash_ebus.c,v 1.18 2015/12/13 19:36:40 christos Exp $	*/
 
 /*-
  * Copyright (c) 2010 The NetBSD Foundation, Inc.
@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>			/* RCS ID & Copyright macro defns */
-__KERNEL_RCSID(0, "$NetBSD: flash_ebus.c,v 1.15 2015/01/02 19:42:05 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: flash_ebus.c,v 1.18 2015/12/13 19:36:40 christos Exp $");
 
 /* Driver for the Intel 28F320/640/128 (J3A150) StrataFlash memory device
  * Extended to include the Intel JS28F256P30T95.
@@ -61,7 +61,7 @@ __KERNEL_RCSID(0, "$NetBSD: flash_ebus.c,v 1.15 2015/01/02 19:42:05 christos Exp
 #include <sys/lock.h>
 #include <sys/queue.h>
 
-#include <sys/rnd.h>
+#include <sys/rndsource.h>
 
 #include "locators.h"
 #include <prop/proplib.h>
@@ -603,7 +603,7 @@ static int  IsIrresponsive(struct eflash_softc *sc)
     if (Status & ST_READY)
         return FALSE;
 
-    if ((Status & ST_ERASE_MASK) == 
+    if ((Status & ST_MASK) == 
         (ST_LOCK_BIT_ERROR|ST_ERASE_SUSPENDED|ST_ERASE_ERROR)) {
         /* yes, looks that way */
         return TRUE;
@@ -1431,7 +1431,10 @@ int   eflashactivate(device_t, enum devact);
 void  eflashdone(struct eflash_softc *);
 static void eflash_set_geometry(struct eflash_softc *sc);
 
-struct dkdriver eflashdkdriver = { eflashstrategy, minphys };
+struct dkdriver eflashdkdriver = {
+	.d_strategy = eflashstrategy,
+	.d_minphys = minphys
+};
 
 #ifdef HAS_BAD144_HANDLING
 static void bad144intern(struct eflash_softc *);

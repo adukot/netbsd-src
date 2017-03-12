@@ -1,4 +1,4 @@
-/*	$NetBSD: screen.c,v 1.29 2014/07/13 16:23:55 pgoyette Exp $	*/
+/*	$NetBSD: screen.c,v 1.32 2016/03/03 21:38:55 nat Exp $	*/
 
 /*-
  * Copyright (c) 1992, 1993
@@ -98,12 +98,16 @@ static void
 setcolor(int c)
 {
 	char *buf;
+	char monochrome[] = "\033[0m";
 	if (nocolor == 1)
 		return;
 	if (set_a_foreground == NULL)
 		return;
 
-	buf = tiparm(set_a_foreground, c == 7 ? 0 : c);
+	if (c == 0 || c == 7)
+		buf = monochrome;
+	else
+		buf = tiparm(set_a_foreground, c);
 	if (buf != NULL)
 		putpad(buf);
 }
@@ -193,6 +197,7 @@ scr_set(void)
 		    MINCOLS, MINROWS);
 		stop("");	/* stop() supplies \n */
 	}
+	Offset = (Rows - D_LAST + D_FIRST - 2) / 2;
 	if (tcgetattr(0, &oldtt) < 0)
 		stop("tcgetattr() fails");
 	newtt = oldtt;
@@ -303,6 +308,7 @@ scr_update(void)
 			putpad(cursor_home);
 		else
 			moveto(0, 0);
+		setcolor(0);
 		(void) printf("Score: %d", score);
 		curscore = score;
 	}
@@ -325,8 +331,8 @@ scr_update(void)
 		putstr("Next shape:");
 						
 		/* draw */
-		putpad(enter_standout_mode);
 		setcolor(nextshape->color);
+		putpad(enter_standout_mode);
 		moveto(r, 2*c);
 		putstr("  ");
 		for(i=0; i<3; i++) {
@@ -355,16 +361,16 @@ scr_update(void)
 					putpad(exit_standout_mode);
 					cur_so = 0;
 				}
-				moveto(RTOD(j), CTOD(i));
+				moveto(RTOD(j + Offset), CTOD(i));
 			}
 			if (enter_standout_mode) {
 				if (so != cur_so) {
+					setcolor(so);
 					putpad(so ?
 					    enter_standout_mode :
 					    exit_standout_mode);
 					cur_so = so;
 				}
-				setcolor(so);
 #ifdef DEBUG
 				char buf[3];
 				snprintf(buf, sizeof(buf), "%d%d", so, so);

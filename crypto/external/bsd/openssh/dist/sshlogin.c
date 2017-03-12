@@ -1,5 +1,6 @@
-/*	$NetBSD: sshlogin.c,v 1.5 2014/10/19 16:30:59 christos Exp $	*/
-/* $OpenBSD: sshlogin.c,v 1.29 2014/07/15 15:54:14 millert Exp $ */
+/*	$NetBSD: sshlogin.c,v 1.7 2016/03/11 01:55:00 christos Exp $	*/
+/* $OpenBSD: sshlogin.c,v 1.32 2015/12/26 20:51:35 guenther Exp $ */
+
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -41,9 +42,9 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: sshlogin.c,v 1.5 2014/10/19 16:30:59 christos Exp $");
-#include <sys/types.h>
+__RCSID("$NetBSD: sshlogin.c,v 1.7 2016/03/11 01:55:00 christos Exp $");
 #include <sys/param.h>
+#include <sys/types.h>
 #include <sys/socket.h>
 
 #include <errno.h>
@@ -60,12 +61,17 @@ __RCSID("$NetBSD: sshlogin.c,v 1.5 2014/10/19 16:30:59 christos Exp $");
 #include <utmpx.h>
 #endif
 #include <stdarg.h>
+#include <limits.h>
 
 #include "sshlogin.h"
 #include "log.h"
 #include "buffer.h"
 #include "misc.h"
 #include "servconf.h"
+
+#ifndef HOST_NAME_MAX
+#define HOST_NAME_MAX MAXHOSTNAMELEN
+#endif
 
 extern Buffer loginmsg;
 extern ServerOptions options;
@@ -103,7 +109,7 @@ get_last_login_time(uid_t uid, const char *logname,
 	if (fd < 0)
 		return 0;
 
-	pos = (long) uid * sizeof(ll);
+	pos = (off_t)uid * sizeof(ll);
 	r = lseek(fd, pos, SEEK_SET);
 	if (r == -1) {
 		error("%s: lseek: %s", __func__, strerror(errno));
@@ -137,7 +143,7 @@ get_last_login_time(uid_t uid, const char *logname,
 static void
 store_lastlog_message(const char *user, uid_t uid)
 {
-	char *time_string, hostname[MAXHOSTNAMELEN] = "", buf[512];
+	char *time_string, hostname[HOST_NAME_MAX+1] = "", buf[512];
 	time_t last_login_time;
 
 	if (!options.print_lastlog)
@@ -211,7 +217,7 @@ record_login(pid_t pid, const char *tty, const char *user, uid_t uid,
 		strncpy(ll.ll_host, host, sizeof(ll.ll_host));
 		fd = open(_PATH_LASTLOG, O_RDWR);
 		if (fd >= 0) {
-			lseek(fd, (off_t) ((long) uid * sizeof(ll)), SEEK_SET);
+			lseek(fd, (off_t)uid * sizeof(ll), SEEK_SET);
 			if (write(fd, &ll, sizeof(ll)) != sizeof(ll))
 				logit("Could not write %.100s: %.100s", _PATH_LASTLOG, strerror(errno));
 			close(fd);

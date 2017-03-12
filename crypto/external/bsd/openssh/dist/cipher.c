@@ -1,5 +1,6 @@
-/*	$NetBSD: cipher.c,v 1.6 2014/10/19 16:30:58 christos Exp $	*/
-/* $OpenBSD: cipher.c,v 1.99 2014/06/24 01:13:21 djm Exp $ */
+/*	$NetBSD: cipher.c,v 1.8 2016/03/11 01:55:00 christos Exp $	*/
+/* $OpenBSD: cipher.c,v 1.101 2015/12/10 17:08:40 mmcc Exp $ */
+
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -37,7 +38,7 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: cipher.c,v 1.6 2014/10/19 16:30:58 christos Exp $");
+__RCSID("$NetBSD: cipher.c,v 1.8 2016/03/11 01:55:00 christos Exp $");
 #include <sys/types.h>
 
 #include <string.h>
@@ -357,8 +358,7 @@ cipher_init(struct sshcipher_ctx *cc, const struct sshcipher *cipher,
 	if (cipher->discard_len > 0) {
 		if ((junk = malloc(cipher->discard_len)) == NULL ||
 		    (discard = malloc(cipher->discard_len)) == NULL) {
-			if (junk != NULL)
-				free(junk);
+			free(junk);
 			ret = SSH_ERR_ALLOC_FAIL;
 			goto bad;
 		}
@@ -516,6 +516,8 @@ cipher_get_keyiv_len(const struct sshcipher_ctx *cc)
 		ivlen = 24;
 	else if ((cc->cipher->flags & CFLAG_CHACHAPOLY) != 0)
 		ivlen = 0;
+	else if ((cc->cipher->flags & CFLAG_AESCTR) != 0)
+		ivlen = sizeof(cc->ac_ctx.ctr);
 #ifdef WITH_OPENSSL
 	else
 		ivlen = EVP_CIPHER_CTX_iv_length(&cc->evp);
@@ -534,6 +536,12 @@ cipher_get_keyiv(struct sshcipher_ctx *cc, u_char *iv, u_int len)
 	if ((cc->cipher->flags & CFLAG_CHACHAPOLY) != 0) {
 		if (len != 0)
 			return SSH_ERR_INVALID_ARGUMENT;
+		return 0;
+	}
+	if ((cc->cipher->flags & CFLAG_AESCTR) != 0) {
+		if (len != sizeof(cc->ac_ctx.ctr))
+			return SSH_ERR_INVALID_ARGUMENT;
+		memcpy(iv, cc->ac_ctx.ctr, len);
 		return 0;
 	}
 	if ((cc->cipher->flags & CFLAG_NONE) != 0)

@@ -1,7 +1,7 @@
-/*	$NetBSD: rbtdb.c,v 1.19 2014/12/10 04:37:58 christos Exp $	*/
+/*	$NetBSD: rbtdb.c,v 1.21 2015/12/17 04:00:43 christos Exp $	*/
 
 /*
- * Copyright (C) 2004-2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2004-2015  Internet Systems Consortium, Inc. ("ISC")
  * Copyright (C) 1999-2003  Internet Software Consortium.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -172,6 +172,7 @@ typedef isc_uint64_t                    rbtdb_serial_t;
 #define cache_findrdataset cache_findrdataset64
 #define cache_findzonecut cache_findzonecut64
 #define cache_zonecut_callback cache_zonecut_callback64
+#define check_stale_rdataset check_stale_rdataset64
 #define cleanup_dead_nodes cleanup_dead_nodes64
 #define cleanup_dead_nodes_callback cleanup_dead_nodes_callback64
 #define closeversion closeversion64
@@ -232,6 +233,7 @@ typedef isc_uint64_t                    rbtdb_serial_t;
 #define prune_tree prune_tree64
 #define rbt_datafixer rbt_datafixer64
 #define rbt_datawriter rbt_datawriter64
+#define rdataset_clearprefetch rdataset_clearprefetch64
 #define rdataset_clone rdataset_clone64
 #define rdataset_count rdataset_count64
 #define rdataset_current rdataset_current64
@@ -501,6 +503,8 @@ struct acachectl {
 	(((header)->attributes & RDATASET_ATTR_RETAIN) != 0)
 #define NXDOMAIN(header) \
 	(((header)->attributes & RDATASET_ATTR_NXDOMAIN) != 0)
+#define STALE(header) \
+	(((header)->attributes & RDATASET_ATTR_STALE) != 0)
 #define RESIGN(header) \
 	(((header)->attributes & RDATASET_ATTR_RESIGN) != 0)
 #define OPTOUT(header) \
@@ -746,6 +750,7 @@ static void resign_delete(dns_rbtdb_t *rbtdb, rbtdb_version_t *version,
 static void prune_tree(isc_task_t *task, isc_event_t *event);
 static void rdataset_settrust(dns_rdataset_t *rdataset, dns_trust_t trust);
 static void rdataset_expire(dns_rdataset_t *rdataset);
+static void rdataset_clearprefetch(dns_rdataset_t *rdataset);
 
 static dns_rdatasetmethods_t rdataset_methods = {
 	rdataset_disassociate,
@@ -762,7 +767,8 @@ static dns_rdatasetmethods_t rdataset_methods = {
 	rdataset_setadditional,
 	rdataset_putadditional,
 	rdataset_settrust,
-	rdataset_expire
+	rdataset_expire,
+	rdataset_clearprefetch
 };
 
 static void rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp);
@@ -838,7 +844,7 @@ typedef struct rbtdb_dbiterator {
 
 static void free_rbtdb(dns_rbtdb_t *rbtdb, isc_boolean_t log,
 		       isc_event_t *event);
-static void overmem(dns_db_t *db, isc_boolean_t overmem);
+static void overmem(dns_db_t *db, isc_boolean_t over);
 static void setnsec3parameters(dns_db_t *db, rbtdb_version_t *version);
 
 /* Pad to 32 bytes */
@@ -976,6 +982,9 @@ update_rrsetstats(dns_rbtdb_t *rbtdb, rdatasetheader_t *header,
 	} else
 		base = RBTDB_RDATATYPE_BASE(header->type);
 
+	if (STALE(header))
+		statattributes |= DNS_RDATASTATSTYPE_ATTR_STALE;
+
 	type = DNS_RDATASTATSTYPE_VALUE(base, statattributes);
 	if (increment)
 		dns_rdatasetstats_increment(rbtdb->rrsetstats, type);
@@ -989,11 +998,14 @@ set_ttl(dns_rbtdb_t *rbtdb, rdatasetheader_t *header, dns_ttl_t newttl) {
 	isc_heap_t *heap;
 	dns_ttl_t oldttl;
 
+
+	if (!IS_CACHE(rbtdb)) {
+		header->rdh_ttl = newttl;
+		return;
+	}
+
 	oldttl = header->rdh_ttl;
 	header->rdh_ttl = newttl;
-
-	if (!IS_CACHE(rbtdb))
-		return;
 
 	/*
 	 * It's possible the rbtdb is not a cache.  If this is the case,
@@ -1041,10 +1053,10 @@ resign_sooner(void *v1, void *v2) {
  * This function sets the heap index into the header.
  */
 static void
-set_index(void *what, unsigned int index) {
+set_index(void *what, unsigned int idx) {
 	rdatasetheader_t *h = what;
 
-	h->heap_index = index;
+	h->heap_index = idx;
 }
 
 /*%
@@ -1089,8 +1101,10 @@ adjust_quantum(unsigned int old, isc_time_t *start) {
 	/* Smooth */
 	new = (new + old * 3) / 4;
 
-	isc_log_write(dns_lctx, DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_CACHE,
-		      ISC_LOG_DEBUG(1), "adjust_quantum -> %d", new);
+	if (new != old)
+		isc_log_write(dns_lctx, DNS_LOGCATEGORY_DATABASE,
+			      DNS_LOGMODULE_CACHE, ISC_LOG_DEBUG(1),
+			      "adjust_quantum: old=%d, new=%d", old, new);
 
 	return (new);
 }
@@ -1557,6 +1571,7 @@ new_rdataset(dns_rbtdb_t *rbtdb, isc_mem_t *mctx) {
 		fprintf(stderr, "allocated header: %p\n", h);
 #endif
 	init_rdataset(rbtdb, h);
+	h->rdh_ttl = 0;
 	return (h);
 }
 
@@ -1822,24 +1837,30 @@ clean_zone_node(dns_rbtdb_t *rbtdb, dns_rbtnode_t *node,
 }
 
 static void
-delete_node(dns_rbtdb_t *rbtdb, dns_rbtnode_t *node)
-{
+delete_node(dns_rbtdb_t *rbtdb, dns_rbtnode_t *node) {
 	dns_rbtnode_t *nsecnode;
 	dns_fixedname_t fname;
 	dns_name_t *name;
 	isc_result_t result = ISC_R_UNEXPECTED;
+	unsigned int node_has_rpz;
 
 	INSIST(!ISC_LINK_LINKED(node, deadlink));
 
 	switch (node->nsec) {
 	case DNS_RBT_NSEC_NORMAL:
-		if (rbtdb->rpzs != NULL) {
-			dns_fixedname_init(&fname);
-			name = dns_fixedname_name(&fname);
-			dns_rbt_fullnamefromnode(node, name);
-			dns_rpz_delete(rbtdb->rpzs, rbtdb->rpz_num, name);
-		}
+		/*
+		 * Though this may be wasteful, it has to be done before
+		 * node is deleted.
+		 */
+		dns_fixedname_init(&fname);
+		name = dns_fixedname_name(&fname);
+		dns_rbt_fullnamefromnode(node, name);
+
+		node_has_rpz = node->rpz;
 		result = dns_rbt_deletenode(rbtdb->tree, node, ISC_FALSE);
+		if (result == ISC_R_SUCCESS &&
+		    rbtdb->rpzs != NULL && node_has_rpz)
+			dns_rpz_delete(rbtdb->rpzs, rbtdb->rpz_num, name);
 		break;
 	case DNS_RBT_NSEC_HAS_NSEC:
 		dns_fixedname_init(&fname);
@@ -1872,8 +1893,10 @@ delete_node(dns_rbtdb_t *rbtdb, dns_rbtnode_t *node)
 					      isc_result_totext(result));
 			}
 		}
+		node_has_rpz = node->rpz;
 		result = dns_rbt_deletenode(rbtdb->tree, node, ISC_FALSE);
-		if (rbtdb->rpzs != NULL)
+		if (result == ISC_R_SUCCESS &&
+		    rbtdb->rpzs != NULL && node_has_rpz)
 			dns_rpz_delete(rbtdb->rpzs, rbtdb->rpz_num, name);
 		break;
 	case DNS_RBT_NSEC_NSEC:
@@ -2497,7 +2520,6 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp, isc_boolean_t commit) {
 	dns_rbtnode_t *rbtnode;
 	unsigned int refs;
 	rdatasetheader_t *header;
-	isc_boolean_t writer;
 
 	REQUIRE(VALID_RBTDB(rbtdb));
 	version = (rbtdb_version_t *)*versionp;
@@ -2517,9 +2539,15 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp, isc_boolean_t commit) {
 		goto end;
 	}
 
+	/*
+	 * Update the zone's secure status in version before making
+	 * it the current version.
+	 */
+	if (version->writer && commit && !IS_CACHE(rbtdb))
+		iszonesecure(db, version, rbtdb->origin_node);
+
 	RBTDB_LOCK(&rbtdb->lock, isc_rwlocktype_write);
 	serial = version->serial;
-	writer = version->writer;
 	if (version->writer) {
 		if (commit) {
 			unsigned cur_ref;
@@ -2652,12 +2680,6 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp, isc_boolean_t commit) {
 	}
 	least_serial = rbtdb->least_serial;
 	RBTDB_UNLOCK(&rbtdb->lock, isc_rwlocktype_write);
-
-	/*
-	 * Update the zone's secure status.
-	 */
-	if (writer && commit && !IS_CACHE(rbtdb))
-		iszonesecure(db, version, rbtdb->origin_node);
 
 	if (cleanup_version != NULL) {
 		INSIST(EMPTY(cleanup_version->changed_list));
@@ -2900,6 +2922,8 @@ findnodeintree(dns_rbtdb_t *rbtdb, dns_rbt_t *tree, dns_name_t *name,
 		fname = dns_fixedname_name(&fnamef);
 		dns_rbt_fullnamefromnode(node, fname);
 		result = dns_rpz_add(rbtdb->rpzs, rbtdb->rpz_num, fname);
+		if (result == ISC_R_SUCCESS)
+			node->rpz = 1;
 		if (result != ISC_R_SUCCESS && result != ISC_R_EXISTS) {
 			/*
 			 * It is too late to give up, so merely complain.
@@ -4473,6 +4497,66 @@ zone_findzonecut(dns_db_t *db, dns_name_t *name, unsigned int options,
 	return (ISC_R_NOTIMPLEMENTED);
 }
 
+static isc_boolean_t
+check_stale_rdataset(dns_rbtnode_t *node, rdatasetheader_t *header,
+		     isc_rwlocktype_t *locktype, nodelock_t *lock,
+		     rbtdb_search_t *search, rdatasetheader_t **header_prev)
+{
+
+#if !defined(ISC_RWLOCK_USEATOMIC) || !defined(DNS_RBT_USEISCREFCOUNT)
+	UNUSED(lock);
+#endif
+
+	if (header->rdh_ttl < search->now) {
+		/*
+		 * This rdataset is stale.  If no one else is using the
+		 * node, we can clean it up right now, otherwise we mark
+		 * it as stale, and the node as dirty, so it will get
+		 * cleaned up later.
+		 */
+		if ((header->rdh_ttl < search->now - RBTDB_VIRTUAL) &&
+		    (*locktype == isc_rwlocktype_write ||
+		     NODE_TRYUPGRADE(lock) == ISC_R_SUCCESS))
+		{
+			/*
+			 * We update the node's status only when we can
+			 * get write access; otherwise, we leave others
+			 * to this work.  Periodical cleaning will
+			 * eventually take the job as the last resort.
+			 * We won't downgrade the lock, since other
+			 * rdatasets are probably stale, too.
+			 */
+			*locktype = isc_rwlocktype_write;
+
+			if (dns_rbtnode_refcurrent(node) == 0) {
+				isc_mem_t *mctx;
+
+				/*
+				 * header->down can be non-NULL if the
+				 * refcount has just decremented to 0
+				 * but decrement_reference() has not
+				 * performed clean_cache_node(), in
+				 * which case we need to purge the stale
+				 * headers first.
+				 */
+				mctx = search->rbtdb->common.mctx;
+				clean_stale_headers(search->rbtdb, mctx, header);
+				if (*header_prev != NULL)
+					(*header_prev)->next = header->next;
+				else
+					node->data = header->next;
+				free_rdataset(search->rbtdb, mctx, header);
+			} else {
+				mark_stale_header(search->rbtdb, header);
+				*header_prev = header;
+			}
+		} else
+			*header_prev = header;
+		return (ISC_TRUE);
+	}
+	return (ISC_FALSE);
+}
+
 static isc_result_t
 cache_zonecut_callback(dns_rbtnode_t *node, dns_name_t *name, void *arg) {
 	rbtdb_search_t *search = arg;
@@ -4503,57 +4587,10 @@ cache_zonecut_callback(dns_rbtnode_t *node, dns_name_t *name, void *arg) {
 	header_prev = NULL;
 	for (header = node->data; header != NULL; header = header_next) {
 		header_next = header->next;
-		if (header->rdh_ttl <  search->now) {
-			/*
-			 * This rdataset is stale.  If no one else is
-			 * using the node, we can clean it up right
-			 * now, otherwise we mark it as stale, and
-			 * the node as dirty, so it will get cleaned
-			 * up later.
-			 */
-			if ((header->rdh_ttl <  search->now - RBTDB_VIRTUAL) &&
-			    (locktype == isc_rwlocktype_write ||
-			     NODE_TRYUPGRADE(lock) == ISC_R_SUCCESS)) {
-				/*
-				 * We update the node's status only when we
-				 * can get write access; otherwise, we leave
-				 * others to this work.  Periodical cleaning
-				 * will eventually take the job as the last
-				 * resort.
-				 * We won't downgrade the lock, since other
-				 * rdatasets are probably stale, too.
-				 */
-				locktype = isc_rwlocktype_write;
-
-				if (dns_rbtnode_refcurrent(node) == 0) {
-					isc_mem_t *mctx;
-
-					/*
-					 * header->down can be non-NULL if the
-					 * refcount has just decremented to 0
-					 * but decrement_reference() has not
-					 * performed clean_cache_node(), in
-					 * which case we need to purge the
-					 * stale headers first.
-					 */
-					mctx = search->rbtdb->common.mctx;
-					clean_stale_headers(search->rbtdb,
-							    mctx,
-							    header);
-					if (header_prev != NULL)
-						header_prev->next =
-							header->next;
-					else
-						node->data = header->next;
-					free_rdataset(search->rbtdb, mctx,
-						      header);
-				} else {
-					mark_stale_header(search->rbtdb,
-							  header);
-					header_prev = header;
-				}
-			} else
-				header_prev = header;
+		if (check_stale_rdataset(node, header,
+					 &locktype, lock, search,
+					 &header_prev)) {
+			/* Do nothing. */
 		} else if (header->type == dns_rdatatype_dname &&
 			   EXISTS(header)) {
 			dname_header = header;
@@ -4622,51 +4659,12 @@ find_deepest_zonecut(rbtdb_search_t *search, dns_rbtnode_t *node,
 		found = NULL;
 		foundsig = NULL;
 		header_prev = NULL;
-		for (header = node->data;
-		     header != NULL;
-		     header = header_next) {
+		for (header = node->data; header != NULL; header = header_next) {
 			header_next = header->next;
-			if (header->rdh_ttl <  search->now) {
-				/*
-				 * This rdataset is stale.  If no one else is
-				 * using the node, we can clean it up right
-				 * now, otherwise we mark it as stale, and
-				 * the node as dirty, so it will get cleaned
-				 * up later.
-				 */
-				if ((header->rdh_ttl <  search->now -
-						    RBTDB_VIRTUAL) &&
-				    (locktype == isc_rwlocktype_write ||
-				     NODE_TRYUPGRADE(lock) == ISC_R_SUCCESS)) {
-					/*
-					 * We update the node's status only
-					 * when we can get write access.
-					 */
-					locktype = isc_rwlocktype_write;
-
-					if (dns_rbtnode_refcurrent(node)
-					    == 0) {
-						isc_mem_t *m;
-
-						m = search->rbtdb->common.mctx;
-						clean_stale_headers(
-							search->rbtdb,
-							m, header);
-						if (header_prev != NULL)
-							header_prev->next =
-								header->next;
-						else
-							node->data =
-								header->next;
-						free_rdataset(rbtdb, m,
-							      header);
-					} else {
-						mark_stale_header(rbtdb,
-								  header);
-						header_prev = header;
-					}
-				} else
-					header_prev = header;
+			if (check_stale_rdataset(node, header,
+						 &locktype, lock, search,
+						 &header_prev)) {
+				/* Do nothing. */
 			} else if (EXISTS(header)) {
 				/*
 				 * We've found an extant rdataset.  See if
@@ -4798,49 +4796,11 @@ find_coveringnsec(rbtdb_search_t *search, dns_dbnode_t **nodep,
 		foundsig = NULL;
 		empty_node = ISC_TRUE;
 		header_prev = NULL;
-		for (header = node->data;
-		     header != NULL;
-		     header = header_next) {
+		for (header = node->data; header != NULL; header = header_next) {
 			header_next = header->next;
-			if (header->rdh_ttl <  now) {
-				/*
-				 * This rdataset is stale.  If no one else is
-				 * using the node, we can clean it up right
-				 * now, otherwise we mark it as stale, and the
-				 * node as dirty, so it will get cleaned up
-				 * later.
-				 */
-				if ((header->rdh_ttl <  now - RBTDB_VIRTUAL) &&
-				    (locktype == isc_rwlocktype_write ||
-				     NODE_TRYUPGRADE(lock) == ISC_R_SUCCESS)) {
-					/*
-					 * We update the node's status only
-					 * when we can get write access.
-					 */
-					locktype = isc_rwlocktype_write;
-
-					if (dns_rbtnode_refcurrent(node)
-					    == 0) {
-						isc_mem_t *m;
-
-						m = search->rbtdb->common.mctx;
-						clean_stale_headers(
-							search->rbtdb,
-							m, header);
-						if (header_prev != NULL)
-							header_prev->next =
-								header->next;
-						else
-							node->data = header->next;
-						free_rdataset(search->rbtdb, m,
-							      header);
-					} else {
-						mark_stale_header(search->rbtdb,
-								  header);
-						header_prev = header;
-					}
-				} else
-					header_prev = header;
+			if (check_stale_rdataset(node, header,
+						 &locktype, lock, search,
+						 &header_prev)) {
 				continue;
 			}
 			if (NONEXISTENT(header) ||
@@ -5023,41 +4983,10 @@ cache_find(dns_db_t *db, dns_name_t *name, dns_dbversion_t *version,
 	header_prev = NULL;
 	for (header = node->data; header != NULL; header = header_next) {
 		header_next = header->next;
-		if (header->rdh_ttl <  now) {
-			/*
-			 * This rdataset is stale.  If no one else is using the
-			 * node, we can clean it up right now, otherwise we
-			 * mark it as stale, and the node as dirty, so it will
-			 * get cleaned up later.
-			 */
-			if ((header->rdh_ttl <  now - RBTDB_VIRTUAL) &&
-			    (locktype == isc_rwlocktype_write ||
-			     NODE_TRYUPGRADE(lock) == ISC_R_SUCCESS)) {
-				/*
-				 * We update the node's status only when we
-				 * can get write access.
-				 */
-				locktype = isc_rwlocktype_write;
-
-				if (dns_rbtnode_refcurrent(node) == 0) {
-					isc_mem_t *mctx;
-
-					mctx = search.rbtdb->common.mctx;
-					clean_stale_headers(search.rbtdb, mctx,
-							    header);
-					if (header_prev != NULL)
-						header_prev->next =
-							header->next;
-					else
-						node->data = header->next;
-					free_rdataset(search.rbtdb, mctx,
-						      header);
-				} else {
-					mark_stale_header(search.rbtdb, header);
-					header_prev = header;
-				}
-			} else
-				header_prev = header;
+		if (check_stale_rdataset(node, header,
+					 &locktype, lock, &search,
+					 &header_prev)) {
+			/* Do nothing. */
 		} else if (EXISTS(header)) {
 			/*
 			 * We now know that there is at least one active
@@ -5329,41 +5258,10 @@ cache_findzonecut(dns_db_t *db, dns_name_t *name, unsigned int options,
 	header_prev = NULL;
 	for (header = node->data; header != NULL; header = header_next) {
 		header_next = header->next;
-		if (header->rdh_ttl <  now) {
-			/*
-			 * This rdataset is stale.  If no one else is using the
-			 * node, we can clean it up right now, otherwise we
-			 * mark it as stale, and the node as dirty, so it will
-			 * get cleaned up later.
-			 */
-			if ((header->rdh_ttl < now - RBTDB_VIRTUAL) &&
-			    (locktype == isc_rwlocktype_write ||
-			     NODE_TRYUPGRADE(lock) == ISC_R_SUCCESS)) {
-				/*
-				 * We update the node's status only when we
-				 * can get write access.
-				 */
-				locktype = isc_rwlocktype_write;
-
-				if (dns_rbtnode_refcurrent(node) == 0) {
-					isc_mem_t *mctx;
-
-					mctx = search.rbtdb->common.mctx;
-					clean_stale_headers(search.rbtdb, mctx,
-							    header);
-					if (header_prev != NULL)
-						header_prev->next =
-							header->next;
-					else
-						node->data = header->next;
-					free_rdataset(search.rbtdb, mctx,
-						      header);
-				} else {
-					mark_stale_header(search.rbtdb, header);
-					header_prev = header;
-				}
-			} else
-				header_prev = header;
+		if (check_stale_rdataset(node, header,
+					 &locktype, lock, &search,
+					 &header_prev)) {
+			/* Do nothing. */
 		} else if (EXISTS(header)) {
 			/*
 			 * If we found a type we were looking for, remember
@@ -5593,11 +5491,11 @@ expirenode(dns_db_t *db, dns_dbnode_t *node, isc_stdtime_t now) {
 }
 
 static void
-overmem(dns_db_t *db, isc_boolean_t overmem) {
+overmem(dns_db_t *db, isc_boolean_t over) {
 	/* This is an empty callback.  See adb.c:water() */
 
 	UNUSED(db);
-	UNUSED(overmem);
+	UNUSED(over);
 
 	return;
 }
@@ -5892,8 +5790,6 @@ allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 			currentversion(db,
 				 (dns_dbversion_t **) (void *)(&rbtversion));
 		else {
-			unsigned int refs;
-
 			INSIST(rbtversion->rbtdb == rbtdb);
 
 			isc_refcount_increment(&rbtversion->references,
@@ -7055,14 +6951,17 @@ static isc_result_t
 loadnode(dns_rbtdb_t *rbtdb, dns_name_t *name, dns_rbtnode_t **nodep,
 	 isc_boolean_t hasnsec)
 {
-	isc_result_t noderesult, nsecresult, tmpresult;
+	isc_result_t noderesult, rpzresult, nsecresult, tmpresult;
 	dns_rbtnode_t *nsecnode = NULL, *node = NULL;
 
 	noderesult = dns_rbt_addnode(rbtdb->tree, name, &node);
-	if (rbtdb->rpzs != NULL && noderesult == ISC_R_SUCCESS) {
-		noderesult = dns_rpz_add(rbtdb->load_rpzs, rbtdb->rpz_num,
-					 name);
-		if (noderesult != ISC_R_SUCCESS) {
+	if (rbtdb->rpzs != NULL &&
+	    (noderesult == ISC_R_SUCCESS || noderesult == ISC_R_EXISTS)) {
+		rpzresult = dns_rpz_add(rbtdb->load_rpzs, rbtdb->rpz_num,
+					name);
+		if (rpzresult == ISC_R_SUCCESS) {
+			node->rpz = 1;
+		} else if (noderesult != ISC_R_EXISTS) {
 			/*
 			 * Remove the node we just added above.
 			 */
@@ -7120,11 +7019,21 @@ loadnode(dns_rbtdb_t *rbtdb, dns_name_t *name, dns_rbtnode_t **nodep,
 	}
 
 	if (noderesult == ISC_R_SUCCESS) {
+		unsigned int node_has_rpz;
+
 		/*
 		 * Remove the node we just added above.
 		 */
+		node_has_rpz = node->rpz;
 		tmpresult = dns_rbt_deletenode(rbtdb->tree, node, ISC_FALSE);
-		if (tmpresult != ISC_R_SUCCESS)
+		if (tmpresult == ISC_R_SUCCESS) {
+			/*
+			 * Clean rpz entries added above.
+			 */
+			if (rbtdb->rpzs != NULL && node_has_rpz)
+				dns_rpz_delete(rbtdb->load_rpzs,
+					       rbtdb->rpz_num, name);
+		} else {
 			isc_log_write(dns_lctx,
 				      DNS_LOGCATEGORY_DATABASE,
 				      DNS_LOGMODULE_CACHE,
@@ -7134,8 +7043,7 @@ loadnode(dns_rbtdb_t *rbtdb, dns_name_t *name, dns_rbtnode_t **nodep,
 				      "dns_rbt_addnode(NSEC): %s",
 				      isc_result_totext(tmpresult),
 				      isc_result_totext(noderesult));
-		if (rbtdb->rpzs != NULL && noderesult == ISC_R_SUCCESS)
-			dns_rpz_delete(rbtdb->load_rpzs, rbtdb->rpz_num, name);
+		}
 	}
 
 	/*
@@ -8719,6 +8627,20 @@ rdataset_expire(dns_rdataset_t *rdataset) {
 	NODE_LOCK(&rbtdb->node_locks[rbtnode->locknum].lock,
 		  isc_rwlocktype_write);
 	expire_header(rbtdb, header, ISC_FALSE, expire_flush);
+	NODE_UNLOCK(&rbtdb->node_locks[rbtnode->locknum].lock,
+		  isc_rwlocktype_write);
+}
+
+static void
+rdataset_clearprefetch(dns_rdataset_t *rdataset) {
+	dns_rbtdb_t *rbtdb = rdataset->private1;
+	dns_rbtnode_t *rbtnode = rdataset->private2;
+	rdatasetheader_t *header = rdataset->private3;
+
+	header--;
+	NODE_LOCK(&rbtdb->node_locks[rbtnode->locknum].lock,
+		  isc_rwlocktype_write);
+	header->attributes &= ~RDATASET_ATTR_PREFETCH;
 	NODE_UNLOCK(&rbtdb->node_locks[rbtnode->locknum].lock,
 		  isc_rwlocktype_write);
 }

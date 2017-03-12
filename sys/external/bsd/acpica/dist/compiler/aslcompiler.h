@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -167,12 +167,7 @@ CmDeleteCaches (
  * aslascii - ascii support
  */
 ACPI_STATUS
-FlCheckForAcpiTable (
-    FILE                    *Handle);
-
-ACPI_STATUS
-FlCheckForAscii (
-    FILE                    *Handle,
+FlIsFileAsciiSource (
     char                    *Filename,
     BOOLEAN                 DisplayErrors);
 
@@ -292,6 +287,10 @@ ApFindNameInScope (
     char                    *Name,
     ACPI_PARSE_OBJECT       *Op);
 
+BOOLEAN
+ApFindNameInDeviceTree (
+    char                    *Name,
+    ACPI_PARSE_OBJECT       *Op);
 
 /*
  * aslerror - error handling/reporting
@@ -543,6 +542,35 @@ OptOptimizeNamePath (
 
 
 /*
+ * aslpld - ToPLD macro support
+ */
+void
+OpcDoPld (
+    ACPI_PARSE_OBJECT       *Op);
+
+
+/*
+ * aslprintf - Printf/Fprintf macros
+ */
+void
+OpcDoPrintf (
+    ACPI_PARSE_OBJECT       *Op);
+
+void
+OpcDoFprintf (
+    ACPI_PARSE_OBJECT       *Op);
+
+
+/*
+ * aslprune - parse tree pruner
+ */
+void
+AslPruneParseTree (
+    UINT32                  PruneDepth,
+    UINT32                  Type);
+
+
+/*
  * aslcodegen - code generation
  */
 void
@@ -636,7 +664,13 @@ ApCheckPackage (
  * asltransform - parse tree transformations
  */
 ACPI_STATUS
-TrAmlTransformWalk (
+TrAmlTransformWalkBegin (
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  Level,
+    void                    *Context);
+
+ACPI_STATUS
+TrAmlTransformWalkEnd (
     ACPI_PARSE_OBJECT       *Op,
     UINT32                  Level,
     void                    *Context);
@@ -653,6 +687,25 @@ TrWalkParseTree (
     ASL_WALK_CALLBACK       AscendingCallback,
     void                    *Context);
 
+/*
+ * aslexternal - External opcode support
+ */
+ACPI_STATUS
+ExAmlExternalWalkBegin (
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  Level,
+    void                    *Context);
+
+ACPI_STATUS
+ExAmlExternalWalkEnd (
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  Level,
+    void                    *Context);
+
+void
+ExDoExternal (
+    ACPI_PARSE_OBJECT       *Op);
+
 /* Values for "Visitation" parameter above */
 
 #define ASL_WALK_VISIT_DOWNWARD     0x01
@@ -660,9 +713,18 @@ TrWalkParseTree (
 #define ASL_WALK_VISIT_TWICE        (ASL_WALK_VISIT_DOWNWARD | ASL_WALK_VISIT_UPWARD)
 
 
+void
+TrSetParent (
+    ACPI_PARSE_OBJECT       *Op,
+    ACPI_PARSE_OBJECT       *ParentOp);
+
 ACPI_PARSE_OBJECT *
 TrAllocateNode (
     UINT32                  ParseOpcode);
+
+void
+TrPrintNodeCompileFlags (
+    UINT32                  Flags);
 
 void
 TrReleaseNode (
@@ -684,6 +746,20 @@ TrCreateLeafNode (
     UINT32                  ParseOpcode);
 
 ACPI_PARSE_OBJECT *
+TrCreateNullTarget (
+    void);
+
+ACPI_PARSE_OBJECT *
+TrCreateAssignmentNode (
+    ACPI_PARSE_OBJECT       *Target,
+    ACPI_PARSE_OBJECT       *Source);
+
+ACPI_PARSE_OBJECT *
+TrCreateTargetOperand (
+    ACPI_PARSE_OBJECT       *OriginalOp,
+    ACPI_PARSE_OBJECT       *ParentOp);
+
+ACPI_PARSE_OBJECT *
 TrCreateValuedLeafNode (
     UINT32                  ParseOpcode,
     UINT64                  Value);
@@ -700,6 +776,10 @@ TrLinkChildren (
 
 void
 TrSetEndLineNumber (
+    ACPI_PARSE_OBJECT       *Op);
+
+void
+TrSetCurrentFilename (
     ACPI_PARSE_OBJECT       *Op);
 
 void
@@ -871,6 +951,24 @@ XfCrossReferenceNamespace (
 
 
 /*
+ * aslxrefout
+ */
+void
+OtPrintHeaders (
+    char                    *Message);
+
+void
+OtCreateXrefFile (
+    void);
+
+void
+OtXrefWalkPart1 (
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  Level,
+    ASL_METHOD_INFO         *MethodInfo);
+
+
+/*
  * aslutils - common compiler utilites
  */
 void
@@ -884,6 +982,30 @@ DbgPrint (
 #define ASL_DEBUG_OUTPUT    0
 #define ASL_PARSE_OUTPUT    1
 #define ASL_TREE_OUTPUT     2
+
+UINT8
+UtIsBigEndianMachine (
+    void);
+
+BOOLEAN
+UtQueryForOverwrite (
+    char                    *Pathname);
+
+void
+UtDumpStringOp (
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  Level);
+
+void
+UtDumpIntegerOp (
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  Level,
+    UINT32                  IntegerLength);
+
+void
+UtDumpBasicOp (
+    ACPI_PARSE_OBJECT       *Op,
+    UINT32                  Level);
 
 void
 UtDisplaySupportedTables (
@@ -906,11 +1028,7 @@ UtLocalCalloc (
     UINT32                  Size);
 
 void
-UtPrintFormattedName (
-    UINT16                  ParseOpcode,
-    UINT32                  Level);
 
-void
 UtDisplaySummary (
     UINT32                  FileId);
 
@@ -963,12 +1081,6 @@ UtCheckIntegerRange (
 UINT64
 UtDoConstant (
     char                    *String);
-
-ACPI_STATUS
-UtStrtoul64 (
-    char                    *String,
-    UINT32                  Base,
-    UINT64                  *RetInteger);
 
 
 /*
@@ -1243,6 +1355,6 @@ DtDoCompile(
 
 ACPI_STATUS
 DtCreateTemplates (
-    char                    *Signature);
+    char                    **argv);
 
 #endif /*  __ASLCOMPILER_H */

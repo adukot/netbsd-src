@@ -1,4 +1,4 @@
-/*	$NetBSD: pci_at_mainbus.c,v 1.5 2014/08/22 14:28:58 pooka Exp $	*/
+/*	$NetBSD: pci_at_mainbus.c,v 1.7 2016/01/26 23:12:15 pooka Exp $	*/
 
 /*
  * Copyright (c) 2010 Antti Kantee.  All Rights Reserved.
@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pci_at_mainbus.c,v 1.5 2014/08/22 14:28:58 pooka Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pci_at_mainbus.c,v 1.7 2016/01/26 23:12:15 pooka Exp $");
 
 #include <sys/param.h>
 #include <sys/conf.h>
@@ -40,8 +40,10 @@ __KERNEL_RCSID(0, "$NetBSD: pci_at_mainbus.c,v 1.5 2014/08/22 14:28:58 pooka Exp
 
 #include "ioconf.c"
 
-#include "rump_private.h"
-#include "rump_vfs_private.h"
+#include <rump-sys/kern.h>
+#include <rump-sys/vfs.h>
+
+#include "pci_user.h"
 
 RUMP_COMPONENT(RUMP_COMPONENT_DEV)
 {
@@ -80,8 +82,17 @@ RUMP_COMPONENT(RUMP_COMPONENT_DEV_AFTERMAINBUS)
 #endif
 	pba.pba_flags = PCI_FLAGS_MEM_OKAY |
 	    PCI_FLAGS_MRL_OKAY | PCI_FLAGS_MRM_OKAY | PCI_FLAGS_MWI_OKAY;;
-#ifdef RUMP_PCI_IOSPACE
-	pba.pba_flags |= PCI_FLAGS_IO_OKAY;
+
+#ifdef RUMPCOMP_USERFEATURE_PCI_IOSPACE
+	int error;
+
+	error = rumpcomp_pci_iospace_init();
+	if (!error) {
+		pba.pba_flags |= PCI_FLAGS_IO_OKAY;
+	} else {
+		aprint_error("pci: I/O space init error %d, I/O space not "
+		    "available\n", error);
+	}
 #endif
 
 	mainbus = device_find_by_driver_unit("mainbus", 0);

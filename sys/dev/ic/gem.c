@@ -1,4 +1,4 @@
-/*	$NetBSD: gem.c,v 1.102 2014/08/10 16:44:35 tls Exp $ */
+/*	$NetBSD: gem.c,v 1.104 2016/02/09 08:32:10 ozaki-r Exp $ */
 
 /*
  *
@@ -37,7 +37,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: gem.c,v 1.102 2014/08/10 16:44:35 tls Exp $");
+__KERNEL_RCSID(0, "$NetBSD: gem.c,v 1.104 2016/02/09 08:32:10 ozaki-r Exp $");
 
 #include "opt_inet.h"
 
@@ -1149,8 +1149,10 @@ gem_init(struct ifnet *ifp)
 		(*sc->sc_hwreset)(sc);
 
 	/* step 3. Setup data structures in host memory */
-	if (gem_meminit(sc) != 0)
+	if (gem_meminit(sc) != 0) {
+		splx(s);
 		return 1;
+	}
 
 	/* step 4. TX MAC registers & counters */
 	gem_init_regs(sc);
@@ -1938,7 +1940,7 @@ swcsum:
 			m->m_pkthdr.csum_flags = 0;
 #endif
 		/* Pass it on. */
-		(*ifp->if_input)(ifp, m);
+		if_percpuq_enqueue(ifp->if_percpuq, m);
 	}
 
 	if (progress) {

@@ -1,4 +1,4 @@
-/*	$NetBSD: ntfs_subr.c,v 1.59 2015/01/16 17:02:12 maxv Exp $	*/
+/*	$NetBSD: ntfs_subr.c,v 1.61 2015/03/28 19:24:05 maxv Exp $	*/
 
 /*-
  * Copyright (c) 1998, 1999 Semen Ustimenko (semenu@FreeBSD.org)
@@ -29,7 +29,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ntfs_subr.c,v 1.59 2015/01/16 17:02:12 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ntfs_subr.c,v 1.61 2015/03/28 19:24:05 maxv Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -284,7 +284,7 @@ ntfs_loadntnode(struct ntfsmount *ntmp, struct ntnode *ip)
 		off = ntfs_btocnoff(boff);
 
 		error = bread(ntmp->ntm_devvp, bn, ntfs_cntob(1),
-		    NOCRED, 0, &bp);
+		    0, &bp);
 		if (error) {
 			printf("%s: BREAD FAILED\n", __func__);
 			goto out;
@@ -1183,7 +1183,7 @@ ntfs_nttimetounix(u_int64_t nt)
 }
 
 /*
- * This is one of write routine.
+ * This is one of the write routines.
  */
 int
 ntfs_writeattr_plain(struct ntfsmount *ntmp, struct ntnode *ip,
@@ -1231,7 +1231,7 @@ ntfs_writeattr_plain(struct ntfsmount *ntmp, struct ntnode *ip,
 }
 
 /*
- * This is one of write routine.
+ * This is one of the write routines.
  *
  * ntnode should be locked.
  */
@@ -1306,7 +1306,7 @@ ntfs_writentvattr_plain(struct ntfsmount *ntmp, struct ntnode *ip,
 				clrbuf(bp);
 			} else {
 				error = bread(ntmp->ntm_devvp, ntfs_cntobn(cn),
-				    ntfs_cntob(cl), NOCRED, B_MODIFY, &bp);
+				    ntfs_cntob(cl), B_MODIFY, &bp);
 				if (error)
 					return (error);
 			}
@@ -1333,7 +1333,7 @@ ntfs_writentvattr_plain(struct ntfsmount *ntmp, struct ntnode *ip,
 }
 
 /*
- * This is one of read routines.
+ * This is one of the read routines.
  *
  * ntnode should be locked.
  */
@@ -1404,7 +1404,7 @@ ntfs_readntvattr_plain(struct ntfsmount *ntmp, struct ntnode *ip,
 					error = bread(ntmp->ntm_devvp,
 						      ntfs_cntobn(cn),
 						      ntfs_cntob(cl),
-						      NOCRED, 0, &bp);
+						      0, &bp);
 					if (error) {
 						return (error);
 					}
@@ -1460,7 +1460,7 @@ ntfs_readntvattr_plain(struct ntfsmount *ntmp, struct ntnode *ip,
 }
 
 /*
- * This is one of read routines.
+ * This is one of the read routines.
  */
 int
 ntfs_readattr_plain(struct ntfsmount *ntmp, struct ntnode *ip,
@@ -1508,7 +1508,7 @@ ntfs_readattr_plain(struct ntfsmount *ntmp, struct ntnode *ip,
 }
 
 /*
- * This is one of read routines.
+ * This is one of the read routines.
  */
 int
 ntfs_readattr(struct ntfsmount *ntmp, struct ntnode *ip, u_int32_t attrnum,

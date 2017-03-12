@@ -1,7 +1,7 @@
-/*	$Id: omap2_obio.c,v 1.21 2013/06/15 21:58:20 matt Exp $	*/
+/*	$Id: omap2_obio.c,v 1.23 2016/04/25 13:17:16 kiyohara Exp $	*/
 
 /* adapted from: */
-/*	$NetBSD: omap2_obio.c,v 1.21 2013/06/15 21:58:20 matt Exp $ */
+/*	$NetBSD: omap2_obio.c,v 1.23 2016/04/25 13:17:16 kiyohara Exp $ */
 
 
 /*
@@ -103,7 +103,7 @@
 
 #include "opt_omap.h"
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: omap2_obio.c,v 1.21 2013/06/15 21:58:20 matt Exp $");
+__KERNEL_RCSID(0, "$NetBSD: omap2_obio.c,v 1.23 2016/04/25 13:17:16 kiyohara Exp $");
 
 #include "locators.h"
 #include "obio.h"
@@ -284,6 +284,7 @@ obio_search(device_t parent, cfdata_t cf, const int *ldesc, void *aux)
 	oa.obio_size = cf->cf_loc[OBIOCF_SIZE];
 	oa.obio_intr = cf->cf_loc[OBIOCF_INTR];
 	oa.obio_intrbase = cf->cf_loc[OBIOCF_INTRBASE];
+	oa.obio_edmabase = cf->cf_loc[OBIOCF_EDMABASE];
 
 #if defined(OMAP2)
 	if ((oa.obio_addr >= sc->sc_base)
@@ -351,6 +352,7 @@ obio_find(device_t parent, cfdata_t cf, const int *ldesc, void *aux)
 	oa->obio_size = cf->cf_loc[OBIOCF_SIZE];
 	oa->obio_intr = cf->cf_loc[OBIOCF_INTR];
 	oa->obio_intrbase = cf->cf_loc[OBIOCF_INTRBASE];
+	oa->obio_edmabase = cf->cf_loc[OBIOCF_EDMABASE];
 
 	return config_match(parent, cf, oa);
 }
@@ -364,6 +366,9 @@ static const struct {
 	bus_addr_t addr;
 	bool required;
 } critical_devs[] = {
+#if defined(OMAP_3530)
+	{ .name = "omapscm", .addr = 0x48002000, .required = true },
+#endif
 #if defined(OMAP_2430) || defined(OMAP_2420)
 	{ .name = "avic", .addr = INTC_BASE, .required = true },
 #endif
@@ -398,6 +403,7 @@ static const struct {
 	{ .name = "omapicu", .addr = 0x48200000, .required = true },
 	{ .name = "prcm", .addr = 0x44e00000, .required = true },
 	{ .name = "sitaracm", .addr = 0x44e10000, .required = true },
+	{ .name = "edma", .addr = 0x49000000, .required = false },
 #endif
 #if defined(OMAP_3530)
 	{ .name = "omapdma", .addr = OMAP3530_SDMA_BASE, .required = true },

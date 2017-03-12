@@ -1,4 +1,4 @@
-/*	$NetBSD: ntp-keygen.c,v 1.6 2014/12/19 20:43:20 christos Exp $	*/
+/*	$NetBSD: ntp-keygen.c,v 1.10 2016/01/08 21:35:42 christos Exp $	*/
 
 /*
  * Program to generate cryptographic keys for ntp clients and servers
@@ -156,7 +156,7 @@ u_long	asn2ntp		(ASN1_TIME *);
  * Program variables
  */
 extern char *optarg;		/* command line argument */
-char	*progname;
+char	const *progname;
 u_int	lifetime = DAYSPERYEAR;	/* certificate lifetime (days) */
 int	nkeys;			/* MV keys */
 time_t	epoch;			/* Unix epoch (seconds) since 1970 */
@@ -189,7 +189,7 @@ readlink(
 	int	len
 	)
 {
-	return strlen(file);
+	return (int)strlen(file); /* assume no overflow possible */
 }
 
 /*
@@ -357,8 +357,8 @@ main(
 	fstamp = (u_int)(epoch + JAN_1970);
 
 	optct = ntpOptionProcess(&ntp_keygenOptions, argc, argv);
-	argc -= optct;
-	argv += optct;
+	argc -= optct;	// Just in case we care later.
+	argv += optct;	// Just in case we care later.
 
 #ifdef OPENSSL
 	if (SSLeay() == SSLEAY_VERSION_NUMBER)
@@ -829,24 +829,24 @@ gen_md5(
 	str = fheader("MD5key", id, groupname);
 	for (i = 1; i <= MD5KEYS; i++) {
 		for (j = 0; j < MD5SIZE; j++) {
-			int temp;
+			u_char temp;
 
 			while (1) {
 				int rc;
 
-				rc = ntp_crypto_random_buf(&temp, 1);
+				rc = ntp_crypto_random_buf(
+				    &temp, sizeof(temp));
 				if (-1 == rc) {
 					fprintf(stderr, "ntp_crypto_random_buf() failed.\n");
 					exit (-1);
 				}
-				temp &= 0xff;
 				if (temp == '#')
 					continue;
 
 				if (temp > 0x20 && temp < 0x7f)
 					break;
 			}
-			md5key[j] = (u_char)temp;
+			md5key[j] = temp;
 		}
 		md5key[j] = '\0';
 		fprintf(str, "%2d MD5 %s  # MD5 key\n", i,
@@ -1959,10 +1959,10 @@ x509	(
 	X509_time_adj(X509_get_notAfter(cert), lifetime * SECSPERDAY, &epoch);
 	subj = X509_get_subject_name(cert);
 	X509_NAME_add_entry_by_txt(subj, "commonName", MBSTRING_ASC,
-	    (u_char *)name, strlen(name), -1, 0);
+	    (u_char *)name, -1, -1, 0);
 	subj = X509_get_issuer_name(cert);
 	X509_NAME_add_entry_by_txt(subj, "commonName", MBSTRING_ASC,
-	    (u_char *)name, strlen(name), -1, 0);
+	    (u_char *)name, -1, -1, 0);
 	if (!X509_set_pubkey(cert, pkey)) {
 		fprintf(stderr, "Assign certificate signing key fails\n%s\n",
 		    ERR_error_string(ERR_get_error(), NULL));
@@ -2172,15 +2172,29 @@ fheader	(
 	FILE	*str;		/* file handle */
 	char	linkname[MAXFILENAME]; /* link name */
 	int	temp;
-
+#ifdef HAVE_UMASK
+        mode_t  orig_umask;
+#endif
+        
 	snprintf(filename, sizeof(filename), "ntpkey_%s_%s.%u", file,
 	    owner, fstamp); 
-	if ((str = fopen(filename, "w")) == NULL) {
+#ifdef HAVE_UMASK
+        orig_umask = umask( S_IWGRP | S_IRWXO );
+        str = fopen(filename, "w");
+        (void) umask(orig_umask);
+#else
+        str = fopen(filename, "w");
+#endif
+	if (str == NULL) {
 		perror("Write");
 		exit (-1);
 	}
-	snprintf(linkname, sizeof(linkname), "ntpkey_%s_%s", ulink,
-	    hostname);
+        if (strcmp(ulink, "md5") == 0) {
+          strcpy(linkname,"ntp.keys");
+        } else {
+          snprintf(linkname, sizeof(linkname), "ntpkey_%s_%s", ulink,
+                   hostname);
+        }
 	(void)remove(linkname);		/* The symlink() line below matters */
 	temp = symlink(filename, linkname);
 	if (temp < 0)

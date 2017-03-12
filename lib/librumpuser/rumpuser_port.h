@@ -1,4 +1,4 @@
-/*	$NetBSD: rumpuser_port.h,v 1.43 2015/01/17 23:49:40 justin Exp $	*/
+/*	$NetBSD: rumpuser_port.h,v 1.47 2015/11/07 16:21:42 nros Exp $	*/
 
 #ifndef _LIB_LIBRUMPUSER_RUMPUSER_PORT_H_
 #define _LIB_LIBRUMPUSER_RUMPUSER_PORT_H_
@@ -12,6 +12,7 @@
  */
 #if !defined(RUMPUSER_CONFIG)
 
+#define HAVE_ALIGNED_ALLOC 1
 #define HAVE_ARC4RANDOM_BUF 1
 #define HAVE_CHFLAGS 1
 #define HAVE_CLOCKID_T 1
@@ -47,6 +48,7 @@
 #define HAVE_SYS_TYPES_H 1
 #define HAVE_UNISTD_H 1
 #define HAVE___QUOTACTL 1
+#define HAVE_UTIMENSAT 1
 #define PACKAGE_BUGREPORT "http://rumpkernel.org/"
 #define PACKAGE_NAME "rumpuser-posix"
 #define PACKAGE_STRING "rumpuser-posix 999"
@@ -62,7 +64,7 @@
 #include "rumpuser_config.h"
 #endif
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__GNU__) || defined(__GLIBC__)
 #define _GNU_SOURCE
 #endif
 
@@ -311,6 +313,18 @@ do {						\
 
 #if !defined(HAVE_SETPROGNAME)
 #define setprogname(a)
+#endif
+
+/* at least GNU Hurd does not specify various common hardcoded constants */
+#include <limits.h>
+#ifndef MAXPATHLEN
+#define MAXPATHLEN	4096
+#endif
+#ifndef PATH_MAX
+#define PATH_MAX	MAXPATHLEN
+#endif
+#ifndef MAXHOSTNAMELEN
+#define MAXHOSTNAMELEN	256
 #endif
 
 #endif /* _LIB_LIBRUMPUSER_RUMPUSER_PORT_H_ */

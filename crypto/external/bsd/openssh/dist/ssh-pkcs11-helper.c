@@ -1,5 +1,6 @@
-/*	$NetBSD: ssh-pkcs11-helper.c,v 1.7 2014/10/19 16:30:58 christos Exp $	*/
-/* $OpenBSD: ssh-pkcs11-helper.c,v 1.8 2014/06/24 01:13:21 djm Exp $ */
+/*	$NetBSD: ssh-pkcs11-helper.c,v 1.10 2016/03/11 01:55:00 christos Exp $	*/
+/* $OpenBSD: ssh-pkcs11-helper.c,v 1.12 2016/02/15 09:47:49 dtucker Exp $ */
+
 /*
  * Copyright (c) 2010 Markus Friedl.  All rights reserved.
  *
@@ -16,10 +17,10 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "includes.h"
-__RCSID("$NetBSD: ssh-pkcs11-helper.c,v 1.7 2014/10/19 16:30:58 christos Exp $");
+__RCSID("$NetBSD: ssh-pkcs11-helper.c,v 1.10 2016/03/11 01:55:00 christos Exp $");
 
-#include <sys/queue.h>
 #include <sys/types.h>
+#include <sys/queue.h>
 #include <sys/time.h>
 #include <sys/param.h>
 
@@ -276,6 +277,7 @@ main(int argc, char **argv)
 	char buf[4*4096];
 	extern char *__progname;
 
+	ssh_malloc_init();	/* must be called before any mallocs */
 	TAILQ_INIT(&pkcs11_keylist);
 	pkcs11_init(0);
 
@@ -294,8 +296,8 @@ main(int argc, char **argv)
 	buffer_init(&oqueue);
 
 	set_size = howmany(max + 1, NFDBITS) * sizeof(fd_mask);
-	rset = (fd_set *)xmalloc(set_size);
-	wset = (fd_set *)xmalloc(set_size);
+	rset = xmalloc(set_size);
+	wset = xmalloc(set_size);
 
 	for (;;) {
 		memset(rset, 0, set_size);

@@ -81,7 +81,7 @@ struct ctf_buf {
 static int target_requires_swap;
 
 /*PRINTFLIKE1*/
-static void __printflike(1, 2)
+static void __printflike(1, 2) __dead
 parseterminate(const char *fmt, ...)
 {
 	static char msgbuf[1024]; /* sigh */
@@ -173,11 +173,11 @@ write_objects(iidesc_t *idp, ctf_buf_t *b)
 {
 	ushort_t id = (idp ? idp->ii_dtype->t_id : 0);
 
-	ctf_buf_write(b, &id, sizeof (id));
-
 	if (target_requires_swap) {
 		SWAP_16(id);
 	}
+
+	ctf_buf_write(b, &id, sizeof (id));
 
 	debug(3, "Wrote object %s (%d)\n", (idp ? idp->ii_name : "(null)"), id);
 }
@@ -361,6 +361,7 @@ write_type(void *arg1, void *arg2)
 		break;
 
 	case POINTER:
+	case REFERENCE:	/* XXX: */
 		ctt.ctt_info = CTF_TYPE_INFO(CTF_K_POINTER, isroot, 0);
 		ctt.ctt_type = tp->t_tdesc->t_id;
 		write_unsized_type_rec(b, &ctt);
@@ -383,12 +384,14 @@ write_type(void *arg1, void *arg2)
 
 	case STRUCT:
 	case UNION:
+	case CLASS:
 		for (i = 0, mp = tp->t_members; mp != NULL; mp = mp->ml_next)
 			i++; /* count up struct or union members */
 
 		if (i > CTF_MAX_VLEN) {
-			terminate("sou %s has too many members: %d > %d\n",
+			warning("sou %s has too many members: %d > %d\n",
 			    tdesc_name(tp), i, CTF_MAX_VLEN);
+			i = CTF_MAX_VLEN;
 		}
 
 		if (tp->t_type == STRUCT)
@@ -399,7 +402,8 @@ write_type(void *arg1, void *arg2)
 		write_sized_type_rec(b, &ctt, tp->t_size);
 
 		if (tp->t_size < CTF_LSTRUCT_THRESH) {
-			for (mp = tp->t_members; mp != NULL; mp = mp->ml_next) {
+			for (mp = tp->t_members; mp != NULL && i > 0;
+			    mp = mp->ml_next) {
 				offset = strtab_insert(&b->ctb_strtab,
 				    mp->ml_name);
 
@@ -413,9 +417,11 @@ write_type(void *arg1, void *arg2)
 					SWAP_16(ctm.ctm_offset);
 				}
 				ctf_buf_write(b, &ctm, sizeof (ctm));
+				i--;
 			}
 		} else {
-			for (mp = tp->t_members; mp != NULL; mp = mp->ml_next) {
+			for (mp = tp->t_members; mp != NULL && i > 0;
+			    mp = mp->ml_next) {
 				offset = strtab_insert(&b->ctb_strtab,
 				    mp->ml_name);
 
@@ -435,6 +441,7 @@ write_type(void *arg1, void *arg2)
 				}
 
 				ctf_buf_write(b, &ctlm, sizeof (ctlm));
+				i--;
 			}
 		}
 		break;

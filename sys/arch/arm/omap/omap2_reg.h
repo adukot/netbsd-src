@@ -1,4 +1,4 @@
-/* $NetBSD: omap2_reg.h,v 1.28 2014/07/20 23:08:43 bouyer Exp $ */
+/* $NetBSD: omap2_reg.h,v 1.31 2016/04/25 13:07:03 kiyohara Exp $ */
 
 /*
  * Copyright (c) 2007 Microsoft
@@ -140,6 +140,12 @@
 
 #define	TI_DM37XX_L4_EMULATION_BASE	0x54000000
 #define	TI_DM37XX_L4_EMULATION_SIZE	0x00800000	/* 8MB */
+
+
+#define CHIPID_OMAP3503		0x5c00
+#define CHIPID_OMAP3515		0x1c00
+#define CHIPID_OMAP3525		0x4c00
+#define CHIPID_OMAP3530		0x0c00
 
 /*
  * Clock Management registers base, offsets, and size
@@ -896,5 +902,26 @@
 #define	SDRAM_CONFIG_EBANK		__BIT(3)
 #define	SDRAM_CONFIG_PAGESIZE		__BITS(2,0)
 #endif
-	
+
+/* EDMA3 */
+#define AM335X_TPCC_BASE		0x49000000
+#define AM335X_TPCC_SIZE		0x00100000
+#define AM335X_TPTC0_BASE		0x49800000
+#define AM335X_TPTC0_SIZE		0x00100000
+#define AM335X_TPTC1_BASE		0x49900000
+#define AM335X_TPTC1_SIZE		0x00100000
+#define AM335X_TPTC2_BASE		0x49a00000
+#define AM335X_TPTC2_SIZE		0x00100000
+#define AM335X_INT_EDMACOMPINT		12
+#define AM335X_INT_EDMAMPERR		13
+#define AM335X_INT_EDMAERRINT		14
+#define AM335X_INT_TCERRINT0		112
+#define AM335X_INT_TCERRINT1		113
+#define AM335X_INT_TCERRINT2		114
+
+/* TRNG */
+#define AM335X_TRNG_BASE		0x48310000
+#define AM335X_TRNG_SIZE		0x2000
+#define AM335X_INT_TRNG			111
+
 #endif	/* _ARM_OMAP_OMAP2_REG_H_ */

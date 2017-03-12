@@ -1,4 +1,4 @@
-#	$NetBSD: NetBSD.dist.tests,v 1.116 2015/01/06 03:26:05 christos Exp $
+#	$NetBSD: NetBSD.dist.tests,v 1.127 2016/04/15 01:38:17 ozaki-r Exp $
 
 ./usr/libdata/debug/usr/tests
 ./usr/libdata/debug/usr/tests/atf
@@ -20,6 +20,7 @@
 ./usr/libdata/debug/usr/tests/dev/md
 ./usr/libdata/debug/usr/tests/dev/scsipi
 ./usr/libdata/debug/usr/tests/dev/sysmon
+./usr/libdata/debug/usr/tests/dev/usb
 ./usr/libdata/debug/usr/tests/fs
 ./usr/libdata/debug/usr/tests/fs/ffs
 ./usr/libdata/debug/usr/tests/fs/fifofs
@@ -109,6 +110,7 @@
 ./usr/libdata/debug/usr/tests/lib/libposix/posix1
 ./usr/libdata/debug/usr/tests/lib/libposix/posix2
 ./usr/libdata/debug/usr/tests/lib/libppath
+./usr/libdata/debug/usr/tests/lib/libproc
 ./usr/libdata/debug/usr/tests/lib/libprop
 ./usr/libdata/debug/usr/tests/lib/libpthread
 ./usr/libdata/debug/usr/tests/lib/libpthread/dlopen
@@ -118,6 +120,7 @@
 ./usr/libdata/debug/usr/tests/lib/libskey
 ./usr/libdata/debug/usr/tests/lib/libsljit
 ./usr/libdata/debug/usr/tests/lib/libtre
+./usr/libdata/debug/usr/tests/lib/libusbhid
 ./usr/libdata/debug/usr/tests/lib/libutil
 ./usr/libdata/debug/usr/tests/libexec
 ./usr/libdata/debug/usr/tests/libexec/ld.elf_so
@@ -187,6 +190,7 @@
 ./usr/tests/dev/raidframe
 ./usr/tests/dev/scsipi
 ./usr/tests/dev/sysmon
+./usr/tests/dev/usb
 ./usr/tests/fs
 ./usr/tests/fs/cd9660
 ./usr/tests/fs/ffs
@@ -288,6 +292,7 @@
 ./usr/tests/lib/libposix/posix1
 ./usr/tests/lib/libposix/posix2
 ./usr/tests/lib/libppath
+./usr/tests/lib/libproc
 ./usr/tests/lib/libprop
 ./usr/tests/lib/libpthread
 ./usr/tests/lib/libpthread/dlopen
@@ -298,6 +303,7 @@
 ./usr/tests/lib/libsljit
 ./usr/tests/lib/libtre
 ./usr/tests/lib/libtre/data
+./usr/tests/lib/libusbhid
 ./usr/tests/lib/libutil
 ./usr/tests/libexec
 ./usr/tests/libexec/ld.elf_so
@@ -307,6 +313,7 @@
 ./usr/tests/libexec/ld.elf_so/h_helper_symver_dso2
 ./usr/tests/modules
 ./usr/tests/net
+./usr/tests/net/arp
 ./usr/tests/net/bpf
 ./usr/tests/net/bpfilter
 ./usr/tests/net/bpfjit
@@ -315,11 +322,15 @@
 ./usr/tests/net/icmp
 ./usr/tests/net/if
 ./usr/tests/net/if_bridge
+./usr/tests/net/if_gif
 ./usr/tests/net/if_loop
+./usr/tests/net/if_pppoe
+./usr/tests/net/if_tap
 ./usr/tests/net/in_cksum
 ./usr/tests/net/mcast
 ./usr/tests/net/mpls
 ./usr/tests/net/net
+./usr/tests/net/ndp
 ./usr/tests/net/npf
 ./usr/tests/net/route
 ./usr/tests/net/sys
@@ -332,6 +343,7 @@
 ./usr/tests/rump/rumpvfs
 ./usr/tests/sbin
 ./usr/tests/sbin/fsck_ffs
+./usr/tests/sbin/gpt
 ./usr/tests/sbin/ifconfig
 ./usr/tests/sbin/newfs
 ./usr/tests/sbin/newfs_msdos
@@ -364,6 +376,7 @@
 ./usr/tests/usr.bin/diff
 ./usr/tests/usr.bin/dirname
 ./usr/tests/usr.bin/find
+./usr/tests/usr.bin/gdb
 ./usr/tests/usr.bin/grep
 ./usr/tests/usr.bin/gzip
 ./usr/tests/usr.bin/id

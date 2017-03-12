@@ -1,4 +1,4 @@
-/* $NetBSD: if_ti.c,v 1.93 2014/03/29 19:28:25 christos Exp $ */
+/* $NetBSD: if_ti.c,v 1.96 2016/02/09 08:32:11 ozaki-r Exp $ */
 
 /*
  * Copyright (c) 1997, 1998, 1999
@@ -81,7 +81,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_ti.c,v 1.93 2014/03/29 19:28:25 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_ti.c,v 1.96 2016/02/09 08:32:11 ozaki-r Exp $");
 
 #include "opt_inet.h"
 
@@ -733,6 +733,7 @@ ti_newbuf_std(struct ti_softc *sc, int i, struct mbuf *m, bus_dmamap_t dmamap)
 				BUS_DMA_READ|BUS_DMA_NOWAIT)) != 0) {
 			aprint_error_dev(sc->sc_dev, "can't load recv map, error = %d\n",
 			       error);
+			m_freem(m_new);
 			return (ENOMEM);
 		}
 	} else {
@@ -799,6 +800,7 @@ ti_newbuf_mini(struct ti_softc *sc, int i, struct mbuf *m, bus_dmamap_t dmamap)
 				BUS_DMA_READ|BUS_DMA_NOWAIT)) != 0) {
 			aprint_error_dev(sc->sc_dev, "can't load recv map, error = %d\n",
 			       error);
+			m_freem(m_new);
 			return (ENOMEM);
 		}
 	} else {
@@ -2028,7 +2030,7 @@ ti_rxeof(struct ti_softc *sc)
 			    continue);
 		}
 
-		(*ifp->if_input)(ifp, m);
+		if_percpuq_enqueue(ifp->if_percpuq, m);
 	}
 
 	/* Only necessary on the Tigon 1. */

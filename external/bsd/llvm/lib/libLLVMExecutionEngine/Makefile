@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.4 2015/01/29 20:41:35 joerg Exp $
+#	$NetBSD: Makefile,v 1.6 2016/02/27 21:47:33 joerg Exp $
 
 LIB=	LLVMExecutionEngine
 
@@ -9,7 +9,7 @@ LIB=	LLVMExecutionEngine
 SRCS+=	GDBRegistrationListener.cpp \
 	ExecutionEngine.cpp \
 	ExecutionEngineBindings.cpp \
-	RTDyldMemoryManager.cpp \
+	SectionMemoryManager.cpp \
 	TargetSelect.cpp
 
 .include <bsd.lib.mk>

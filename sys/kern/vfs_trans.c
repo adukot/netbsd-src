@@ -1,4 +1,4 @@
-/*	$NetBSD: vfs_trans.c,v 1.31 2014/09/05 05:57:21 matt Exp $	*/
+/*	$NetBSD: vfs_trans.c,v 1.34 2015/08/24 22:50:32 pooka Exp $	*/
 
 /*-
  * Copyright (c) 2007 The NetBSD Foundation, Inc.
@@ -30,13 +30,15 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: vfs_trans.c,v 1.31 2014/09/05 05:57:21 matt Exp $");
+__KERNEL_RCSID(0, "$NetBSD: vfs_trans.c,v 1.34 2015/08/24 22:50:32 pooka Exp $");
 
 /*
  * File system transaction operations.
  */
 
+#ifdef _KERNEL_OPT
 #include "opt_ddb.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -51,7 +53,6 @@ __KERNEL_RCSID(0, "$NetBSD: vfs_trans.c,v 1.31 2014/09/05 05:57:21 matt Exp $");
 #include <sys/proc.h>
 
 #include <miscfs/specfs/specdev.h>
-#include <miscfs/syncfs/syncfs.h>
 
 struct fscow_handler {
 	LIST_ENTRY(fscow_handler) ch_list;
@@ -165,8 +166,7 @@ fstrans_mount(struct mount *mp)
 	error = vfs_busy(mp, NULL);
 	if (error)
 		return error;
-	if ((newfmi = kmem_alloc(sizeof(*newfmi), KM_SLEEP)) == NULL)
-		return ENOMEM;
+	newfmi = kmem_alloc(sizeof(*newfmi), KM_SLEEP);
 	newfmi->fmi_state = FSTRANS_NORMAL;
 	newfmi->fmi_ref_cnt = 1;
 	LIST_INIT(&newfmi->fmi_cow_handler);
@@ -604,8 +604,7 @@ fscow_establish(struct mount *mp, int (*func)(void *, struct buf *, bool),
 	fmi = mp->mnt_transinfo;
 	KASSERT(fmi != NULL);
 
-	if ((newch = kmem_alloc(sizeof(*newch), KM_SLEEP)) == NULL)
-		return ENOMEM;
+	newch = kmem_alloc(sizeof(*newch), KM_SLEEP);
 	newch->ch_func = func;
 	newch->ch_arg = arg;
 

@@ -1,4 +1,4 @@
-/*	$NetBSD: npf_ctl.c,v 1.40 2014/08/24 20:36:30 rmind Exp $	*/
+/*	$NetBSD: npf_ctl.c,v 1.43 2015/10/28 01:54:10 christos Exp $	*/
 
 /*-
  * Copyright (c) 2009-2014 The NetBSD Foundation, Inc.
@@ -37,7 +37,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: npf_ctl.c,v 1.40 2014/08/24 20:36:30 rmind Exp $");
+__KERNEL_RCSID(0, "$NetBSD: npf_ctl.c,v 1.43 2015/10/28 01:54:10 christos Exp $");
 
 #include <sys/param.h>
 #include <sys/conf.h>
@@ -49,13 +49,9 @@ __KERNEL_RCSID(0, "$NetBSD: npf_ctl.c,v 1.40 2014/08/24 20:36:30 rmind Exp $");
 #include "npf_impl.h"
 #include "npf_conn.h"
 
-#if defined(DEBUG) || defined(DIAGNOSTIC)
 #define	NPF_ERR_DEBUG(e) \
 	prop_dictionary_set_cstring_nocopy((e), "source-file", __FILE__); \
 	prop_dictionary_set_uint32((e), "source-line", __LINE__);
-#else
-#define	NPF_ERR_DEBUG(e)
-#endif
 
 /*
  * npfctl_switch: enable or disable packet inspection.
@@ -613,7 +609,6 @@ fail:
 	/*
 	 * Note: destroy rulesets first, to drop references to the tableset.
 	 */
-	KASSERT(error == 0 || (nset || rpset || rlset || tblset));
 	if (nset) {
 		npf_ruleset_destroy(nset);
 	}
@@ -778,6 +773,9 @@ npfctl_rule(u_long cmd, void *data)
 	}
 	case NPF_CMD_RULE_LIST: {
 		retdict = npf_ruleset_list(rlset, ruleset_name);
+		if (!retdict) {
+			error = ESRCH;
+		}
 		break;
 	}
 	case NPF_CMD_RULE_FLUSH: {
@@ -797,6 +795,7 @@ npfctl_rule(u_long cmd, void *data)
 	npf_config_exit();
 
 	if (rl) {
+		KASSERT(error);
 		npf_rule_free(rl);
 	}
 out:

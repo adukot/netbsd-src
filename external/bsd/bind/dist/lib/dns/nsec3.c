@@ -1,7 +1,7 @@
-/*	$NetBSD: nsec3.c,v 1.10 2014/12/10 04:37:58 christos Exp $	*/
+/*	$NetBSD: nsec3.c,v 1.12 2015/12/17 04:00:43 christos Exp $	*/
 
 /*
- * Copyright (C) 2006, 2008-2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2006, 2008-2015  Internet Systems Consortium, Inc. ("ISC")
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -27,6 +27,7 @@
 #include <isc/log.h>
 #include <isc/string.h>
 #include <isc/util.h>
+#include <isc/safe.h>
 
 #include <dst/dst.h>
 
@@ -1927,7 +1928,7 @@ dns_nsec3_noexistnodata(dns_rdatatype_t type, dns_name_t* name,
 	 * Work out what this NSEC3 covers.
 	 * Inside (<0) or outside (>=0).
 	 */
-	scope = memcmp(owner, nsec3.next, nsec3.next_length);
+	scope = isc_safe_memcompare(owner, nsec3.next, nsec3.next_length);
 
 	/*
 	 * Prepare to compute all the hashes.
@@ -1952,7 +1953,7 @@ dns_nsec3_noexistnodata(dns_rdatatype_t type, dns_name_t* name,
 			return (ISC_R_IGNORE);
 		}
 
-		order = memcmp(hash, owner, length);
+		order = isc_safe_memcompare(hash, owner, length);
 		if (first && order == 0) {
 			/*
 			 * The hashes are the same.
@@ -2055,8 +2056,6 @@ dns_nsec3_noexistnodata(dns_rdatatype_t type, dns_name_t* name,
 		    (scope >= 0 && (order > 0 ||
 				    memcmp(hash, nsec3.next, length) < 0)))
 		{
-			char namebuf[DNS_NAME_FORMATSIZE];
-
 			dns_name_format(qname, namebuf, sizeof(namebuf));
 			(*logit)(arg, ISC_LOG_DEBUG(3), "NSEC3 proves "
 				 "name does not exist: '%s'", namebuf);

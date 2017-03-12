@@ -1,4 +1,4 @@
-/*	$NetBSD: rf.c,v 1.31 2015/01/02 19:42:07 christos Exp $	*/
+/*	$NetBSD: rf.c,v 1.33 2015/12/08 20:36:15 christos Exp $	*/
 /*
  * Copyright (c) 2002 Jochen Kunz.
  * All rights reserved.
@@ -36,7 +36,7 @@ TODO:
 */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: rf.c,v 1.31 2015/01/02 19:42:07 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: rf.c,v 1.33 2015/12/08 20:36:15 christos Exp $");
 
 /* autoconfig stuff */
 #include <sys/param.h>
@@ -202,7 +202,7 @@ struct rfc_attach_args {
 
 
 const struct dkdriver rfdkdriver = {
-	rfstrategy
+	.d_strategy = rfstrategy
 };
 
 
@@ -1101,7 +1101,7 @@ rfioctl(dev_t dev, u_long cmd, void *data, int fflag, struct lwp *l)
 		return error;
 
 	switch (cmd) {
-	/* get and set disklabel; DIOCGPART used internally */
+	/* get and set disklabel; DIOCGPARTINFO used internally */
 	case DIOCSDINFO: /* set */
 		return(0);
 	case DIOCWDINFO: /* set, update disk */

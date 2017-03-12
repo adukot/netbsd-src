@@ -1,4 +1,4 @@
-/*	$OpenBSD: ssherr.c,v 1.1 2014/04/30 05:29:56 djm Exp $	*/
+/*	$OpenBSD: ssherr.c,v 1.5 2015/09/13 14:39:16 tim Exp $	*/
 /*
  * Copyright (c) 2011 Damien Miller
  *
@@ -15,9 +15,10 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #include "includes.h"
-__RCSID("$NetBSD: ssherr.c,v 1.2 2014/10/19 16:30:59 christos Exp $");
+__RCSID("$NetBSD: ssherr.c,v 1.4 2016/03/11 01:55:00 christos Exp $");
 
 #include <errno.h>
+#include <stdio.h>
 #include <string.h>
 #include "ssherr.h"
 
@@ -106,7 +107,7 @@ ssh_err(int n)
 	case SSH_ERR_NEED_REKEY:
 		return "rekeying not supported by peer";
 	case SSH_ERR_PASSPHRASE_TOO_SHORT:
-		return "passphrase is too short (minimum four characters)";
+		return "passphrase is too short (minimum five characters)";
 	case SSH_ERR_FILE_CHANGED:
 		return "file changed while reading";
 	case SSH_ERR_KEY_UNKNOWN_CIPHER:
@@ -123,11 +124,25 @@ ssh_err(int n)
 		return "agent not present";
 	case SSH_ERR_AGENT_NO_IDENTITIES:
 		return "agent contains no identities";
+	case SSH_ERR_BUFFER_READ_ONLY:
+		return "internal error: buffer is read-only";
 	case SSH_ERR_KRL_BAD_MAGIC:
 		return "KRL file has invalid magic number";
 	case SSH_ERR_KEY_REVOKED:
 		return "Key is revoked";
+	case SSH_ERR_CONN_CLOSED:
+		return "Connection closed";
+	case SSH_ERR_CONN_TIMEOUT:
+		return "Connection timed out";
+	case SSH_ERR_CONN_CORRUPT:
+		return "Connection corrupted";
+	case SSH_ERR_PROTOCOL_ERROR:
+		return "Protocol error";
 	default:
-		return "unknown error";
+		{
+			static char buf[1024];
+			snprintf(buf, sizeof(buf), "unknown error %d", n);
+			return buf;
+		}
 	}
 }

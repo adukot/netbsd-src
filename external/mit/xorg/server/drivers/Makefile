@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.63 2012/07/19 19:23:52 macallan Exp $
+#	$NetBSD: Makefile,v 1.75 2015/11/06 21:32:22 szptvlfn Exp $
 
 # xf86-input drivers
 
@@ -19,8 +19,9 @@ SUBDIR+= \
 
 .endif
 
-
 # xf86-video drivers
+
+.include <bsd.own.mk>
 
 .if ${MACHINE_ARCH} == "i386" || \
     ${MACHINE_ARCH} == "x86_64"
@@ -35,21 +36,23 @@ SUBDIR+= \
 	xf86-video-cirrus_laguna \
 	xf86-video-glint \
 	xf86-video-i128 \
-	xf86-video-i740 \
+	xf86-video-i740
 
 # needs porting for xorg-server 1.6
 #	xf86-video-imstt \
 
 SUBDIR+= \
 	xf86-video-intel \
+	xf86-video-intel-old \
 	xf86-video-mach64 \
 	xf86-video-mga \
 	xf86-video-neomagic \
 	xf86-video-nv \
+	xf86-video-nouveau \
 	xf86-video-openchrome \
 	xf86-video-r128 \
 	xf86-video-radeon \
-	xf86-video-radeonhd \
+	xf86-video-radeon-kms \
 	xf86-video-s3 \
 	xf86-video-s3virge \
 	xf86-video-savage \
@@ -90,7 +93,6 @@ SUBDIR+= \
 	xf86-video-nv \
 	xf86-video-r128 \
 	xf86-video-radeon \
-	xf86-video-radeonhd \
 	xf86-video-s3 \
 	xf86-video-s3virge \
 	xf86-video-savage \
@@ -103,6 +105,11 @@ SUBDIR+= \
 	xf86-video-wsfb
 #	xf86-video-imstt
 .endif	# ${MACHINE} == "alpha"
+
+.if ${MACHINE} == "amiga"
+SUBDIR+= \
+	xf86-video-wsfb
+.endif	# ${MACHINE} == "amiga"
 
 .if ${MACHINE} == "bebox"
 SUBDIR+= \
@@ -130,7 +137,6 @@ SUBDIR+= \
 	xf86-video-neomagic \
 	xf86-video-nv \
 	xf86-video-radeon \
-	xf86-video-radeonhd \
 	xf86-video-s3 \
 	xf86-video-s3virge \
 	xf86-video-savage \
@@ -150,6 +156,7 @@ SUBDIR+= \
 
 .if ${MACHINE} == "evbarm"
 SUBDIR+= \
+	xf86-video-modesetting \
 	xf86-video-wsfb
 .endif # ${MACHINE} == "evbarm"
 
@@ -177,10 +184,20 @@ SUBDIR+= \
 	xf86-video-wsfb
 .endif # ${MACHINE} == "hpcarm" || ${MACHINE} == "hpcmips" || ${MACHINE} == "hpcsh"
 
+.if ${MACHINE} == "ibmnws"
+SUBDIR+= \
+	xf86-video-s3
+.endif	# ${MACHINE} == "ibmnws"
+
 .if ${MACHINE} == "luna68k"
 SUBDIR+= \
 	xf86-video-wsfb
 .endif	# ${MACHINE} == "luna68k"
+
+.if ${MACHINE} == "mac68k"
+SUBDIR+= \
+	xf86-video-wsfb
+.endif	# ${MACHINE} == "mac68k"
 
 .if ${MACHINE} == "macppc"
 SUBDIR+= \
@@ -231,7 +248,11 @@ SUBDIR+= \
 .if ${MACHINE} == "sgimips"
 SUBDIR+= \
 	xf86-video-crime \
+	xf86-video-cirrus \
+	xf86-video-glint \
+	xf86-video-mga \
 	xf86-video-newport \
+	xf86-video-s3 \
 	xf86-video-wsfb
 .endif	# ${MACHINE} == "sgimips"
 
@@ -273,16 +294,5 @@ SUBDIR+= \
 SUBDIR+= \
 	xf86-video-wsfb
 .endif # ${MACHINE} == "zaurus"
-
-# broken with xorg-server 1.6
-# x86
-#	xf86-video-nsc \
-#	xf86-video-vga \
-# alpha
-#	xf86-video-vga \
-# bebox
-#	xf86-video-vga
-# prep
-#	xf86-video-vga
 
 .include <bsd.subdir.mk>

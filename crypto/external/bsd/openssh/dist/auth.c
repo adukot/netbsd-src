@@ -1,5 +1,5 @@
-/*	$NetBSD: auth.c,v 1.11 2015/01/25 15:52:44 christos Exp $	*/
-/* $OpenBSD: auth.c,v 1.106 2014/07/15 15:54:14 millert Exp $ */
+/*	$NetBSD: auth.c,v 1.16 2016/01/23 00:03:30 christos Exp $	*/
+/* $OpenBSD: auth.c,v 1.113 2015/08/21 03:42:19 djm Exp $ */
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
  *
@@ -25,10 +25,9 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: auth.c,v 1.11 2015/01/25 15:52:44 christos Exp $");
+__RCSID("$NetBSD: auth.c,v 1.16 2016/01/23 00:03:30 christos Exp $");
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/param.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -40,6 +39,7 @@ __RCSID("$NetBSD: auth.c,v 1.11 2015/01/25 15:52:44 christos Exp $");
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "xmalloc.h"
 #include "match.h"
@@ -60,7 +60,8 @@ __RCSID("$NetBSD: auth.c,v 1.11 2015/01/25 15:52:44 christos Exp $");
 #endif
 #include "authfile.h"
 #include "monitor_wrap.h"
-#include "krl.h"
+#include "authfile.h"
+#include "ssherr.h"
 #include "compat.h"
 #include "pfilter.h"
 
@@ -114,10 +115,8 @@ allowed_user(struct passwd * pw)
 	if (cap_hlist != NULL) {
 		hp = strtok(cap_hlist, ",");
 		while (hp != NULL) {
-			match_name = match_hostname(hostname,
-			    hp, strlen(hp));
-			match_ip = match_hostname(ipaddr,
-			    hp, strlen(hp));
+			match_name = match_hostname(hostname, hp);
+			match_ip = match_hostname(ipaddr, hp);
 			/*
 			 * Only a positive match here causes a "deny".
 			 */
@@ -145,10 +144,8 @@ allowed_user(struct passwd * pw)
 			return 0;
 		}
 		while (hp != NULL) {
-			match_name = match_hostname(hostname,
-			    hp, strlen(hp));
-			match_ip = match_hostname(ipaddr,
-			    hp, strlen(hp));
+			match_name = match_hostname(hostname, hp);
+			match_ip = match_hostname(ipaddr, hp);
 			/*
 			 * Negative match causes an immediate "deny".
 			 * Positive match causes us to break out
@@ -372,13 +369,14 @@ auth_log(Authctxt *authctxt, int authenticated, int partial,
 void
 auth_maxtries_exceeded(Authctxt *authctxt)
 {
-	packet_disconnect("Too many authentication failures for "
+	error("maximum authentication attempts exceeded for "
 	    "%s%.100s from %.200s port %d %s",
 	    authctxt->valid ? "" : "invalid user ",
 	    authctxt->user,
 	    get_remote_ipaddr(),
 	    get_remote_port(),
 	    compat20 ? "ssh2" : "ssh1");
+	packet_disconnect("Too many authentication failures");
 	/* NOTREACHED */
 }
 
@@ -392,7 +390,9 @@ auth_root_allowed(const char *method)
 	case PERMIT_YES:
 		return 1;
 	case PERMIT_NO_PASSWD:
-		if (strcmp(method, "password") != 0)
+		if (strcmp(method, "publickey") == 0 ||
+		    strcmp(method, "hostbased") == 0 ||
+		    strcmp(method, "gssapi-with-mic") == 0)
 			return 1;
 		break;
 	case PERMIT_FORCED_ONLY:
@@ -417,7 +417,7 @@ auth_root_allowed(const char *method)
 char *
 expand_authorized_keys(const char *filename, struct passwd *pw)
 {
-	char *file, ret[MAXPATHLEN];
+	char *file, ret[PATH_MAX];
 	int i;
 
 	file = percent_expand(filename, "h", pw->pw_dir,
@@ -440,8 +440,7 @@ expand_authorized_keys(const char *filename, struct passwd *pw)
 char *
 authorized_principals_file(struct passwd *pw)
 {
-	if (options.authorized_principals_file == NULL ||
-	    strcasecmp(options.authorized_principals_file, "none") == 0)
+	if (options.authorized_principals_file == NULL)
 		return NULL;
 	return expand_authorized_keys(options.authorized_principals_file, pw);
 }
@@ -509,7 +508,7 @@ int
 auth_secure_path(const char *name, struct stat *stp, const char *pw_dir,
     uid_t uid, char *err, size_t errlen)
 {
-	char buf[MAXPATHLEN], homedir[MAXPATHLEN];
+	char buf[PATH_MAX], homedir[PATH_MAX];
 	char *cp;
 	int comparehome = 0;
 	struct stat st;
@@ -657,6 +656,7 @@ getpwnamallow(const char *user)
 
 	pw = getpwnam(user);
 	if (pw == NULL) {
+		pfilter_notify(1);
 		logit("Invalid user %.100s from %.100s",
 		    user, get_remote_ipaddr());
 		return (NULL);
@@ -687,43 +687,39 @@ getpwnamallow(const char *user)
 int
 auth_key_is_revoked(Key *key)
 {
-#ifdef WITH_OPENSSL
-	char *key_fp;
+	char *fp = NULL;
+	int r;
 
 	if (options.revoked_keys_file == NULL)
 		return 0;
-	switch (ssh_krl_file_contains_key(options.revoked_keys_file, key)) {
+	if ((fp = sshkey_fingerprint(key, options.fingerprint_hash,
+	    SSH_FP_DEFAULT)) == NULL) {
+		r = SSH_ERR_ALLOC_FAIL;
+		error("%s: fingerprint key: %s", __func__, ssh_err(r));
+		goto out;
+	}
+
+	r = sshkey_check_revoked(key, options.revoked_keys_file);
+	switch (r) {
 	case 0:
-		return 0;	/* Not revoked */
-	case -2:
-		break;		/* Not a KRL */
+		break; /* not revoked */
+	case SSH_ERR_KEY_REVOKED:
+		error("Authentication key %s %s revoked by file %s",
+		    sshkey_type(key), fp, options.revoked_keys_file);
+		goto out;
 	default:
-		goto revoked;
+		error("Error checking authentication key %s %s in "
+		    "revoked keys file %s: %s", sshkey_type(key), fp,
+		    options.revoked_keys_file, ssh_err(r));
+		goto out;
 	}
-#endif
-	debug3("%s: treating %s as a key list", __func__,
-	    options.revoked_keys_file);
-	switch (key_in_file(key, options.revoked_keys_file, 0)) {
-	case 0:
-		/* key not revoked */
-		return 0;
-	case -1:
-		/* Error opening revoked_keys_file: refuse all keys */
-		error("Revoked keys file is unreadable: refusing public key "
-		    "authentication");
-		return 1;
-#ifdef WITH_OPENSSL
-	case 1:
- revoked:
-		/* Key revoked */
-		key_fp = key_fingerprint(key, SSH_FP_MD5, SSH_FP_HEX);
-		error("WARNING: authentication attempt with a revoked "
-		    "%s key %s ", key_type(key), key_fp);
-		free(key_fp);
-		return 1;
-#endif
-	}
-	fatal("key_in_file returned junk");
+
+	/* Success */
+	r = 0;
+
+ out:
+	free(fp);
+	return r == 0 ? 0 : 1;
 }
 
 void

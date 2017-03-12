@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004-2010, 2013, 2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2004-2010, 2013-2015  Internet Systems Consortium, Inc. ("ISC")
  * Copyright (C) 1999-2003  Internet Software Consortium.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -14,8 +14,6 @@
  * OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
  * PERFORMANCE OF THIS SOFTWARE.
  */
-
-/* Id: platform.h.in,v 1.56 2010/12/18 01:56:23 each Exp  */
 
 #ifndef ISC_PLATFORM_H
 #define ISC_PLATFORM_H 1
@@ -134,6 +132,11 @@
 #undef ISC_PLATFORM_FIXIN6ISADDR
 
 /*! \brief
+ * Define if the system has struct sockaddr_storage.
+ */
+#define ISC_PLATFORM_HAVESOCKADDRSTORAGE 1
+
+/*! \brief
  * Define if the system supports kqueue multiplexing
  */
 #define ISC_PLATFORM_HAVEKQUEUE 1
@@ -167,6 +170,16 @@
  * If this system need a modern sprintf() that returns (int) not (char*).
  */
 #undef ISC_PLATFORM_NEEDSPRINTF
+
+/*! \brief
+ * If this system need a modern printf() that format size %z (size_t).
+ */
+#undef ISC_PLATFORM_NEEDPRINTF
+
+/*! \brief
+ * If this system need a modern fprintf() that format size %z (size_t).
+ */
+#undef ISC_PLATFORM_NEEDFPRINTF
 
 /*! \brief
  * The printf format string modifier to use with isc_uint64_t values.
@@ -270,7 +283,9 @@
  * If the "xadd" operation is available on this architecture,
  * ISC_PLATFORM_HAVEXADD will be defined.
  */
+#ifdef __HAVE_ATOMIC64_OPS
 #define ISC_PLATFORM_HAVEXADD 1
+#endif
 
 /*
  * If the "xaddq" operation (64bit xadd) is available on this architecture,
@@ -305,7 +320,7 @@
 /*
  * Define if the standard __asm function must be used.
  */
-
+#undef ISC_PLATFORM_USESTDASM
 
 /*
  * Define if the platform has <strings.h>.
@@ -316,11 +331,6 @@
  * Define if the hash functions must be provided by OpenSSL.
  */
 #undef ISC_PLATFORM_OPENSSLHASH
-
-/*
- * Define if AES must be provided by OpenSSL.
- */
-#define ISC_PLATFORM_OPENSSLAES 1
 
 /*
  * Define if AES support is wanted
@@ -346,7 +356,7 @@
  * Define if MacOS style of PPC assembly must be used.
  * e.g. "r6", not "6", for register six.
  */
-
+#undef ISC_PLATFORM_USEMACASM
 
 #ifndef ISC_PLATFORM_USEDECLSPEC
 #define LIBISC_EXTERNAL_DATA

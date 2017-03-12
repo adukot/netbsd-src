@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -131,7 +131,7 @@ typedef const struct acpi_rsdump_info
     UINT8                   Opcode;
     UINT8                   Offset;
     const char              *Name;
-    const char * const      *Pointer;
+    const char              **Pointer;
 
 } ACPI_RSDUMP_INFO;
 
@@ -227,7 +227,7 @@ AcpiRsGetPrsMethodData (
 ACPI_STATUS
 AcpiRsGetMethodData (
     ACPI_HANDLE             Handle,
-    char                    *Path,
+    const char              *Path,
     ACPI_BUFFER             *RetBuffer);
 
 ACPI_STATUS
@@ -352,8 +352,9 @@ AcpiRsSetResourceLength (
 
 
 /*
- * rsdump
+ * rsdump - Debugger support
  */
+#ifdef ACPI_DEBUGGER
 void
 AcpiRsDumpResourceList (
     ACPI_RESOURCE           *Resource);
@@ -361,6 +362,7 @@ AcpiRsDumpResourceList (
 void
 AcpiRsDumpIrqList (
     UINT8                   *RouteTable);
+#endif
 
 
 /*

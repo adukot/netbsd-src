@@ -1,4 +1,4 @@
-/*	$NetBSD: arcmsr.c,v 1.31 2014/03/29 19:28:24 christos Exp $ */
+/*	$NetBSD: arcmsr.c,v 1.33 2016/05/02 19:18:29 christos Exp $ */
 /*	$OpenBSD: arc.c,v 1.68 2007/10/27 03:28:27 dlg Exp $ */
 
 /*
@@ -21,7 +21,7 @@
 #include "bio.h"
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: arcmsr.c,v 1.31 2014/03/29 19:28:24 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: arcmsr.c,v 1.33 2016/05/02 19:18:29 christos Exp $");
 
 #include <sys/param.h>
 #include <sys/buf.h>
@@ -635,15 +635,18 @@ arc_query_firmware(device_t self)
 	DNPRINTF(ARC_D_INIT, "%s: sata_ports: %d\n",
 	    device_xname(self), htole32(fwinfo.sata_ports));
 
-	scsipi_strvis(string, 81, fwinfo.vendor, sizeof(fwinfo.vendor));
+	strnvisx(string, sizeof(string), fwinfo.vendor, sizeof(fwinfo.vendor),
+	    VIS_TRIM|VIS_SAFE|VIS_OCTAL);
 	DNPRINTF(ARC_D_INIT, "%s: vendor: \"%s\"\n",
 	    device_xname(self), string);
 
-	scsipi_strvis(string, 17, fwinfo.model, sizeof(fwinfo.model));
+	strnvisx(string, sizeof(string), fwinfo.model, sizeof(fwinfo.model),
+	    VIS_TRIM|VIS_SAFE|VIS_OCTAL);
 	aprint_normal_dev(self, "Areca %s Host Adapter RAID controller\n",
 	    string);
 
-	scsipi_strvis(string, 33, fwinfo.fw_version, sizeof(fwinfo.fw_version));
+	strnvisx(string, sizeof(string), fwinfo.fw_version,
+	    sizeof(fwinfo.fw_version), VIS_TRIM|VIS_SAFE|VIS_OCTAL);
 	DNPRINTF(ARC_D_INIT, "%s: version: \"%s\"\n",
 	    device_xname(self), string);
 
@@ -1328,8 +1331,8 @@ arc_bio_vol(struct arc_softc *sc, struct bioc_vol *bv)
 	bv->bv_nodisk = volinfo->member_disks;
 	bv->bv_stripe_size = volinfo->stripe_size / 2;
 	snprintf(bv->bv_dev, sizeof(bv->bv_dev), "sd%d", bv->bv_volid);
-	scsipi_strvis(bv->bv_vendor, sizeof(bv->bv_vendor), volinfo->set_name,
-	    sizeof(volinfo->set_name));
+	strnvisx(bv->bv_vendor, sizeof(bv->bv_vendor), volinfo->set_name,
+	    sizeof(volinfo->set_name), VIS_TRIM|VIS_SAFE|VIS_OCTAL);
 
 out:
 	kmem_free(volinfo, sizeof(*volinfo));
@@ -1417,10 +1420,12 @@ arc_bio_disk_filldata(struct arc_softc *sc, struct bioc_disk *bd,
 	blocks += (uint64_t)htole32(diskinfo->capacity);
 	bd->bd_size = blocks * ARC_BLOCKSIZE; /* XXX */
 
-	scsipi_strvis(model, 81, diskinfo->model, sizeof(diskinfo->model));
-	scsipi_strvis(serial, 41, diskinfo->serial, sizeof(diskinfo->serial));
-	scsipi_strvis(rev, 17, diskinfo->firmware_rev,
-	    sizeof(diskinfo->firmware_rev));
+	strnvisx(model, sizeof(model), diskinfo->model,
+	    sizeof(diskinfo->model), VIS_TRIM|VIS_SAFE|VIS_OCTAL);
+	strnvisx(serial, sizeof(serial), diskinfo->serial,
+	    sizeof(diskinfo->serial), VIS_TRIM|VIS_SAFE|VIS_OCTAL);
+	strnvisx(rev, sizeof(rev), diskinfo->firmware_rev,
+	    sizeof(diskinfo->firmware_rev), VIS_TRIM|VIS_SAFE|VIS_OCTAL);
 
 	snprintf(bd->bd_vendor, sizeof(bd->bd_vendor), "%s %s", model, rev);
 	strlcpy(bd->bd_serial, serial, sizeof(bd->bd_serial));
@@ -1841,78 +1846,23 @@ arc_refresh_sensors(struct sysmon_envsys *sme, envsys_data_t *edata)
 	bv.bv_volid = arcdata->arc_volid;
 
 	if (arc_bio_vol(sc, &bv)) {
-		edata->value_cur = ENVSYS_DRIVE_EMPTY;
-		edata->state = ENVSYS_SINVALID;
+		bv.bv_status = BIOC_SVINVALID;
+		bio_vol_to_envsys(edata, &bv);
 		return;
 	}
 
-	/* Current sensor is handling a disk volume member */
 	if (arcdata->arc_diskid) {
+		/* Current sensor is handling a disk volume member */
 		memset(&bd, 0, sizeof(bd));
 		bd.bd_volid = arcdata->arc_volid;
 		bd.bd_diskid = arcdata->arc_diskid - 10;
 
-		if (arc_bio_disk_volume(sc, &bd)) {
-			edata->value_cur = ENVSYS_DRIVE_OFFLINE;
-			edata->state = ENVSYS_SCRITICAL;
-			return;
-		}
-
-		switch (bd.bd_status) {
-		case BIOC_SDONLINE:
-			edata->value_cur = ENVSYS_DRIVE_ONLINE;
-			edata->state = ENVSYS_SVALID;
-			break;
-		case BIOC_SDOFFLINE:
-			edata->value_cur = ENVSYS_DRIVE_OFFLINE;
-			edata->state = ENVSYS_SCRITICAL;
-			break;
-		default:
-			edata->value_cur = ENVSYS_DRIVE_FAIL;
-			edata->state = ENVSYS_SCRITICAL;
-			break;
-		}
-
-		return;
-	}
-
-	/* Current sensor is handling a volume */
-	switch (bv.bv_status) {
-	case BIOC_SVOFFLINE:
-		edata->value_cur = ENVSYS_DRIVE_OFFLINE;
-		edata->state = ENVSYS_SCRITICAL;
-		break;
-	case BIOC_SVDEGRADED:
-		edata->value_cur = ENVSYS_DRIVE_PFAIL;
-		edata->state = ENVSYS_SCRITICAL;
-		break;
-	case BIOC_SVBUILDING:
-		edata->value_cur = ENVSYS_DRIVE_BUILD;
-		edata->state = ENVSYS_SVALID;
-		break;
-	case BIOC_SVMIGRATING:
-		edata->value_cur = ENVSYS_DRIVE_MIGRATING;
-		edata->state = ENVSYS_SVALID;
-		break;
-	case BIOC_SVCHECKING:
-		edata->value_cur = ENVSYS_DRIVE_CHECK;
-		edata->state = ENVSYS_SVALID;
-		break;
-	case BIOC_SVREBUILD:
-		edata->value_cur = ENVSYS_DRIVE_REBUILD;
-		edata->state = ENVSYS_SCRITICAL;
-		break;
-	case BIOC_SVSCRUB:
-	case BIOC_SVONLINE:
-		edata->value_cur = ENVSYS_DRIVE_ONLINE;
-		edata->state = ENVSYS_SVALID;
-		break;
-	case BIOC_SVINVALID:
-		/* FALLTHROUGH */
-	default:
-		edata->value_cur = ENVSYS_DRIVE_EMPTY; /* unknown state */
-		edata->state = ENVSYS_SINVALID;
-		break;
+		if (arc_bio_disk_volume(sc, &bd))
+			bd.bd_status = BIOC_SDOFFLINE;
+		bio_disk_to_envsys(edata, &bd);
+	} else {
+		/* Current sensor is handling a volume */
+		bio_vol_to_envsys(edata, &bv);
 	}
 }
 #endif /* NBIO > 0 */

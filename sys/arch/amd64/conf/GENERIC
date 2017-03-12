@@ -1,4 +1,4 @@
-# $NetBSD: GENERIC,v 1.408 2015/02/13 18:57:47 nonaka Exp $
+# $NetBSD: GENERIC,v 1.432 2016/05/01 10:21:01 nonaka Exp $
 #
 # GENERIC machine description file
 #
@@ -22,7 +22,7 @@ include	"arch/amd64/conf/std.amd64"
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-#ident 		"GENERIC-$Revision: 1.408 $"
+#ident 		"GENERIC-$Revision: 1.432 $"
 
 maxusers	64		# estimated number of users
 
@@ -91,7 +91,6 @@ options 	DIAGNOSTIC	# inexpensive kernel consistency checks
 				# XXX to be commented out on release branch
 #options 	DEBUG		# expensive debugging checks/support
 #options 	LOCKDEBUG	# expensive locking checks/support
-#options 	KMEMSTATS	# kernel memory statistics (vmstat -m)
 
 #
 # Because gcc omits the frame pointer for any -O level, the line below
@@ -99,16 +98,16 @@ options 	DIAGNOSTIC	# inexpensive kernel consistency checks
 #
 makeoptions	COPTS="-O2 -fno-omit-frame-pointer"
 options 	DDB		# in-kernel debugger
-#options	DDB_COMMANDONENTER="bt"	# execute command when ddb is entered
+#options 	DDB_COMMANDONENTER="bt"	# execute command when ddb is entered
 #options 	DDB_ONPANIC=1	# see also sysctl(7): `ddb.onpanic'
 options 	DDB_HISTORY_SIZE=512	# enable history editing in DDB
 #options 	KGDB		# remote debugger
 #options 	KGDB_DEVNAME="\"com\"",KGDB_DEVADDR=0x3f8,KGDB_DEVRATE=9600
-#makeoptions	DEBUG="-g"	# compile full symbol table
+makeoptions	DEBUG="-g"	# compile full symbol table for CTF
 #options 	SYSCALL_STATS	# per syscall counts
 #options 	SYSCALL_TIMES	# per syscall times
 #options 	SYSCALL_TIMES_HASCOUNTER	# use 'broken' rdtsc (soekris)
-#options 	KDTRACE_HOOKS	# kernel DTrace hooks
+options 	KDTRACE_HOOKS	# kernel DTrace hooks
 
 # Compatibility options
 options 	COMPAT_15	# NetBSD 1.5,
@@ -326,6 +325,7 @@ wsmouse*	at spic?		# mouse
 thinkpad*	at acpi?		# IBM/Lenovo Thinkpad hotkeys
 #tpm*		at acpi?		# ACPI TPM (Experimental)
 ug*		at acpi?		# Abit uGuru Hardware monitor
+valz*		at acpi?		# Toshiba Dynabook hotkeys
 wb*		at acpi?		# Winbond W83L518D SD/MMC reader
 sdmmc*		at wb?			# SD/MMC bus
 wmidell*	at acpiwmibus?		# Dell WMI mappings
@@ -354,9 +354,10 @@ puc*	at pci? dev ? function ?	# PCI "universal" comm. cards
 pwdog*	at pci? dev ? function ?	# QUANCOM PWDOG1
 
 ichlpcib* at pci? dev ? function ?	# Intel ICH PCI-LPC w/ timecounter,
-					# watchdog and Speedstep and HPET
+					# watchdog, gpio, Speedstep and HPET
 fwhrng* at ichlpcib?		# Intel 82802 FWH Random Number Generator
 #hpet*	at ichlpcib?
+tco*	at ichlpcib?		# TCO watch dog timer
 
 aapic*	at pci? dev ? function ?	# AMD 8131 IO apic
 
@@ -409,14 +410,14 @@ sysbeep0	at pcppi?
 #viadrm*	at drm?		# VIA DRM driver
 
 # DRMKMS drivers
-i915drmkms*     at pci? dev ? function ?
-intelfb*        at intelfbbus?
+i915drmkms* 	at pci? dev ? function ?
+intelfb* 	at intelfbbus?
 
-radeon*         at pci? dev ? function ?
+radeon* 	at pci? dev ? function ?
 radeondrmkmsfb* at radeonfbbus?
 
-#nouveau*       at pci? dev ? function ?
-#nouveaufb*     at nouveaufbbus
+nouveau* 	at pci? dev ? function ?
+nouveaufb* 	at nouveaufbbus?
 
 # Cryptographic Devices
 
@@ -501,6 +502,10 @@ iic*	at piixpm?			# SMBus on PIIX4
 # Intel ICH SMBus controller
 ichsmb* at pci? dev ? function ?
 iic*	at ichsmb?
+
+# Intel S1200,C2000 (non-pch) SMBus controller
+ismt* at pci? dev ? function ?
+iic*	at ismt?
 
 # Thermal monitor and fan controller
 #dbcool* at iic? addr 0x2C		# Unknown other motherboard(s)
@@ -698,6 +703,11 @@ st*	at atapibus? drive ? flags 0x0000	# ATAPI tape drives
 uk*	at atapibus? drive ? flags 0x0000	# ATAPI unknown
 
 
+# NVM Express controllers and devices
+nvme*	at pci? dev ? function ?
+ld*	at nvme? nsid ?
+
+
 # Miscellaneous mass storage devices
 
 # ISA floppy
@@ -736,6 +746,7 @@ iwi*	at pci? dev ? function ?	# Intel PRO/Wireless 2200BG
 iwn*	at pci? dev ? function ?	# Intel PRO/Wireless 4965AGN
 iwm*	at pci? dev ? function ?	# Intel Centrino 7260
 ixg*	at pci? dev ? function ?	# Intel 8259x 10 gigabit
+ixv*	at pci? dev ? function ?	# Intel 8259x 10G virtual function
 jme*	at pci? dev ? function ?	# JMicron JMC2[56]0 ethernet
 hme*	at pci? dev ? function ?	# Sun Microelectronics STP2002-STQ
 le*	at pci? dev ? function ?	# PCnet-PCI Ethernet
@@ -753,6 +764,7 @@ ral*	at pci? dev ? function ?	# Ralink Technology RT25x0 802.11a/b/g
 re*	at pci? dev ? function ?	# Realtek 8139C+/8169/8169S/8110S
 rtk*	at pci? dev ? function ?	# Realtek 8129/8139
 rtw*	at pci? dev ? function ?	# Realtek 8180L (802.11)
+rtwn*	at pci? dev ? function ?	# Realtek 8188CE/8192CE 802.11b/g/n
 sf*	at pci? dev ? function ?	# Adaptec AIC-6915 Ethernet
 sip*	at pci? dev ? function ?	# SiS 900/DP83815 Ethernet
 skc*	at pci? dev ? function ?	# SysKonnect SK9821 Gigabit Ethernet
@@ -842,7 +854,7 @@ urlphy* at mii? phy ?			# Realtek RTL8150L internal PHYs
 # USB Controller and Devices
 
 # PCI USB controllers
-# xhci*	at pci?	dev ? function ?	# eXtensible Host Controller
+xhci*	at pci?	dev ? function ?	# eXtensible Host Controller
 					# xhci is at best experimental
 ehci*	at pci?	dev ? function ?	# Enhanced Host Controller
 ohci*	at pci?	dev ? function ?	# Open Host Controller
@@ -860,7 +872,7 @@ uhci*	at cardbus? function ?		# Universal Host Controller (Intel)
 slhci*	at pcmcia? function ?		# ScanLogic SL811HS
 
 # USB bus support
-# usb*	at xhci?
+usb*	at xhci?
 usb*	at ehci?
 usb*	at ohci?
 usb*	at uhci?
@@ -947,6 +959,7 @@ axen*	at uhub? port ?		# ASIX AX88178a/AX88179 based adapters
 cdce*	at uhub? port ?		# CDC, Ethernet Networking Control Model
 cue*	at uhub? port ?		# CATC USB-EL1201A based adapters
 kue*	at uhub? port ?		# Kawasaki LSI KL5KUSB101B based adapters
+#mos*	at uhub? port ?		# Moschip MCS7730/MCS7830/MCS7832 based adapters
 udav*	at uhub? port ?		# Davicom DM9601 based adapters
 url*	at uhub? port ?		# Realtek RTL8150L based adapters
 urndis*	at uhub? port ?		# Microsoft RNDIS specification
@@ -997,7 +1010,7 @@ ukyopon* at uhub? port ?
 ucom*	at ukyopon? portno ?
 
 # USB scanners
-uscanner* at uhub? port ?
+#uscanner* at uhub? port ?
 
 # USB 802.11 adapters
 athn*	at uhub? port ?		# Atheros AR9002U
@@ -1192,7 +1205,7 @@ viomb*	at virtio?			# Virtio memory balloon device
 ld*	at virtio?			# Virtio disk device
 vioif*	at virtio?			# Virtio network device
 viornd*	at virtio?			# Virtio entropy device
-
+vioscsi* at virtio?			# Virtio SCSI device
 
 # Pull in optional local configuration
 cinclude "arch/amd64/conf/GENERIC.local"
@@ -1304,5 +1317,8 @@ options VERIFIED_EXEC_FP_SHA512
 options VERIFIED_EXEC_FP_SHA1
 options VERIFIED_EXEC_FP_MD5
 
+options 	PAX_ASLR_DEBUG=1	# PaX ASLR debug
+options 	PAX_SEGVGUARD=0		# PaX Segmentation fault guard
 options 	PAX_MPROTECT=0		# PaX mprotect(2) restrictions
-options 	PAX_ASLR=0		# PaX Address Space Layout Randomization
+options 	PAX_MPROTECT_DEBUG=1	# PaX mprotect debug
+options 	PAX_ASLR=1		# PaX Address Space Layout Randomization

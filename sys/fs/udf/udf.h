@@ -1,4 +1,4 @@
-/* $NetBSD: udf.h,v 1.47 2014/09/17 19:47:05 reinoud Exp $ */
+/* $NetBSD: udf.h,v 1.50 2015/08/24 08:31:56 hannken Exp $ */
 
 /*
  * Copyright (c) 2006, 2008 Reinoud Zandijk
@@ -94,6 +94,7 @@ extern int udf_verbose;
 #define DPRINTFIF(name, cond, arg) {}
 #endif
 
+VFS_PROTOS(udf);
 
 /* constants to identify what kind of identifier we are dealing with */
 #define UDF_REGID_DOMAIN		 1
@@ -338,13 +339,11 @@ struct udf_mount {
 	uint8_t			 metadata_flags;
 
 	/* rb tree for lookup icb to udf_node and sorted list for sync */
-	kmutex_t	ihash_lock;
-	kmutex_t	get_node_lock;
 	struct rb_tree	udf_node_tree;
 
 	/* syncing */
 	int		syncing;			/* are we syncing?   */
-	kcondvar_t 	dirtynodes_cv;			/* sleeping on sync  */
+	kmutex_t	sync_lock;			/* serialize syncing */
 
 	/* late allocation */
 	int32_t			 uncommitted_lbs[UDF_PARTITIONS];

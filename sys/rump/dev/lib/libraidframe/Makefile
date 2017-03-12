@@ -1,10 +1,12 @@
-#	$NetBSD: Makefile,v 1.4 2014/03/13 01:49:59 pooka Exp $
+#	$NetBSD: Makefile,v 1.10 2016/01/26 23:12:16 pooka Exp $
 #
 
 .PATH:	${.CURDIR}/../../../../dev/raidframe
 
 LIB=	rumpdev_raidframe
+COMMENT=RAIDframe (software RAID)
 
+IOCONF=	RAIDFRAME.ioconf
 SRCS=   rf_acctrace.c rf_alloclist.c rf_aselect.c rf_callback.c		\
 	rf_chaindecluster.c rf_copyback.c rf_cvscan.c rf_dagdegrd.c	\
 	rf_dagdegwr.c rf_dagffrd.c rf_dagffwr.c rf_dagfuncs.c		\
@@ -19,11 +21,15 @@ SRCS=   rf_acctrace.c rf_alloclist.c rf_aselect.c rf_callback.c		\
 	rf_raid5.c rf_raid5_rotatedspare.c rf_reconbuffer.c		\
 	rf_reconmap.c rf_reconstruct.c rf_reconutil.c rf_revent.c	\
 	rf_shutdown.c rf_sstf.c rf_states.c rf_stripelocks.c		\
-	rf_strutils.c rf_utils.c rf_compat50.c rf_paritymap.c
+	rf_strutils.c rf_utils.c rf_paritymap.c
 
 SRCS+=	raidframe_component.c
 
-CPPFLAGS+=	-I${RUMPTOP}/librump/rumpvfs
+.include <bsd.init.mk>
+
+.if !empty(RUMP_NBCOMPAT:M50)
+SRCS+=	rf_compat50.c
+.endif
 
 .include <bsd.lib.mk>
 .include <bsd.klinks.mk>

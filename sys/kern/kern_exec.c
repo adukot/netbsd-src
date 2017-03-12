@@ -1,4 +1,4 @@
-/*	$NetBSD: kern_exec.c,v 1.412 2014/12/14 23:49:28 chs Exp $	*/
+/*	$NetBSD: kern_exec.c,v 1.428 2016/05/08 20:00:21 christos Exp $	*/
 
 /*-
  * Copyright (c) 2008 The NetBSD Foundation, Inc.
@@ -59,7 +59,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: kern_exec.c,v 1.412 2014/12/14 23:49:28 chs Exp $");
+__KERNEL_RCSID(0, "$NetBSD: kern_exec.c,v 1.428 2016/05/08 20:00:21 christos Exp $");
 
 #include "opt_exec.h"
 #include "opt_execfmt.h"
@@ -79,6 +79,7 @@ __KERNEL_RCSID(0, "$NetBSD: kern_exec.c,v 1.412 2014/12/14 23:49:28 chs Exp $");
 #include <sys/namei.h>
 #include <sys/vnode.h>
 #include <sys/file.h>
+#include <sys/filedesc.h>
 #include <sys/acct.h>
 #include <sys/atomic.h>
 #include <sys/exec.h>
@@ -132,6 +133,9 @@ static int copyinargstrs(struct execve_data * restrict, char * const *,
     execve_fetch_element_t, char **, size_t *, void (*)(const void *, size_t));
 static int exec_sigcode_map(struct proc *, const struct emul *);
 
+#ifdef DEBUG
+#define DEBUG_EXEC
+#endif
 #ifdef DEBUG_EXEC
 #define DPRINTF(a) printf a
 #define COPYPRINTF(s, a, b) printf("%s, %d: copyout%s @%p %zu\n", __func__, \
@@ -147,18 +151,10 @@ static void dump_vmcmds(const struct exec_package * const, size_t, int);
 /*
  * DTrace SDT provider definitions
  */
-SDT_PROBE_DEFINE(proc,,,exec,exec,
-	    "char *", NULL,
-	    NULL, NULL, NULL, NULL,
-	    NULL, NULL, NULL, NULL);
-SDT_PROBE_DEFINE(proc,,,exec_success,exec-success, 
-	    "char *", NULL,
-	    NULL, NULL, NULL, NULL,
-	    NULL, NULL, NULL, NULL);
-SDT_PROBE_DEFINE(proc,,,exec_failure,exec-failure, 
-	    "int", NULL,
-	    NULL, NULL, NULL, NULL,
-	    NULL, NULL, NULL, NULL);
+SDT_PROVIDER_DECLARE(proc);
+SDT_PROBE_DEFINE1(proc, kernel, , exec, "char *");
+SDT_PROBE_DEFINE1(proc, kernel, , exec__success, "char *");
+SDT_PROBE_DEFINE1(proc, kernel, , exec__failure, "int");
 
 /*
  * Exec function switch:
@@ -188,6 +184,11 @@ struct exec_entry {
 void	syscall(void);
 #endif
 
+/* NetBSD autoloadable syscalls */
+#ifdef MODULAR
+#include <kern/syscalls_autoload.c>
+#endif
+
 /* NetBSD emul struct */
 struct emul emul_netbsd = {
 	.e_name =		"netbsd",
@@ -201,6 +202,9 @@ struct emul emul_netbsd = {
 	.e_errno =		NULL,
 	.e_nosys =		SYS_syscall,
 	.e_nsysent =		SYS_NSYSENT,
+#endif
+#ifdef MODULAR
+	.e_sc_autoload =	netbsd_syscalls_autoload,
 #endif
 	.e_sysent =		sysent,
 #ifdef SYSCALL_DEBUG
@@ -457,6 +461,11 @@ check_exec(struct lwp *l, struct exec_package *epp, struct pathbuf *pb)
 			return 0;
 		}
 
+		/*
+		 * Reset all the fields that may have been modified by the
+		 * loader.
+		 */
+		KASSERT(epp->ep_emul_arg == NULL);
 		if (epp->ep_emul_root != NULL) {
 			vrele(epp->ep_emul_root);
 			epp->ep_emul_root = NULL;
@@ -465,6 +474,7 @@ check_exec(struct lwp *l, struct exec_package *epp, struct pathbuf *pb)
 			vrele(epp->ep_interp);
 			epp->ep_interp = NULL;
 		}
+		epp->ep_pax_flags = 0;
 
 		/* make sure the first "interesting" error code is saved. */
 		if (error == ENOEXEC)
@@ -593,6 +603,56 @@ exec_autoload(void)
 }
 
 static int
+makepathbuf(struct lwp *l, const char *upath, struct pathbuf **pbp,
+    size_t *offs)
+{
+	char *path, *bp;
+	size_t len, tlen;
+	int error;
+	struct cwdinfo *cwdi;
+
+	path = PNBUF_GET();
+	error = copyinstr(upath, path, MAXPATHLEN, &len);
+	if (error) {
+		PNBUF_PUT(path);
+		DPRINTF(("%s: copyin path @%p %d\n", __func__, upath, error));
+		return error;
+	}
+
+	if (path[0] == '/') {
+		*offs = 0;
+		goto out;
+	}
+
+	len++;
+	if (len + 1 >= MAXPATHLEN)
+		goto out;
+	bp = path + MAXPATHLEN - len;
+	memmove(bp, path, len);
+	*(--bp) = '/';
+
+	cwdi = l->l_proc->p_cwdi; 
+	rw_enter(&cwdi->cwdi_lock, RW_READER);
+	error = getcwd_common(cwdi->cwdi_cdir, NULL, &bp, path, MAXPATHLEN / 2,
+	    GETCWD_CHECK_ACCESS, l);
+	rw_exit(&cwdi->cwdi_lock);
+
+	if (error) {
+		DPRINTF(("%s: getcwd_common path %s %d\n", __func__, path,
+		    error));
+		goto out;
+	}
+	tlen = path + MAXPATHLEN - bp;
+
+	memmove(path, bp, tlen);
+	path[tlen] = '\0';
+	*offs = tlen - len;
+out:
+	*pbp = pathbuf_assimilate(path);
+	return 0;
+}
+
+static int
 execve_loadvm(struct lwp *l, const char *path, char * const *args,
 	char * const *envs, execve_fetch_element_t fetch_element,
 	struct execve_data * restrict data)
@@ -602,13 +662,14 @@ execve_loadvm(struct lwp *l, const char *path, char * const *args,
 	struct proc		*p;
 	char			*dp;
 	u_int			modgen;
+	size_t			offs = 0;	// XXX: GCC
 
 	KASSERT(data != NULL);
 
 	p = l->l_proc;
 	modgen = 0;
 
-	SDT_PROBE(proc,,,exec, path, 0, 0, 0, 0);
+	SDT_PROBE(proc, kernel, , exec, path, 0, 0, 0, 0);
 
 	/*
 	 * Check if we have exceeded our number of processes limit.
@@ -651,19 +712,15 @@ execve_loadvm(struct lwp *l, const char *path, char * const *args,
 	 * functions call check_exec() recursively - for example,
 	 * see exec_script_makecmds().
 	 */
-	error = pathbuf_copyin(path, &data->ed_pathbuf);
-	if (error) {
-		DPRINTF(("%s: pathbuf_copyin path @%p %d\n", __func__,
-		    path, error));
+	if ((error = makepathbuf(l, path, &data->ed_pathbuf, &offs)) != 0)
 		goto clrflg;
-	}
 	data->ed_pathstring = pathbuf_stringcopy_get(data->ed_pathbuf);
 	data->ed_resolvedpathbuf = PNBUF_GET();
 
 	/*
 	 * initialize the fields of the exec package.
 	 */
-	epp->ep_kname = data->ed_pathstring;
+	epp->ep_kname = data->ed_pathstring + offs;
 	epp->ep_resolvedname = data->ed_resolvedpathbuf;
 	epp->ep_hdr = kmem_alloc(exec_maxhdrsz, KM_SLEEP);
 	epp->ep_hdrlen = exec_maxhdrsz;
@@ -705,9 +762,9 @@ execve_loadvm(struct lwp *l, const char *path, char * const *args,
 	 */
 
 #ifdef PAX_ASLR
-#define	ASLR_GAP(l)	(pax_aslr_active(l) ? (cprng_fast32() % PAGE_SIZE) : 0)
+#define	ASLR_GAP(epp)	pax_aslr_stack_gap(epp)
 #else
-#define	ASLR_GAP(l)	0
+#define	ASLR_GAP(epp)	0
 #endif
 
 #ifdef __MACHINE_STACK_GROWS_UP
@@ -725,7 +782,7 @@ execve_loadvm(struct lwp *l, const char *path, char * const *args,
 
 	data->ed_argslen = calcargs(data, argenvstrlen);
 
-	const size_t len = calcstack(data, ASLR_GAP(l) + RTLD_GAP);
+	const size_t len = calcstack(data, ASLR_GAP(epp) + RTLD_GAP);
 
 	if (len > epp->ep_ssize) {
 		/* in effect, compare to initial limit */
@@ -774,7 +831,7 @@ execve_loadvm(struct lwp *l, const char *path, char * const *args,
 		goto retry;
 	}
 
-	SDT_PROBE(proc,,,exec_failure, error, 0, 0, 0, 0);
+	SDT_PROBE(proc, kernel, , exec__failure, error, 0, 0, 0, 0);
 	return error;
 }
 
@@ -796,7 +853,9 @@ execve_dovmcmds(struct lwp *l, struct execve_data * restrict data)
 	/* create the new process's VM space by running the vmcmds */
 	KASSERTMSG(epp->ep_vmcmds.evs_used != 0, "%s: no vmcmds", __func__);
 
+#ifdef TRACE_EXEC
 	DUMPVMCMDS(epp, 0, 0);
+#endif
 
 	base_vcp = NULL;
 
@@ -880,7 +939,6 @@ pathexec(struct exec_package *epp, struct proc *p, const char *pathstring)
 	(void)memcpy(p->p_comm, commandname, commandlen);
 	p->p_comm[commandlen] = '\0';
 
-	path = PNBUF_GET();
 
 	/*
 	 * If the path starts with /, we don't need to do any work.
@@ -888,30 +946,11 @@ pathexec(struct exec_package *epp, struct proc *p, const char *pathstring)
 	 * In the future perhaps we could canonicalize it?
 	 */
 	if (pathstring[0] == '/') {
-		(void)strlcpy(path, pathstring,
-		    MAXPATHLEN);
+		path = PNBUF_GET();
+		(void)strlcpy(path, pathstring, MAXPATHLEN);
 		epp->ep_path = path;
-	}
-#ifdef notyet
-	/*
-	 * Although this works most of the time [since the entry was just
-	 * entered in the cache] we don't use it because it will fail for
-	 * entries that are not placed in the cache because their name is
-	 * longer than NCHNAMLEN and it is not the cleanest interface,
-	 * because there could be races. When the namei cache is re-written,
-	 * this can be changed to use the appropriate function.
-	 */
-	else if (!(error = vnode_to_path(path, MAXPATHLEN, p->p_textvp, l, p)))
-		epp->ep_path = path;
-#endif
-	else {
-#ifdef notyet
-		printf("Cannot get path for pid %d [%s] (error %d)\n",
-		    (int)p->p_pid, p->p_comm, error);
-#endif
+	} else
 		epp->ep_path = NULL;
-		PNBUF_PUT(path);
-	}
 }
 
 /* XXX elsewhere */
@@ -1097,6 +1136,9 @@ execve_runproc(struct lwp *l, struct execve_data * restrict data,
 	/* Remove POSIX timers */
 	timers_free(p, TIMERS_POSIX);
 
+	/* Set the PaX flags. */
+	p->p_pax = epp->ep_pax_flags;
+
 	/*
 	 * Do whatever is necessary to prepare the address space
 	 * for remapping.  Note that this might replace the current
@@ -1123,7 +1165,7 @@ execve_runproc(struct lwp *l, struct execve_data * restrict data,
 	vm->vm_minsaddr = (void *)epp->ep_minsaddr;
 
 #ifdef PAX_ASLR
-	pax_aslr_init(l, vm);
+	pax_aslr_init_vm(l, vm, epp);
 #endif /* PAX_ASLR */
 
 	/* Now map address space. */
@@ -1234,7 +1276,7 @@ execve_runproc(struct lwp *l, struct execve_data * restrict data,
 
 	kmem_free(epp->ep_hdr, epp->ep_hdrlen);
 
-	SDT_PROBE(proc,,,exec_success, epp->ep_kname, 0, 0, 0, 0);
+	SDT_PROBE(proc, kernel, , exec__success, epp->ep_kname, 0, 0, 0, 0);
 
 	emulexec(l, epp);
 
@@ -1259,7 +1301,7 @@ execve_runproc(struct lwp *l, struct execve_data * restrict data,
 
 		KERNEL_UNLOCK_ALL(l, &l->l_biglocks);
 		p->p_pptr->p_nstopchild++;
-		p->p_pptr->p_waited = 0;
+		p->p_waited = 0;
 		mutex_enter(p->p_lock);
 		ksiginfo_queue_init(&kq);
 		sigclearall(p, &contsigmask, &kq);
@@ -1281,11 +1323,13 @@ execve_runproc(struct lwp *l, struct execve_data * restrict data,
 	pathbuf_stringcopy_put(data->ed_pathbuf, data->ed_pathstring);
 	pathbuf_destroy(data->ed_pathbuf);
 	PNBUF_PUT(data->ed_resolvedpathbuf);
+#ifdef TRACE_EXEC
 	DPRINTF(("%s finished\n", __func__));
+#endif
 	return EJUSTRETURN;
 
  exec_abort:
-	SDT_PROBE(proc,,,exec_failure, error, 0, 0, 0, 0);
+	SDT_PROBE(proc, kernel, , exec__failure, error, 0, 0, 0, 0);
 	rw_exit(&p->p_reflock);
 	if (!no_local_exec_lock)
 		rw_exit(&exec_lock);
@@ -1313,7 +1357,7 @@ execve_runproc(struct lwp *l, struct execve_data * restrict data,
 	/* Acquire the sched-state mutex (exit1() will release it). */
 	if (!is_spawn) {
 		mutex_enter(p->p_lock);
-		exit1(l, W_EXITCODE(error, SIGABRT));
+		exit1(l, error, SIGABRT);
 	}
 
 	return error;
@@ -1890,7 +1934,7 @@ exec_sigcode_map(struct proc *p, const struct emul *e)
 
 	/* Just a hint to uvm_map where to put it. */
 	va = e->e_vm_default_addr(p, (vaddr_t)p->p_vmspace->vm_daddr,
-	    round_page(sz));
+	    round_page(sz), p->p_vmspace->vm_map.flags & VM_MAP_TOPDOWN);
 
 #ifdef __alpha__
 	/*
@@ -1960,6 +2004,7 @@ spawn_return(void *arg)
 	struct spawn_exec_data *spawn_data = arg;
 	struct lwp *l = curlwp;
 	int error, newfd;
+	int ostat;
 	size_t i;
 	const struct posix_spawn_file_actions_entry *fae;
 	pid_t ppid;
@@ -2032,7 +2077,6 @@ spawn_return(void *arg)
 
 	/* handle posix_spawnattr */
 	if (spawn_data->sed_attrs != NULL) {
-		int ostat;
 		struct sigaction sigact;
 		sigact._sa_u._sa_handler = SIG_DFL;
 		sigact.sa_flags = 0;
@@ -2041,8 +2085,18 @@ spawn_return(void *arg)
 		 * set state to SSTOP so that this proc can be found by pid.
 		 * see proc_enterprp, do_sched_setparam below
 		 */
+		mutex_enter(proc_lock);
+		/*
+		 * p_stat should be SACTIVE, so we need to adjust the
+		 * parent's p_nstopchild here.  For safety, just make
+		 * we're on the good side of SDEAD before we adjust.
+		 */
 		ostat = l->l_proc->p_stat;
+		KASSERT(ostat < SSTOP);
 		l->l_proc->p_stat = SSTOP;
+		l->l_proc->p_waited = 0;
+		l->l_proc->p_pptr->p_nstopchild++;
+		mutex_exit(proc_lock);
 
 		/* Set process group */
 		if (spawn_data->sed_attrs->sa_flags & POSIX_SPAWN_SETPGROUP) {
@@ -2055,7 +2109,7 @@ spawn_return(void *arg)
 			error = proc_enterpgrp(spawn_data->sed_parent,
 			    mypid, pgrp, false);
 			if (error)
-				goto report_error;
+				goto report_error_stopped;
 		}
 
 		/* Set scheduler policy */
@@ -2069,7 +2123,7 @@ spawn_return(void *arg)
 			    SCHED_NONE, &spawn_data->sed_attrs->sa_schedparam);
 		}
 		if (error)
-			goto report_error;
+			goto report_error_stopped;
 
 		/* Reset user ID's */
 		if (spawn_data->sed_attrs->sa_flags & POSIX_SPAWN_RESETIDS) {
@@ -2077,12 +2131,12 @@ spawn_return(void *arg)
 			     kauth_cred_getgid(l->l_cred), -1,
 			     ID_E_EQ_R | ID_E_EQ_S);
 			if (error)
-				goto report_error;
+				goto report_error_stopped;
 			error = do_setresuid(l, -1,
 			    kauth_cred_getuid(l->l_cred), -1,
 			    ID_E_EQ_R | ID_E_EQ_S);
 			if (error)
-				goto report_error;
+				goto report_error_stopped;
 		}
 
 		/* Set signal masks/defaults */
@@ -2092,7 +2146,7 @@ spawn_return(void *arg)
 			    &spawn_data->sed_attrs->sa_sigmask, NULL);
 			mutex_exit(l->l_proc->p_lock);
 			if (error)
-				goto report_error;
+				goto report_error_stopped;
 		}
 
 		if (spawn_data->sed_attrs->sa_flags & POSIX_SPAWN_SETSIGDEF) {
@@ -2113,7 +2167,10 @@ spawn_return(void *arg)
 					    0);
 			}
 		}
+		mutex_enter(proc_lock);
 		l->l_proc->p_stat = ostat;
+		l->l_proc->p_pptr->p_nstopchild--;
+		mutex_exit(proc_lock);
 	}
 
 	/* now do the real exec */
@@ -2140,6 +2197,11 @@ spawn_return(void *arg)
 	/* NOTREACHED */
 	return;
 
+ report_error_stopped:
+	mutex_enter(proc_lock);
+	l->l_proc->p_stat = ostat;
+	l->l_proc->p_pptr->p_nstopchild--;
+	mutex_exit(proc_lock);
  report_error:
 	if (have_reflock) {
 		/*
@@ -2174,7 +2236,7 @@ spawn_return(void *arg)
 	 * A NetBSD specific workaround is POSIX_SPAWN_RETURNERROR as
 	 * flag bit in the attrp argument to posix_spawn(2), see above.
 	 */
-	exit1(l, W_EXITCODE(127, 0));
+	exit1(l, 127, 0);
 }
 
 void

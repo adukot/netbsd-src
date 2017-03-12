@@ -1,4 +1,4 @@
-/*	$NetBSD: sync_fetch_and_nand_8.S,v 1.2 2013/11/30 21:09:11 joerg Exp $	*/
+/*	$NetBSD: sync_fetch_and_nand_8.S,v 1.5 2015/12/11 12:41:10 skrll Exp $	*/
 
 /*-
  * Copyright (c) 2013 The NetBSD Foundation, Inc.
@@ -31,7 +31,7 @@
 
 #include "atomic_op_asm.h"
 
-#ifdef _ARM_ARCH_6
+#if defined(_ARM_ARCH_6)
 
 ENTRY_NP(__sync_fetch_and_nand_8)
 	push	{r4-r7}
@@ -41,10 +41,10 @@ ENTRY_NP(__sync_fetch_and_nand_8)
 	mov	r2, r1
 #endif
 1:	ldrexd	r0, r1, [ip]		/* load old value */
-	mvns	r4, r0			/* complement old value */
-	mvns	r5, r0			/* complement old value */
-	ands	r4, r4, r2		/* calculate new value */
-	ands	r5, r5, r3		/* calculate new value */
+	ands	r4, r0, r2		/* calculate new value step 1 */
+	ands	r5, r1, r3		/* calculate new value step 1 */
+	mvns	r4, r4			/* complement new value */
+	mvns	r5, r5			/* complement new value */
 	strexd	r6, r4, r5, [ip]	/* try to store */
 	cmp	r6, #0			/*   succeed? */
 	bne	1b			/*     no, try again */

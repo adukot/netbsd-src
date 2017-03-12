@@ -1,4 +1,4 @@
-/*	$NetBSD: ip6_output.c,v 1.163 2015/02/02 03:14:02 christos Exp $	*/
+/*	$NetBSD: ip6_output.c,v 1.166 2015/08/24 22:21:27 pooka Exp $	*/
 /*	$KAME: ip6_output.c,v 1.172 2001/03/25 09:55:56 itojun Exp $	*/
 
 /*
@@ -62,11 +62,13 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ip6_output.c,v 1.163 2015/02/02 03:14:02 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ip6_output.c,v 1.166 2015/08/24 22:21:27 pooka Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/malloc.h>
@@ -167,7 +169,7 @@ ip6_output(
 	bool tso;
 	struct route ip6route;
 	struct rtentry *rt = NULL;
-	const struct sockaddr_in6 *dst = NULL;
+	const struct sockaddr_in6 *dst;
 	struct sockaddr_in6 src_sa, dst_sa;
 	int error = 0;
 	struct in6_ifaddr *ia = NULL;
@@ -543,8 +545,7 @@ ip6_output(
 	/* scope check is done. */
 
 	if (rt == NULL || IN6_IS_ADDR_MULTICAST(&ip6->ip6_dst)) {
-		if (dst == NULL)
-			dst = satocsin6(rtcache_getdst(ro));
+		dst = satocsin6(rtcache_getdst(ro));
 		KASSERT(dst != NULL);
 	} else if (opt && rtcache_validate(&opt->ip6po_nextroute) != NULL) {
 		/*
@@ -555,7 +556,7 @@ ip6_output(
 		dst = (struct sockaddr_in6 *)opt->ip6po_nexthop;
 	} else if ((rt->rt_flags & RTF_GATEWAY))
 		dst = (struct sockaddr_in6 *)rt->rt_gateway;
-	else if (dst == NULL)
+	else
 		dst = satocsin6(rtcache_getdst(ro));
 
 	/*
@@ -2334,7 +2335,9 @@ ip6_get_membership(const struct sockopt *sopt, struct ifnet **ifp, void *v,
 			sockaddr_in_init(&u.dst4, ia4, 0);
 		else
 			sockaddr_in6_init(&u.dst6, ia, 0, 0, 0);
-		rtcache_setdst(&ro, &u.dst);
+		error = rtcache_setdst(&ro, &u.dst);
+		if (error != 0)
+			return error;
 		*ifp = (rt = rtcache_init(&ro)) != NULL ? rt->rt_ifp : NULL;
 		rtcache_free(&ro);
 	} else {

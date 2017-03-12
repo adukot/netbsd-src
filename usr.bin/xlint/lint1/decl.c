@@ -1,4 +1,4 @@
-/* $NetBSD: decl.c,v 1.59 2014/04/18 00:20:37 christos Exp $ */
+/* $NetBSD: decl.c,v 1.61 2016/01/02 17:44:21 christos Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: decl.c,v 1.59 2014/04/18 00:20:37 christos Exp $");
+__RCSID("$NetBSD: decl.c,v 1.61 2016/01/02 17:44:21 christos Exp $");
 #endif
 
 #include <sys/param.h>
@@ -901,7 +901,7 @@ length(type_t *tp, const char *name)
 	default:
 		elsz = size(tp->t_tspec);
 		if (elsz <= 0)
-			LERROR("length()");
+			LERROR("length(%d)", elsz);
 		break;
 	}
 	return (elem * elsz);
@@ -1778,6 +1778,9 @@ compltag(type_t *tp, sym_t *fmem)
 		} else {
 			n = 0;
 			for (mem = fmem; mem != NULL; mem = mem->s_nxt) {
+				/* bind anonymous members to the structure */
+				if (mem->s_styp == NULL)
+					mem->s_styp = sp;
 				if (mem->s_name != unnamed)
 					n++;
 			}

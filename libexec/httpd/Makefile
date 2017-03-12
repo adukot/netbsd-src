@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.22 2014/07/08 13:59:39 mrg Exp $
+#	$NetBSD: Makefile,v 1.26 2015/10/30 23:21:05 christos Exp $
 #
 #	$eterna: Makefile,v 1.30 2010/07/11 00:34:27 mrg Exp $
 #
@@ -15,14 +15,19 @@
 #	DO_HTPASSWD		/* support .htpasswd files */
 #	NO_LUA_SUPPORT		/* don't support Lua for dynamic content */
 #
+# other system specific defines:
+#	HAVE_NBUTIL_H		/* netbsd compat is in <nbutil.h>
+#				(don't forget to also enable -lnbutil)
+#
 # these are usually set via the "COPTS" variable, or some other method
 # for setting CFLAGS relevant to your make, eg
 #   % make COPTS="-DDO_HTPASSWD"
 
 COPTS+=	-DDO_HTPASSWD
-PROG=	httpd
-MAN=	httpd.8
-BUILDSYMLINKS+=bozohttpd.8 httpd.8
+PROG=	bozohttpd
+LINKS=	${BINDIR}/bozohttpd ${BINDIR}/httpd
+MAN=	bozohttpd.8
+MLINKS+=bozohttpd.8 httpd.8
 SRCS=	bozohttpd.c ssl-bozo.c auth-bozo.c cgi-bozo.c daemon-bozo.c \
 	tilde-luzah-bozo.c dir-index-bozo.c content-bozo.c lua-bozo.c
 SRCS+=	main.c
@@ -31,6 +36,17 @@ LDADD=	-lcrypt -llua -lm
 DPADD=	${LIBCRYPT} ${LIBLUA} ${LIBM}
 
 WARNS?=	4
+
+.if defined(.OS.MAKE)
+OPSYS=	${.OS.MAKE}
+.else
+OPSYS:=	${:!uname -s!:S/-//g:S/\///g}
+.endif
+
+.if ${OPSYS} == "QNX"
+CPPFLAGS+=	-DHAVE_NBUTIL_H
+LDADD+=		-lnbutil
+.endif
 
 .include <bsd.own.mk>
 

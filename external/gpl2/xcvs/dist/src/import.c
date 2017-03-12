@@ -579,7 +579,7 @@ static int
 process_import_file (char *message, char *vfile, char *vtag, int targc,
 		     char **targv)
 {
-    char *rcs;
+    char *rcs, *cleanmessage;
     int inattic = 0;
 
     rcs = Xasprintf ("%s/%s%s", repository, vfile, RCSEXT);
@@ -654,13 +654,14 @@ process_import_file (char *message, char *vfile, char *vtag, int targc,
 		Entries_Close (entries);
 	    }
 #endif
-
-	    retval = add_rcs_file (message, rcs, vfile, vhead, our_opt,
+	    cleanmessage = make_message_rcsvalid (message);
+	    retval = add_rcs_file (cleanmessage, rcs, vfile, vhead, our_opt,
 				   vbranch, vtag, targc, targv,
 				   NULL, 0, logfp, killnew);
 	    if (free_opt != NULL)
 		free (free_opt);
 	    free (rcs);
+	    free (cleanmessage);
 	    return retval;
 	}
 	free (attic_name);
@@ -1406,7 +1407,7 @@ add_rcs_file (const char *message, const char *rcs, const char *user,
 	    /* We are going to put the log message in the revision on the
 	       branch.  So putting it here too seems kind of redundant, I
 	       guess (and that is what CVS has always done, anyway).  */
-	    if (fprintf (fprcs, "Initial revision\012") < 0)
+	    if (fprintf (fprcs, "Initial revision") < 0)
 		goto write_error;
 	}
 	else
@@ -1414,7 +1415,7 @@ add_rcs_file (const char *message, const char *rcs, const char *user,
 	    if (expand_at_signs (message, (off_t) strlen (message), fprcs) < 0)
 		goto write_error;
 	}
-	if (fprintf (fprcs, "@\012") < 0 ||
+	if (fprintf (fprcs, "\012@\012") < 0 ||
 	    fprintf (fprcs, "text\012@") < 0)
 	{
 	    goto write_error;
@@ -1440,7 +1441,7 @@ add_rcs_file (const char *message, const char *rcs, const char *user,
 		fprintf (fprcs, "log\012@") < 0 ||
 		expand_at_signs (message,
 				 (off_t) strlen (message), fprcs) < 0 ||
-		fprintf (fprcs, "@\012text\012") < 0 ||
+		fprintf (fprcs, "\012@\012text\012") < 0 ||
 		fprintf (fprcs, "@@\012") < 0)
 		goto write_error;
 	}

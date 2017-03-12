@@ -1,4 +1,4 @@
-/*	$NetBSD: types.h,v 1.47 2013/08/25 03:08:56 matt Exp $	*/
+/*	$NetBSD: types.h,v 1.50 2016/01/23 22:31:20 christos Exp $	*/
 
 /*-
  * Copyright (c) 1990 The Regents of the University of California.
@@ -44,8 +44,7 @@ typedef struct label_t {
 } label_t;
 #endif
 
-/* NB: This should probably be if defined(_KERNEL) */
-#if defined(_NETBSD_SOURCE)
+#if defined(_KERNEL) || defined(_KMEMUSER) || defined(_KERNTYPES) || defined(_STANDALONE)
 typedef unsigned long	paddr_t;
 typedef unsigned long	psize_t;
 typedef unsigned long	vaddr_t;
@@ -56,15 +55,16 @@ typedef unsigned long	vsize_t;
 #define	PRIxVADDR	"lx"
 #define	PRIxVSIZE	"lx"
 #define	PRIuVSIZE	"lu"
-#endif
 
 typedef int		register_t;
 #define	PRIxREGISTER	"x"
+#endif
 
 /*
  * BBCCI/BBSSI can operate on bytes so let's save some space.
  */
-typedef volatile char	__cpu_simple_lock_t;
+typedef char	__cpu_simple_lock_nv_t;
+typedef int	__register_t;
 
 #define __SIMPLELOCK_LOCKED	1
 #define __SIMPLELOCK_UNLOCKED	0

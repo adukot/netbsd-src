@@ -1,4 +1,4 @@
-/*	$NetBSD: tulip.c,v 1.184 2014/08/10 16:44:35 tls Exp $	*/
+/*	$NetBSD: tulip.c,v 1.186 2016/02/09 08:32:10 ozaki-r Exp $	*/
 
 /*-
  * Copyright (c) 1998, 1999, 2000, 2002 The NetBSD Foundation, Inc.
@@ -36,7 +36,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: tulip.c,v 1.184 2014/08/10 16:44:35 tls Exp $");
+__KERNEL_RCSID(0, "$NetBSD: tulip.c,v 1.186 2016/02/09 08:32:10 ozaki-r Exp $");
 
 
 #include <sys/param.h>
@@ -592,7 +592,7 @@ tlp_detach(struct tulip_softc *sc)
 	struct tulip_rxsoft *rxs;
 	struct tulip_txsoft *txs;
 	device_t self = sc->sc_dev;
-	int i;
+	int i, s;
 
 	/*
 	 * Succeed now if there isn't any work to do.
@@ -600,9 +600,14 @@ tlp_detach(struct tulip_softc *sc)
 	if ((sc->sc_flags & TULIPF_ATTACHED) == 0)
 		return (0);
 
-	/* Unhook our tick handler. */
-	if (sc->sc_tick)
-		callout_stop(&sc->sc_tick_callout);
+	s = splnet();
+	/* Stop the interface. Callouts are stopped in it. */
+	tlp_stop(ifp, 1);
+	splx(s);
+
+	/* Destroy our callouts. */
+	callout_destroy(&sc->sc_nway_callout);
+	callout_destroy(&sc->sc_tick_callout);
 
 	if (sc->sc_flags & TULIPF_HAS_MII) {
 		/* Detach all PHYs */
@@ -1392,7 +1397,7 @@ tlp_rxintr(struct tulip_softc *sc)
 		}
 
 		/* Pass it on. */
-		(*ifp->if_input)(ifp, m);
+		if_percpuq_enqueue(ifp->if_percpuq, m);
 	}
 
 	/* Update the receive pointer. */

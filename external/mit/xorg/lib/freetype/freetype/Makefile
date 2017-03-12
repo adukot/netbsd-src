@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.18 2015/02/09 16:27:29 ryoon Exp $
+#	$NetBSD: Makefile,v 1.21 2016/03/21 05:23:39 dholland Exp $
 
 .include <bsd.own.mk>
 
@@ -9,11 +9,11 @@ SUBDIR=	config
 INCSDIR=${X11INCDIR}/freetype2
 
 INCS=	freetype.h ftadvanc.h ftbbox.h ftbdf.h ftbitmap.h ftbzip2.h ftcache.h \
-	ftchapters.h ftcid.h fterrdef.h fterrors.h ftgasp.h ftglyph.h \
-	ftgxval.h ftgzip.h ftimage.h ftincrem.h ftlcdfil.h ftlist.h \
+	ftchapters.h ftcid.h fterrdef.h fterrors.h ftfntfmt.h ftgasp.h \
+	ftglyph.h ftgxval.h ftgzip.h ftimage.h ftincrem.h ftlcdfil.h ftlist.h \
 	ftlzw.h ftmac.h ftmm.h ftmodapi.h ftmoderr.h ftotval.h ftoutln.h \
 	ftpfr.h ftrender.h ftsizes.h ftsnames.h ftstroke.h ftsynth.h \
-	ftsystem.h fttrigon.h fttypes.h ftwinfnt.h ftxf86.h \
+	ftsystem.h fttrigon.h ftttdrv.h fttypes.h ftwinfnt.h \
 	t1tables.h ttnameid.h tttables.h tttags.h ttunpat.h \
 	ftautoh.h ftcffdrv.h ft2build.h
 
@@ -33,6 +33,7 @@ CONFIG_SUBST=	${TOOL_SED} \
 		-e 's,%LIBS_CONFIG%,-lfreetype -lz -lbz2,' \
 		-e 's,%LIBSSTATIC_CONFIG%,-lfreetype -lz -lbz2,' \
 		-e 's,%build_libtool_libs%,yes,' \
+		-e 's@%hardcode_libdir_flag_spec%@-Wl,-rpath,${X11USRLIBDIR}@' \
 		-e 's,%FT2_EXTRA_LIBS%,,' \
 		-e 's,%LIBZ%,-lz,' \
 		-e 's,%LIBBZ2%,-lbz2,' \

@@ -1,4 +1,4 @@
-.\"	$NetBSD: siginfo.2,v 1.6 2012/04/23 17:44:39 jym Exp $
+.\"	$NetBSD: siginfo.2,v 1.9 2016/04/04 20:43:31 wiz Exp $
 .\"
 .\" Copyright (c) 2003 The NetBSD Foundation, Inc.
 .\" All rights reserved.
@@ -27,7 +27,7 @@
 .\" ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 .\" POSSIBILITY OF SUCH DAMAGE.
 .\"
-.Dd April 23, 2012
+.Dd April 4, 2016
 .Dt SIGINFO 2
 .Os
 .Sh NAME
@@ -179,15 +179,15 @@ Integer divide by zero
 .It FPE_INTOVF
 Integer overflow
 .It FPE_FLTDIV
-Floating point divide by zero
+Floating-point divide by zero
 .It FPE_FLTOVF
-Floating point overflow
+Floating-point overflow
 .It FPE_FLTUND
-Floating point underflow
+Floating-point underflow
 .It FPE_FLTRES
-Floating point inexact result
+Floating-point inexact result
 .It FPE_FLTINV
-Invalid Floating point operation
+Invalid floating-point operation
 .It FPE_FLTSUB
 Subscript out of range
 .El
@@ -203,9 +203,9 @@ Invalid permissions for mapped object
 .It BUS_ADRALN
 Invalid address alignment
 .It BUS_ADRERR
-Non-existant physical address
+Nonexistent physical address
 .It BUS_OBJERR
-Object specific hardware error
+Object-specific hardware error
 .El
 .It SIGTRAP
 .Bl -tag -width TRAP_BRKPT
@@ -238,7 +238,7 @@ Output buffers available
 .It POLL_MSG
 Input message available
 .It POLL_ERR
-I/O Error
+I/O error
 .It POLL_PRI
 High priority input available
 .It POLL_HUP
@@ -321,7 +321,10 @@ field contains the pid of the process who's status changed, the
 .Fa si_uid
 field contains the user id of the that process, the
 .Fa si_status
-field contains a status code described in
+field contains either the exit code of the process (for
+.Dv CLD_EXITED ) ,
+or the signal number received by the process.
+.Xr waitid 2 ,
 .Xr waitpid 2 ,
 and the
 .Fa si_utime

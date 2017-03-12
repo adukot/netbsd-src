@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,8 +41,6 @@
  * POSSIBILITY OF SUCH DAMAGES.
  */
 
-#define __UTUUID_C__
-
 #include "acpi.h"
 #include "accommon.h"
 
@@ -50,6 +48,7 @@
         ACPI_MODULE_NAME    ("utuuid")
 
 
+#if (defined ACPI_ASL_COMPILER || defined ACPI_EXEC_APP || defined ACPI_HELP_APP || defined ACPI_DISASSEMBLER)
 /*
  * UUID support functions.
  *
@@ -94,10 +93,11 @@ AcpiUtConvertStringToUuid (
 
     for (i = 0; i < UUID_BUFFER_LENGTH; i++)
     {
-        UuidBuffer[i] =
-            (AcpiUtAsciiCharToHex (InString[AcpiGbl_MapToUuidOffset[i]]) << 4);
+        UuidBuffer[i] = (AcpiUtAsciiCharToHex (
+            InString[AcpiGbl_MapToUuidOffset[i]]) << 4);
 
-        UuidBuffer[i] |=
-            AcpiUtAsciiCharToHex (InString[AcpiGbl_MapToUuidOffset[i] + 1]);
+        UuidBuffer[i] |= AcpiUtAsciiCharToHex (
+            InString[AcpiGbl_MapToUuidOffset[i] + 1]);
     }
 }
+#endif

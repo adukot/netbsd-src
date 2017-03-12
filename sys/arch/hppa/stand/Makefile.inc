@@ -1,8 +1,10 @@
-#	$NetBSD: Makefile.inc,v 1.1 2014/02/24 07:23:43 skrll Exp $
+#	$NetBSD: Makefile.inc,v 1.3 2016/02/21 14:50:05 christos Exp $
 
+NOPIE=yes
+NOCTF=yes
 BINDIR=		/usr/mdec
 
-.include <bsd.own.mk>
+.include <bsd.init.mk>
 
 COPTS+=		-Wno-pointer-sign
 COPTS+=		-fno-strict-aliasing

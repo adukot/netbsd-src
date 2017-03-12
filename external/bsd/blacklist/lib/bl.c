@@ -1,4 +1,4 @@
-/*	$NetBSD: bl.c,v 1.24 2015/02/03 01:22:08 christos Exp $	*/
+/*	$NetBSD: bl.c,v 1.27 2015/12/30 16:42:48 christos Exp $	*/
 
 /*-
  * Copyright (c) 2014 The NetBSD Foundation, Inc.
@@ -33,7 +33,7 @@
 #endif
 
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: bl.c,v 1.24 2015/02/03 01:22:08 christos Exp $");
+__RCSID("$NetBSD: bl.c,v 1.27 2015/12/30 16:42:48 christos Exp $");
 
 #include <sys/param.h>
 #include <sys/types.h>
@@ -53,6 +53,9 @@ __RCSID("$NetBSD: bl.c,v 1.24 2015/02/03 01:22:08 christos Exp $");
 #include <errno.h>
 #include <stdarg.h>
 #include <netinet/in.h>
+#ifdef _REENTRANT
+#include <pthread.h>
+#endif
 
 #include "bl.h"
 
@@ -66,6 +69,16 @@ typedef struct {
 } bl_message_t;
 
 struct blacklist {
+#ifdef _REENTRANT
+	pthread_mutex_t b_mutex;
+# define BL_INIT(b)	pthread_mutex_init(&b->b_mutex, NULL)
+# define BL_LOCK(b)	pthread_mutex_lock(&b->b_mutex)
+# define BL_UNLOCK(b)	pthread_mutex_unlock(&b->b_mutex)
+#else
+# define BL_INIT(b)	do {} while(/*CONSTCOND*/0)
+# define BL_LOCK(b)	BL_INIT(b)
+# define BL_UNLOCK(b)	BL_INIT(b)
+#endif
 	int b_fd;
 	int b_connected;
 	struct sockaddr_un b_sun;
@@ -88,13 +101,17 @@ bl_getfd(bl_t b)
 }
 
 static void
-bl_reset(bl_t b)
+bl_reset(bl_t b, bool locked)
 {
 	int serrno = errno;
+	if (!locked)
+		BL_LOCK(b);
 	close(b->b_fd);
 	errno = serrno;
 	b->b_fd = -1;
 	b->b_connected = -1;
+	if (!locked)
+		BL_UNLOCK(b);
 }
 
 static void
@@ -129,12 +146,15 @@ bl_init(bl_t b, bool srv)
 #define SOCK_NOSIGPIPE 0
 #endif
 
+	BL_LOCK(b);
+
 	if (b->b_fd == -1) {
 		b->b_fd = socket(PF_LOCAL,
 		    SOCK_DGRAM|SOCK_CLOEXEC|SOCK_NONBLOCK|SOCK_NOSIGPIPE, 0);
 		if (b->b_fd == -1) {
 			bl_log(b->b_fun, LOG_ERR, "%s: socket failed (%m)",
 			    __func__);
+			BL_UNLOCK(b);
 			return -1;
 		}
 #if SOCK_CLOEXEC == 0
@@ -153,9 +173,16 @@ bl_init(bl_t b, bool srv)
 #endif
 	}
 
-	if (bl_isconnected(b))
+	if (bl_isconnected(b)) {
+		BL_UNLOCK(b);
 		return 0;
+	}
 
+	/*
+	 * We try to connect anyway even when we are a server to verify
+	 * that no other server is listening to the socket. If we succeed
+	 * to connect and we are a server, someone else owns it.
+	 */
 	rv = connect(b->b_fd, (const void *)sun, (socklen_t)sizeof(*sun));
 	if (rv == 0) {
 		if (srv) {
@@ -177,6 +204,7 @@ bl_init(bl_t b, bool srv)
 				    __func__, sun->sun_path);
 				b->b_connected = 1;
 			}
+			BL_UNLOCK(b);
 			return -1;
 		}
 		bl_log(b->b_fun, LOG_DEBUG, "Connected to blacklist server",
@@ -199,6 +227,7 @@ bl_init(bl_t b, bool srv)
 	}
 
 	b->b_connected = 0;
+#define GOT_FD		1
 #if defined(LOCAL_CREDS)
 #define CRED_LEVEL	0
 #define	CRED_NAME	LOCAL_CREDS
@@ -207,6 +236,7 @@ bl_init(bl_t b, bool srv)
 #define CRED_MESSAGE	SCM_CREDS
 #define CRED_SIZE	SOCKCREDSIZE(NGROUPS_MAX)
 #define CRED_TYPE	struct sockcred
+#define GOT_CRED	2
 #elif defined(SO_PASSCRED)
 #define CRED_LEVEL	SOL_SOCKET
 #define	CRED_NAME	SO_PASSCRED
@@ -215,7 +245,9 @@ bl_init(bl_t b, bool srv)
 #define CRED_MESSAGE	SCM_CREDENTIALS
 #define CRED_SIZE	sizeof(struct ucred)
 #define CRED_TYPE	struct ucred
+#define GOT_CRED	2
 #else
+#define GOT_CRED	0
 /*
  * getpeereid() and LOCAL_PEERCRED don't help here
  * because we are not a stream socket!
@@ -233,9 +265,11 @@ bl_init(bl_t b, bool srv)
 	}
 #endif
 
+	BL_UNLOCK(b);
 	return 0;
 out:
-	bl_reset(b);
+	bl_reset(b, true);
+	BL_UNLOCK(b);
 	return -1;
 }
 
@@ -248,6 +282,7 @@ bl_create(bool srv, const char *path, void (*fun)(int, const char *, va_list))
 	b->b_fun = fun == NULL ? vsyslog : fun;
 	b->b_fd = -1;
 	b->b_connected = -1;
+	BL_INIT(b);
 
 	memset(&b->b_sun, 0, sizeof(b->b_sun));
 	b->b_sun.sun_family = AF_LOCAL;
@@ -268,7 +303,7 @@ out:
 void
 bl_destroy(bl_t b)
 {
-	bl_reset(b);
+	bl_reset(b, false);
 	free(b);
 }
 
@@ -373,7 +408,7 @@ again:
 		return -1;
 
 	if ((sendmsg(b->b_fd, &msg, 0) == -1) && tried++ < NTRIES) {
-		bl_reset(b);
+		bl_reset(b, false);
 		goto again;
 	}
 	return tried >= NTRIES ? -1 : 0;
@@ -395,8 +430,12 @@ bl_recv(bl_t b)
 		bl_message_t bl;
 		char buf[512];
 	} ub;
+	int got;
 	ssize_t rlen;
 	bl_info_t *bi = &b->b_info;
+
+	got = 0;
+	memset(bi, 0, sizeof(*bi));
 
 	iov.iov_base = ub.buf;
 	iov.iov_len = sizeof(ub);
@@ -433,12 +472,14 @@ bl_recv(bl_t b)
 				continue;
 			}
 			memcpy(&bi->bi_fd, CMSG_DATA(cmsg), sizeof(bi->bi_fd));
+			got |= GOT_FD;
 			break;
 #ifdef CRED_MESSAGE
 		case CRED_MESSAGE:
 			sc = (void *)CMSG_DATA(cmsg);
 			bi->bi_uid = sc->CRED_SC_UID;
 			bi->bi_gid = sc->CRED_SC_GID;
+			got |= GOT_CRED;
 			break;
 #endif
 		default:
@@ -448,6 +489,16 @@ bl_recv(bl_t b)
 			continue;
 		}
 
+	}
+
+	if (got != (GOT_CRED|GOT_FD)) {
+		bl_log(b->b_fun, LOG_ERR, "message missing %s %s", 
+#if GOT_CRED != 0
+		    (got & GOT_CRED) == 0 ? "cred" :
+#endif
+		    "", (got & GOT_FD) == 0 ? "fd" : "");
+			
+		return NULL;
 	}
 
 	if ((size_t)rlen <= sizeof(ub.bl)) {

@@ -1,4 +1,4 @@
-/*	$NetBSD: boot2.c,v 1.64 2015/01/16 03:45:53 christos Exp $	*/
+/*	$NetBSD: boot2.c,v 1.66 2016/02/03 05:27:53 christos Exp $	*/
 
 /*-
  * Copyright (c) 2008, 2009 The NetBSD Foundation, Inc.
@@ -266,8 +266,8 @@ print_banner(void)
 #ifndef SMALL
 	int n;
 	if (bootcfg_info.banner[0]) {
-		for (n = 0; bootcfg_info.banner[n]
-		    && n < BOOTCFG_MAXBANNER; n++) 
+		for (n = 0; n < BOOTCFG_MAXBANNER && bootcfg_info.banner[n];
+		    n++) 
 			printf("%s\n", bootcfg_info.banner[n]);
 	} else {
 #endif /* !SMALL */
@@ -413,6 +413,7 @@ command_help(char *arg)
 	       "modules {on|off|enabled|disabled}\n"
 	       "load {path_to_module}\n"
 	       "multiboot [xdNx:][filename] [<args>]\n"
+	       "splash {path_to_image_file}\n"
 	       "userconf {command}\n"
 	       "rndseed {path_to_rndseed_file}\n"
 	       "help|?\n"

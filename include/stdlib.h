@@ -1,4 +1,4 @@
-/*	$NetBSD: stdlib.h,v 1.113 2015/02/05 16:05:46 christos Exp $	*/
+/*	$NetBSD: stdlib.h,v 1.116 2015/11/07 16:21:42 nros Exp $	*/
 
 /*-
  * Copyright (c) 1990, 1993
@@ -125,6 +125,7 @@ unsigned long
 	 strtoul(const char * __restrict, char ** __restrict, int);
 #ifdef _OPENBSD_SOURCE
 long long strtonum(const char *, long long, long long, const char **);
+void	*reallocarray(void *, size_t, size_t);
 #endif
 int	 system(const char *);
 
@@ -233,6 +234,7 @@ long double	strtold(const char * __restrict, char ** __restrict);
 
 #if defined(_ISOC11_SOURCE) || (__STDC_VERSION__ - 0) >= 201101L || \
     defined(_NETBSD_SOURCE) || (__cplusplus - 0) >= 201103L
+void	*aligned_alloc(size_t, size_t);
 int	at_quick_exit(void (*)(void));
 __dead void quick_exit(int);
 #endif
@@ -337,6 +339,8 @@ int	 l64a_r(long, char *, int);
 
 size_t	shquote(const char *, char *, size_t);
 size_t	shquotev(int, char * const *, char *, size_t);
+
+int	reallocarr(void *, size_t, size_t);
 #endif /* _NETBSD_SOURCE */
 #endif /* _POSIX_C_SOURCE || _XOPEN_SOURCE || _NETBSD_SOURCE */
 
@@ -364,7 +368,6 @@ unsigned long long int
 	strtoull_l(const char * __restrict, char ** __restrict, int, locale_t);
 
 #  if defined(_NETBSD_SOURCE)
-void	*reallocarray(void *, size_t, size_t);
 quad_t	 strtoq_l(const char * __restrict, char ** __restrict, int, locale_t);
 u_quad_t strtouq_l(const char * __restrict, char ** __restrict, int, locale_t);
 

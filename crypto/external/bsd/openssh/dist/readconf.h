@@ -1,5 +1,5 @@
-/*	$NetBSD: readconf.h,v 1.11 2014/10/19 16:30:58 christos Exp $	*/
-/* $OpenBSD: readconf.h,v 1.102 2014/07/15 15:54:14 millert Exp $ */
+/*	$NetBSD: readconf.h,v 1.15 2016/03/11 01:55:00 christos Exp $	*/
+/* $OpenBSD: readconf.h,v 1.113 2016/01/14 16:17:40 markus Exp $ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -108,7 +108,14 @@ typedef struct {
 	int     num_identity_files;	/* Number of files for RSA/DSA identities. */
 	char   *identity_files[SSH_MAX_IDENTITY_FILES];
 	int    identity_file_userprovided[SSH_MAX_IDENTITY_FILES];
-	Key    *identity_keys[SSH_MAX_IDENTITY_FILES];
+	struct sshkey *identity_keys[SSH_MAX_IDENTITY_FILES];
+
+	int	num_certificate_files; /* Number of extra certificates for ssh. */
+	char	*certificate_files[SSH_MAX_CERTIFICATE_FILES];
+	int	certificate_file_userprovided[SSH_MAX_CERTIFICATE_FILES];
+	struct sshkey *certificates[SSH_MAX_CERTIFICATE_FILES];
+
+	int	add_keys_to_agent;
 
 	/* Local TCP/IP forward requests. */
 	int     num_local_forwards;
@@ -147,8 +154,6 @@ typedef struct {
 	int	permit_local_command;
 	int	visual_host_key;
 
-	int	use_roaming;
-
 	int	request_tty;
 	int	send_version_first;
 
@@ -161,6 +166,15 @@ typedef struct {
 	int	canonicalize_fallback_local;
 	int	num_permitted_cnames;
 	struct allowed_cname permitted_cnames[MAX_CANON_DOMAINS];
+
+	char	*revoked_host_keys;
+
+	int	 fingerprint_hash;
+
+	int	 update_hostkeys; /* one of SSH_UPDATE_HOSTKEYS_* */
+
+	char   *hostbased_key_types;
+	char   *pubkey_key_types;
 
 	char	*ignored_unknown; /* Pattern list of unknown tokens to ignore */
 }       Options;
@@ -182,20 +196,27 @@ typedef struct {
 
 #define SSHCONF_CHECKPERM	1  /* check permissions on config file */
 #define SSHCONF_USERCONF	2  /* user provided config file not system */
+#define SSHCONF_POSTCANON	4  /* After hostname canonicalisation */
+
+#define SSH_UPDATE_HOSTKEYS_NO	0
+#define SSH_UPDATE_HOSTKEYS_YES	1
+#define SSH_UPDATE_HOSTKEYS_ASK	2
 
 void     initialize_options(Options *);
 void     fill_default_options(Options *);
 void	 fill_default_options_for_canonicalization(Options *);
-int	 process_config_line(Options *, struct passwd *, const char *, char *,
-    const char *, int, int *, int);
+int	 process_config_line(Options *, struct passwd *, const char *,
+    const char *, char *, const char *, int, int *, int);
 int	 read_config_file(const char *, struct passwd *, const char *,
-    Options *, int);
+    const char *, Options *, int);
 int	 parse_forward(struct Forward *, const char *, int, int);
 int	 default_ssh_port(void);
 int	 option_clear_or_none(const char *);
+void	 dump_client_config(Options *o, const char *host);
 
 void	 add_local_forward(Options *, const struct Forward *);
 void	 add_remote_forward(Options *, const struct Forward *);
 void	 add_identity_file(Options *, const char *, const char *, int);
+void	 add_certificate_file(Options *, const char *, int);
 
 #endif				/* READCONF_H */

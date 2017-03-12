@@ -1,4 +1,4 @@
-/*	$NetBSD: arm32_machdep.c,v 1.108 2014/11/19 10:01:50 martin Exp $	*/
+/*	$NetBSD: arm32_machdep.c,v 1.110 2016/04/30 19:20:47 ryo Exp $	*/
 
 /*
  * Copyright (c) 1994-1998 Mark Brinicombe.
@@ -42,7 +42,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: arm32_machdep.c,v 1.108 2014/11/19 10:01:50 martin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: arm32_machdep.c,v 1.110 2016/04/30 19:20:47 ryo Exp $");
 
 #include "opt_modular.h"
 #include "opt_md.h"
@@ -575,6 +575,10 @@ parse_mi_bootargs(char *args)
 	    || get_bootconf_option(args, "-v", BOOTOPT_TYPE_BOOLEAN, &integer))
 		if (integer)
 			boothowto |= AB_VERBOSE;
+	if (get_bootconf_option(args, "debug", BOOTOPT_TYPE_BOOLEAN, &integer)
+	    || get_bootconf_option(args, "-x", BOOTOPT_TYPE_BOOLEAN, &integer))
+		if (integer)
+			boothowto |= AB_DEBUG;
 }
 
 #ifdef __HAVE_FAST_SOFTINTS
@@ -676,8 +680,11 @@ module_init_md(void)
 int
 mm_md_physacc(paddr_t pa, vm_prot_t prot)
 {
+	if (pa >= physical_start && pa < physical_end)
+		return 0;
 
-	return (pa < ctob(physmem)) ? 0 : EFAULT;
+	return kauth_authorize_machdep(kauth_cred_get(),
+	    KAUTH_MACHDEP_UNMANAGEDMEM, NULL, NULL, NULL, NULL);
 }
 
 #ifdef __HAVE_CPU_UAREA_ALLOC_IDLELWP

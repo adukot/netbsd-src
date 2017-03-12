@@ -1,4 +1,4 @@
-/*      $NetBSD: sgec.c,v 1.40 2013/10/24 13:15:12 martin Exp $ */
+/*      $NetBSD: sgec.c,v 1.42 2016/02/09 08:32:10 ozaki-r Exp $ */
 /*
  * Copyright (c) 1999 Ludd, University of Lule}, Sweden. All rights reserved.
  *
@@ -45,7 +45,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: sgec.c,v 1.40 2013/10/24 13:15:12 martin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: sgec.c,v 1.42 2016/02/09 08:32:10 ozaki-r Exp $");
 
 #include "opt_inet.h"
 
@@ -332,7 +332,7 @@ zestart(struct ifnet *ifp)
 	int nexttx, starttx;
 	int len, i, totlen, error;
 	int old_inq = sc->sc_inq;
-	uint16_t orword, tdr;
+	uint16_t orword, tdr = 0;
 	bus_dmamap_t map;
 
 	while (sc->sc_inq < (TXDESCS - 1)) {
@@ -466,7 +466,7 @@ sgec_intr(struct ze_softc *sc)
 				m->m_pkthdr.len = m->m_len =
 				    len - ETHER_CRC_LEN;
 				bpf_mtap(ifp, m);
-				(*ifp->if_input)(ifp, m);
+				if_percpuq_enqueue(ifp->if_percpuq, m);
 			}
 		}
 	}

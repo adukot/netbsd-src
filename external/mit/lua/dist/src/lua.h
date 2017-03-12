@@ -1,7 +1,7 @@
-/*	$NetBSD: lua.h,v 1.3 2015/02/02 14:03:05 lneto Exp $	*/
+/*	$NetBSD: lua.h,v 1.6 2016/01/28 14:41:39 lneto Exp $	*/
 
 /*
-** Id: lua.h,v 1.325 2014/12/26 17:24:27 roberto Exp 
+** Id: lua.h,v 1.329 2015/11/13 17:18:42 roberto Exp 
 ** Lua - A Scripting Language
 ** Lua.org, PUC-Rio, Brazil (http://www.lua.org)
 ** See Copyright Notice at the end of this file
@@ -14,7 +14,7 @@
 #include <stdarg.h>
 #ifndef _KERNEL
 #include <stddef.h>
-#endif
+#endif /* _KERNEL */
 
 
 #include "luaconf.h"
@@ -24,10 +24,10 @@
 #define LUA_VERSION_MINOR	"3"
 #define LUA_VERSION_NUM		503
 #ifndef _KERNEL
-#define LUA_VERSION_RELEASE	"0"
+#define LUA_VERSION_RELEASE	"2"
 #else /* _KERNEL */
-#define LUA_VERSION_RELEASE	"0 (kernel)"
-#endif
+#define LUA_VERSION_RELEASE	"2 (kernel)"
+#endif /* _KERNEL */
 
 #define LUA_VERSION	"Lua " LUA_VERSION_MAJOR "." LUA_VERSION_MINOR
 #define LUA_RELEASE	LUA_VERSION "." LUA_VERSION_RELEASE
@@ -35,9 +35,9 @@
 #define LUA_COPYRIGHT	LUA_RELEASE "  Copyright (C) 1994-2015 Lua.org, PUC-Rio"
 #else /* _KERNEL */
 #define LUA_COPYRIGHT	LUA_RELEASE \
-	"  Copyright (c) 2015, Lourival Vieira Neto <lneto@NetBSD.org>." \
+	"  Copyright (c) 2015-2016, Lourival Vieira Neto <lneto@NetBSD.org>." \
 	"  Copyright (C) 1994-2015 Lua.org, PUC-Rio"
-#endif
+#endif /* _KERNEL */
 #define LUA_AUTHORS	"R. Ierusalimschy, L. H. de Figueiredo, W. Celes"
 
 
@@ -49,9 +49,11 @@
 
 
 /*
-** pseudo-indices
+** Pseudo-indices
+** (-LUAI_MAXSTACK is the minimum valid index; we keep some free empty
+** space after that to help overflow detection)
 */
-#define LUA_REGISTRYINDEX	LUAI_FIRSTPSEUDOIDX
+#define LUA_REGISTRYINDEX	(-LUAI_MAXSTACK - 1000)
 #define lua_upvalueindex(i)	(LUA_REGISTRYINDEX - (i))
 
 
@@ -182,11 +184,7 @@ LUA_API void  (lua_xmove) (lua_State *from, lua_State *to, int n);
 ** access functions (stack -> C)
 */
 
-#ifndef _KERNEL
 LUA_API int             (lua_isnumber) (lua_State *L, int idx);
-#else /* _KERNEL */
-#define lua_isnumber	lua_isinteger
-#endif
 LUA_API int             (lua_isstring) (lua_State *L, int idx);
 LUA_API int             (lua_iscfunction) (lua_State *L, int idx);
 LUA_API int             (lua_isinteger) (lua_State *L, int idx);
@@ -198,7 +196,7 @@ LUA_API const char     *(lua_typename) (lua_State *L, int tp);
 LUA_API lua_Number      (lua_tonumberx) (lua_State *L, int idx, int *isnum);
 #else /* _KERNEL */
 #define lua_tonumberx	(lua_Integer) lua_tointegerx
-#endif
+#endif /* _KERNEL */
 LUA_API lua_Integer     (lua_tointegerx) (lua_State *L, int idx, int *isnum);
 LUA_API int             (lua_toboolean) (lua_State *L, int idx);
 LUA_API const char     *(lua_tolstring) (lua_State *L, int idx, size_t *len);
@@ -237,7 +235,7 @@ LUA_API const void     *(lua_topointer) (lua_State *L, int idx);
 #define LUA_OPSHR	9
 #define LUA_OPUNM	10
 #define LUA_OPBNOT	11
-#endif
+#endif /* _KERNEL */
 
 LUA_API void  (lua_arith) (lua_State *L, int op);
 
@@ -257,7 +255,7 @@ LUA_API void        (lua_pushnil) (lua_State *L);
 LUA_API void        (lua_pushnumber) (lua_State *L, lua_Number n);
 #else /* _KERNEL */
 #define lua_pushnumber(L, n)	lua_pushinteger(L, (lua_Integer)(n))
-#endif
+#endif /* _KERNEL */
 LUA_API void        (lua_pushinteger) (lua_State *L, lua_Integer n);
 LUA_API const char *(lua_pushlstring) (lua_State *L, const char *s, size_t len);
 LUA_API const char *(lua_pushstring) (lua_State *L, const char *s);
@@ -393,8 +391,7 @@ LUA_API void      (lua_setallocf) (lua_State *L, lua_Alloc f, void *ud);
 #define lua_isnone(L,n)		(lua_type(L, (n)) == LUA_TNONE)
 #define lua_isnoneornil(L, n)	(lua_type(L, (n)) <= 0)
 
-#define lua_pushliteral(L, s)	\
-	lua_pushlstring(L, "" s, (sizeof(s)/sizeof(char))-1)
+#define lua_pushliteral(L, s)	lua_pushstring(L, "" s)
 
 #define lua_pushglobaltable(L)  \
 	lua_rawgeti(L, LUA_REGISTRYINDEX, LUA_RIDX_GLOBALS)
@@ -497,7 +494,7 @@ struct lua_Debug {
 
 /******************************************************************************
 #ifdef _KERNEL
-* Copyright (c) 2015, Lourival Vieira Neto <lneto@NetBSD.org>.
+* Copyright (c) 2015-2016, Lourival Vieira Neto <lneto@NetBSD.org>.
 #endif
 * Copyright (C) 1994-2015 Lua.org, PUC-Rio.
 *

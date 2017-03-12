@@ -1,16 +1,16 @@
-#	$NetBSD: Makefile.inc,v 1.191 2015/01/20 17:28:00 christos Exp $
+#	$NetBSD: Makefile.inc,v 1.194 2016/04/03 00:19:42 christos Exp $
 #	from: @(#)Makefile.inc	8.6 (Berkeley) 5/4/95
 
 # gen sources
 .PATH: ${ARCHDIR}/gen ${.CURDIR}/gen
 
 .if ${RUMPRUN} != "yes"
-SRCS+=	_errno.c
+SRCS+=	_errno.c daemon.c
 .endif
 
 SRCS+=	alarm.c alphasort.c arc4random.c assert.c asysctl.c \
 	basename.c clock.c closedir.c closefrom.c \
-	confstr.c ctermid.c ctype_.c daemon.c \
+	confstr.c ctermid.c ctype_.c \
 	dehumanize_number.c devname.c dirname.c disklabel.c err.c errx.c \
 	errc.c errlist.c errno.c execl.c execle.c execlp.c execv.c execvp.c \
 	extattr.c fmtcheck.c fmtmsg.c fnmatch.c fstab.c ftok.c \
@@ -35,8 +35,9 @@ SRCS+=	alarm.c alphasort.c arc4random.c assert.c asysctl.c \
 	sysctlnametomib.c syslog.c telldir.c time.c \
 	times.c toascii.c tolower_.c ttyname.c ttyslot.c toupper_.c ualarm.c \
 	ulimit.c uname.c unvis.c usleep.c utime.c utimens.c utmp.c \
-	utmpx.c valloc.c vis.c wait.c wait3.c waitpid.c warn.c warnx.c \
-	warnc.c vwarn.c vwarnx.c vwarnc.c verr.c verrx.c verrc.c wordexp.c
+	utmpx.c valloc.c vis.c wait.c wait3.c waitid.c waitpid.c warn.c \
+	warnx.c warnc.c vwarn.c vwarnx.c vwarnc.c verr.c verrx.c verrc.c \
+	wordexp.c
 
 # uses alloca
 COPTS.execvp.c = -Wno-stack-protector
@@ -188,7 +189,7 @@ MLINKS+=unvis.3 strnunvis.3 unvis.3 strnunvisx.3
 MLINKS+=vis.3 svis.3 vis.3 strvis.3 vis.3 strvisx.3 vis.3 strsvis.3 \
 	vis.3 strsvisx.3 vis.3 nvis.3
 MLINKS+=vis.3 snvis.3 vis.3 strnvis.3 vis.3 strnvisx.3 vis.3 strsnvis.3 \
-	vis.3 strsnvisx.3
+	vis.3 strsnvisx.3 vis.3 stravis.3
 
 CPPFLAGS.ctype_.c+=	-I${LIBCDIR}/locale
 CPPFLAGS.isctype.c+=	-I${LIBCDIR}/locale

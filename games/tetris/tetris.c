@@ -1,4 +1,4 @@
-/*	$NetBSD: tetris.c,v 1.27 2014/07/13 17:38:38 pgoyette Exp $	*/
+/*	$NetBSD: tetris.c,v 1.32 2016/03/03 21:38:55 nat Exp $	*/
 
 /*-
  * Copyright (c) 1992, 1993
@@ -62,6 +62,7 @@ __COPYRIGHT("@(#) Copyright (c) 1992, 1993\
 cell	board[B_SIZE];		/* 1 => occupied, 0 => empty */
 
 int	Rows, Cols;		/* current screen size */
+int	Offset;			/* used to center board & shapes */
 
 static const struct shape *curshape;
 const struct shape *nextshape;
@@ -116,6 +117,8 @@ elide(void)
 				tsleep();
 				while (--base != 0)
 					board[base + B_COLS] = board[base];
+				/* don't forget to clear 0th row */
+				memset(&board[1], 0, B_COLS - 2);
 				scr_update();
 				tsleep();
 				break;
@@ -130,7 +133,8 @@ main(int argc, char *argv[])
 	int pos, c;
 	const char *keys;
 	int level = 2;
-	char key_write[6][10];
+#define NUMKEYS 7
+	char key_write[NUMKEYS][10];
 	int ch, i, j;
 	int fd;
 
@@ -143,7 +147,7 @@ main(int argc, char *argv[])
 		exit(1);
 	close(fd);
 
-	keys = "jkl pq";
+	keys = "jkl pqn";
 
 	while ((ch = getopt(argc, argv, "bk:l:ps")) != -1)
 		switch(ch) {
@@ -151,7 +155,7 @@ main(int argc, char *argv[])
 			nocolor = 1;
 			break;
 		case 'k':
-			if (strlen(keys = optarg) != 6)
+			if (strlen(keys = optarg) != NUMKEYS)
 				usage();
 			break;
 		case 'l':
@@ -180,8 +184,8 @@ main(int argc, char *argv[])
 
 	fallrate = 1000000 / level;
 
-	for (i = 0; i <= 5; i++) {
-		for (j = i+1; j <= 5; j++) {
+	for (i = 0; i <= (NUMKEYS-1); i++) {
+		for (j = i+1; j <= (NUMKEYS-1); j++) {
 			if (keys[i] == keys[j]) {
 				errx(1, "duplicate command keys specified.");
 			}
@@ -195,9 +199,9 @@ main(int argc, char *argv[])
 	}
 
 	snprintf(key_msg, sizeof(key_msg),
-"%s - left   %s - rotate   %s - right   %s - drop   %s - pause   %s - quit",
+"%s - left  %s - rotate  %s - right  %s - drop  %s - pause  %s - quit  %s - down",
 		key_write[0], key_write[1], key_write[2], key_write[3],
-		key_write[4], key_write[5]);
+		key_write[4], key_write[5], key_write[6]);
 
 	(void)signal(SIGINT, onintr);
 	scr_init();
@@ -297,6 +301,14 @@ main(int argc, char *argv[])
 			}
 			continue;
 		}
+		if (c == keys[6]) {
+			/* move down */
+			if (fits_in(curshape, pos + B_COLS)) {
+				pos += B_COLS;
+				score++;
+			}
+			continue;
+		}
 		if (c == '\f') {
 			scr_clear();
 			scr_msg(key_msg, 1);
@@ -332,7 +344,7 @@ onintr(int signo __unused)
 static void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: %s [-ps] [-k keys] [-l level]\n",
+	(void)fprintf(stderr, "usage: %s [-bps] [-k keys] [-l level]\n",
 	    getprogname());
 	exit(1);
 }

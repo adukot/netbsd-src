@@ -1,4 +1,4 @@
-/*	$NetBSD: raw_ip6.c,v 1.136 2014/08/09 05:33:01 rtr Exp $	*/
+/*	$NetBSD: raw_ip6.c,v 1.142 2016/04/26 08:44:45 ozaki-r Exp $	*/
 /*	$KAME: raw_ip6.c,v 1.82 2001/07/23 18:57:56 jinmei Exp $	*/
 
 /*
@@ -62,9 +62,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: raw_ip6.c,v 1.136 2014/08/09 05:33:01 rtr Exp $");
+__KERNEL_RCSID(0, "$NetBSD: raw_ip6.c,v 1.142 2016/04/26 08:44:45 ozaki-r Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_ipsec.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/sysctl.h>
@@ -78,7 +80,6 @@ __KERNEL_RCSID(0, "$NetBSD: raw_ip6.c,v 1.136 2014/08/09 05:33:01 rtr Exp $");
 #include <sys/kmem.h>
 
 #include <net/if.h>
-#include <net/route.h>
 #include <net/if_types.h>
 #include <net/net_stats.h>
 
@@ -645,7 +646,7 @@ rip6_detach(struct socket *so)
 }
 
 static int
-rip6_accept(struct socket *so, struct mbuf *nam)
+rip6_accept(struct socket *so, struct sockaddr *nam)
 {
 	KASSERT(solocked(so));
 
@@ -653,10 +654,10 @@ rip6_accept(struct socket *so, struct mbuf *nam)
 }
 
 static int
-rip6_bind(struct socket *so, struct mbuf *nam, struct lwp *l)
+rip6_bind(struct socket *so, struct sockaddr *nam, struct lwp *l)
 {
 	struct in6pcb *in6p = sotoin6pcb(so);
-	struct sockaddr_in6 *addr;
+	struct sockaddr_in6 *addr = (struct sockaddr_in6 *)nam;
 	struct ifaddr *ia = NULL;
 	int error = 0;
 
@@ -664,8 +665,7 @@ rip6_bind(struct socket *so, struct mbuf *nam, struct lwp *l)
 	KASSERT(in6p != NULL);
 	KASSERT(nam != NULL);
 
-	addr = mtod(nam, struct sockaddr_in6 *);
-	if (nam->m_len != sizeof(*addr))
+	if (addr->sin6_len != sizeof(*addr))
 		return EINVAL;
 	if (IFNET_EMPTY() || addr->sin6_family != AF_INET6)
 		return EADDRNOTAVAIL;
@@ -699,10 +699,10 @@ rip6_listen(struct socket *so, struct lwp *l)
 }
 
 static int
-rip6_connect(struct socket *so, struct mbuf *nam, struct lwp *l)
+rip6_connect(struct socket *so, struct sockaddr *nam, struct lwp *l)
 {
 	struct in6pcb *in6p = sotoin6pcb(so);
-	struct sockaddr_in6 *addr;
+	struct sockaddr_in6 *addr = (struct sockaddr_in6 *)nam;
 	struct in6_addr *in6a = NULL;
 	struct ifnet *ifp = NULL;
 	int scope_ambiguous = 0;
@@ -712,10 +712,6 @@ rip6_connect(struct socket *so, struct mbuf *nam, struct lwp *l)
 	KASSERT(in6p != NULL);
 	KASSERT(nam != NULL);
 
-	addr = mtod(nam, struct sockaddr_in6 *);
-
-	if (nam->m_len != sizeof(*addr))
-		return EINVAL;
 	if (IFNET_EMPTY())
 		return EADDRNOTAVAIL;
 	if (addr->sin6_family != AF_INET6)
@@ -816,24 +812,24 @@ rip6_stat(struct socket *so, struct stat *ub)
 }
 
 static int
-rip6_peeraddr(struct socket *so, struct mbuf *nam)
+rip6_peeraddr(struct socket *so, struct sockaddr *nam)
 {
 	KASSERT(solocked(so));
 	KASSERT(sotoin6pcb(so) != NULL);
 	KASSERT(nam != NULL);
 
-	in6_setpeeraddr(sotoin6pcb(so), nam);
+	in6_setpeeraddr(sotoin6pcb(so), (struct sockaddr_in6 *)nam);
 	return 0;
 }
 
 static int
-rip6_sockaddr(struct socket *so, struct mbuf *nam)
+rip6_sockaddr(struct socket *so, struct sockaddr *nam)
 {
 	KASSERT(solocked(so));
 	KASSERT(sotoin6pcb(so) != NULL);
 	KASSERT(nam != NULL);
 
-	in6_setsockaddr(sotoin6pcb(so), nam);
+	in6_setsockaddr(sotoin6pcb(so), (struct sockaddr_in6 *)nam);
 	return 0;
 }
 
@@ -854,7 +850,7 @@ rip6_recvoob(struct socket *so, struct mbuf *m, int flags)
 }
 
 static int
-rip6_send(struct socket *so, struct mbuf *m, struct mbuf *nam,
+rip6_send(struct socket *so, struct mbuf *m, struct sockaddr *nam,
     struct mbuf *control, struct lwp *l)
 {
 	struct in6pcb *in6p = sotoin6pcb(so);
@@ -885,12 +881,7 @@ rip6_send(struct socket *so, struct mbuf *m, struct mbuf *nam,
 			error = ENOTCONN;
 			goto release;
 		}
-		if (nam->m_len != sizeof(tmp)) {
-			error = EINVAL;
-			goto release;
-		}
-
-		tmp = *mtod(nam, struct sockaddr_in6 *);
+		tmp = *(struct sockaddr_in6 *)nam;
 		dst = &tmp;
 
 		if (dst->sin6_family != AF_INET6) {
@@ -928,34 +919,6 @@ rip6_purgeif(struct socket *so, struct ifnet *ifp)
 	in6_purgeif(ifp);
 	in6_pcbpurgeif(&raw6cbtable, ifp);
 	mutex_exit(softnet_lock);
-
-	return 0;
-}
-
-int
-rip6_usrreq(struct socket *so, int req, struct mbuf *m, 
-	struct mbuf *nam, struct mbuf *control, struct lwp *l)
-{
-
-	KASSERT(req != PRU_ACCEPT);
-	KASSERT(req != PRU_BIND);
-	KASSERT(req != PRU_LISTEN);
-	KASSERT(req != PRU_CONNECT);
-	KASSERT(req != PRU_CONNECT2);
-	KASSERT(req != PRU_DISCONNECT);
-	KASSERT(req != PRU_SHUTDOWN);
-	KASSERT(req != PRU_ABORT);
-	KASSERT(req != PRU_CONTROL);
-	KASSERT(req != PRU_SENSE);
-	KASSERT(req != PRU_PEERADDR);
-	KASSERT(req != PRU_SOCKADDR);
-	KASSERT(req != PRU_RCVD);
-	KASSERT(req != PRU_RCVOOB);
-	KASSERT(req != PRU_SEND);
-	KASSERT(req != PRU_PURGEIF);
-	KASSERT(req != PRU_SENDOOB);
-
-	panic("rip6_usrreq");
 
 	return 0;
 }
@@ -1019,7 +982,6 @@ PR_WRAP_USRREQS(rip6)
 #define	rip6_send		rip6_send_wrapper
 #define	rip6_sendoob		rip6_sendoob_wrapper
 #define	rip6_purgeif		rip6_purgeif_wrapper
-#define	rip6_usrreq		rip6_usrreq_wrapper
 
 const struct pr_usrreqs rip6_usrreqs = {
 	.pr_attach	= rip6_attach,
@@ -1041,5 +1003,4 @@ const struct pr_usrreqs rip6_usrreqs = {
 	.pr_send	= rip6_send,
 	.pr_sendoob	= rip6_sendoob,
 	.pr_purgeif	= rip6_purgeif,
-	.pr_generic	= rip6_usrreq,
 };

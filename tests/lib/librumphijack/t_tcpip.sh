@@ -1,4 +1,4 @@
-#       $NetBSD: t_tcpip.sh,v 1.14 2014/10/09 06:52:37 apb Exp $
+#       $NetBSD: t_tcpip.sh,v 1.16 2015/12/29 07:17:19 pgoyette Exp $
 #
 # Copyright (c) 2011 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -122,6 +122,7 @@ ssh_head()
 
 ssh_body()
 {
+	atf_expect_fail "PR lib/50174"
 
 	atf_check -s exit:0 ${rumpnetsrv} ${RUMP_SERVER}
 	# make sure clients die after we nuke the server
@@ -177,6 +178,8 @@ test_nfs()
 	atf_check -s exit:0 -x \
 	    'echo "/export -noresvport -noresvmnt 10.1.1.100" | \
 		dd of=/rump/etc/exports 2> /dev/null'
+
+	atf_check -s exit:0 rump.sysctl -q -w kern.module.autoload=1
 
 	atf_check -s exit:0 -e ignore mount_ffs /dk /rump/export
 	atf_check -s exit:0 -x "echo ${magicstr} > /rump/export/im_alive"

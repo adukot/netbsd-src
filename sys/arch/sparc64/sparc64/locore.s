@@ -1,4 +1,4 @@
-/*	$NetBSD: locore.s,v 1.377 2014/10/26 21:03:45 palle Exp $	*/
+/*	$NetBSD: locore.s,v 1.390 2016/03/09 12:20:20 nakayama Exp $	*/
 
 /*
  * Copyright (c) 2006-2010 Matthew R. Green
@@ -129,7 +129,7 @@
 	
 #ifdef SUN4V
 	.macro	SET_MMU_CONTEXTID_SUN4V ctxid,ctx
-	stxa	\ctxid, [\ctx] ASI_MMU;
+	stxa	\ctxid, [\ctx] ASI_MMU_CONTEXTID;
 	.endm
 #endif	
 		
@@ -355,6 +355,35 @@ cputyp:	.word	CPU_SUN4U ! Default to sun4u
 #define CLRTT
 #endif
 
+
+/*
+ * Some macros to load and store a register window
+ */
+
+	.macro	SPILL storer,base,size,asi
+
+	.irpc n,01234567
+		\storer %l\n, [\base + (\n * \size)] \asi
+	.endr
+	.irpc n,01234567
+		\storer %i\n, [\base + ((8+\n) * \size)] \asi
+	.endr
+
+	.endm
+
+	
+	.macro FILL loader, base, size, asi
+	
+	.irpc n,01234567
+		\loader [\base + (\n * \size)] \asi, %l\n
+	.endr
+
+	.irpc n,01234567
+		\loader [\base + ((8+\n) * \size)] \asi, %i\n
+	.endr
+	
+	.endm
+	
 /*
  * Here are some oft repeated traps as macros.
  */
@@ -1040,7 +1069,9 @@ _C_LABEL(trapbase_sun4v):
 	HARDINT4V(13)						! 0x04d = level 13 interrupt
 	HARDINT4V(14)						! 0x04e = level 14 interrupt
 	HARDINT4V(15)						! 0x04f = level 15 interrupt
-	sun4v_trap_entry 48					! 0x050-0x07f
+	sun4v_trap_entry 44					! 0x050-0x07b
+	VTRAP(T_CPU_MONDO, sun4v_cpu_mondo)			! 0x07c = cpu mondo
+	sun4v_trap_entry 3					! 0x07d-0x07f
 	SPILL64(uspill8_sun4vt0,ASI_AIUS)			! 0x080 spill_0_normal -- used to save user windows in user mode
 	SPILL32(uspill4_sun4vt0,ASI_AIUS)			! 0x084 spill_1_normal
 	SPILLBOTH(uspill8_sun4vt0,uspill4_sun4vt0,ASI_AIUS)	! 0x088 spill_2_normal
@@ -1073,7 +1104,9 @@ _C_LABEL(trapbase_sun4v):
 	sun4v_trap_entry_spill_fill_fail 1			! 0x0f4 fill_5_other
 	sun4v_trap_entry_spill_fill_fail 1			! 0x0f8 fill_6_other
 	sun4v_trap_entry_spill_fill_fail 1			! 0x0fc fill_7_other
-	sun4v_trap_entry 256					! 0x100-0x1ff
+	sun4v_trap_entry 1					! 0x100
+	BPT							! 0x101 = pseudo breakpoint instruction
+	sun4v_trap_entry 254					! 0x102-0x1ff
 	!
 	! trap level 1
 	!
@@ -1627,7 +1660,7 @@ asmptechk:
 
 	.data
 2:
-	.asciz	"asmptechk: %x %x %x %x:%x\r\n"
+	.asciz	"asmptechk: %x %x %x %x:%x\n"
 	_ALIGN
 	.text
 #endif
@@ -1952,7 +1985,7 @@ winfixfill:
 #if 0 /* Need to switch over to new stuff to fix WDR bug */
 	wrpr	%g5, %cwp				! Restore cwp from before fill trap -- regs should now be consisent
 	wrpr	%g2, %g0, %tl				! Restore trap level -- we need to reuse it
-	set	return_from_trap, %g4
+	set	return_from_trap, %g4			! XXX - need to set %g1 to tstate
 	set	CTX_PRIMARY, %g7
 	wrpr	%g4, 0, %tpc
 	stxa	%g0, [%g7] ASI_DMMU
@@ -2145,9 +2178,7 @@ winfixspill:
 	wrpr	%g0, 0, %otherwin
 	or	%lo(2f), %o0, %o0
 	wrpr	%g0, WSTATE_KERN, %wstate
-	sethi	%hi(PANICSTACK), %sp
-	LDPTR	[%sp + %lo(PANICSTACK)], %sp
-	add	%sp, -CC64FSZ-STKB, %sp
+	set	PANICSTACK-CC64FSZ-STKB, %sp
 	ta	1; nop					! This helps out traptrace.
 	call	_C_LABEL(panic)				! This needs to be fixed properly but we should panic here
 	 mov	%g1, %o1
@@ -2927,9 +2958,7 @@ slowtrap:
 	cmp	%g7, WSTATE_KERN
 	bnz,pt	%icc, 1f		! User stack -- we'll blow it away
 	 nop
-	sethi	%hi(PANICSTACK), %sp
-	LDPTR	[%sp + %lo(PANICSTACK)], %sp
-	add	%sp, -CC64FSZ-STKB, %sp	
+	set	PANICSTACK-CC64FSZ-STKB, %sp
 1:
 #endif
 	rdpr	%tt, %g4
@@ -2977,8 +3006,8 @@ Lslowtrap_reenter:
 	call	_C_LABEL(trap)			! trap(tf, type, pc, pstate)
 	 nop
 
-	ba,a,pt	%icc, return_from_trap
-	 nop
+	b	return_from_trap
+	 ldx	[%sp + CC64FSZ + STKB + TF_TSTATE], %g1	! Load this for return_from_trap
 	NOTREACHED
 #if 1
 /*
@@ -3366,7 +3395,7 @@ syscall_setup:
 return_from_syscall:
 	wrpr	%g0, PSTATE_KERN, %pstate	! Disable intterrupts
 	wrpr	%g0, 0, %tl			! Return to tl==0
-	ba,a,pt	%icc, return_from_trap
+	b	return_from_trap
 	 nop
 	NOTREACHED
 
@@ -3517,7 +3546,7 @@ setup_sparcintr:
 
 	STACKFRAME(-CC64FSZ)		! Get a clean register window
 	LOAD_ASCIZ(%o0,\
-	    "interrupt_vector: number %lx softint mask %lx pil %lu slot %p\r\n")
+	    "interrupt_vector: number %lx softint mask %lx pil %lu slot %p\n")
 	mov	%g2, %o1
 	rdpr	%pil, %o3
 	mov	%g1, %o4
@@ -3547,8 +3576,9 @@ ret_from_intr_vector:
 	 nop
 #endif
 #if 1
-	STACKFRAME(-CC64FSZ)		! Get a clean register window
-	LOAD_ASCIZ(%o0, "interrupt_vector: spurious vector %lx at pil %d\r\n")
+	set	PANICSTACK-STKB, %g1	! Use panic stack temporarily
+	save	%g1, -CC64FSZ, %sp	! Get a clean register window
+	LOAD_ASCIZ(%o0, "interrupt_vector: spurious vector %lx at pil %d\n")
 	mov	%g7, %o1
 	GLOBTOLOC
 	clr	%g4
@@ -3561,6 +3591,32 @@ ret_from_intr_vector:
 	ba,a	ret_from_intr_vector
 	 nop				! XXX spitfire bug?
 
+sun4v_cpu_mondo:
+	mov	0x3c0, %g1			 ! CPU Mondo Queue Head
+	ldxa	[%g1] ASI_QUEUE, %g2		 ! fetch index value for head
+	set	CPUINFO_VA, %g3
+	LDPTR	[%g3 + CI_PADDR], %g3
+	add	%g3, CI_CPUMQ, %g3	
+	ldxa	[%g3] ASI_PHYS_CACHED, %g3	 ! fetch head element
+	ldxa	[%g3 + %g2] ASI_PHYS_CACHED, %g4 ! fetch func 
+	add	%g2, 8, %g5
+	ldxa	[%g3 + %g5] ASI_PHYS_CACHED, %g5 ! fetch arg1
+	add	%g2, 16, %g6
+	ldxa	[%g3 + %g6] ASI_PHYS_CACHED, %g6 ! fetch arg2
+	add	%g2, 64, %g2			 ! point to next element in queue
+	and	%g2, 0x7ff, %g2			 ! modulo queue size 2048 (32*64)
+	stxa	%g2, [%g1] ASI_QUEUE		 ! update head index
+	membar	#Sync
+
+	mov	%g4, %g2
+	mov	%g5, %g3
+	mov	%g6, %g5
+	jmpl	%g2, %g0
+	 nop			! No store here!
+	retry
+	NOTREACHED
+
+	
 /*
  * Ultra1 and Ultra2 CPUs use soft interrupts for everything.  What we do
  * on a soft interrupt, is we should check which bits in SOFTINT(%asr22)
@@ -3678,12 +3734,27 @@ ENTRY_NOPROFILE(sparc_interrupt)
 	bne,pt	%icc, 1f
 	 nop
 	NORMAL_GLOBALS_SUN4V
+	! Save the normal globals
+	stx	%g1, [%sp + CC64FSZ + STKB + TF_G + ( 1*8)]
+	stx	%g2, [%sp + CC64FSZ + STKB + TF_G + ( 2*8)]
+	stx	%g3, [%sp + CC64FSZ + STKB + TF_G + ( 3*8)]
+	stx	%g4, [%sp + CC64FSZ + STKB + TF_G + ( 4*8)]
+	stx	%g5, [%sp + CC64FSZ + STKB + TF_G + ( 5*8)]
+	stx	%g6, [%sp + CC64FSZ + STKB + TF_G + ( 6*8)]
+	stx	%g7, [%sp + CC64FSZ + STKB + TF_G + ( 7*8)]
+
+	/*
+	 * In the EMBEDANY memory model %g4 points to the start of the
+	 * data segment.  In our case we need to clear it before calling
+	 * any C-code.
+	 */
+	clr	%g4
+
 	ba	2f
 	 nop
 1:		
 #endif
 	NORMAL_GLOBALS_SUN4U
-2:
 	! Save the normal globals
 	stx	%g1, [%sp + CC64FSZ + STKB + TF_G + ( 1*8)]
 	stx	%g2, [%sp + CC64FSZ + STKB + TF_G + ( 2*8)]
@@ -3701,6 +3772,8 @@ ENTRY_NOPROFILE(sparc_interrupt)
 	clr	%g4
 
 	flushw			! Do not remove this insn -- causes interrupt loss
+
+2:
 	rd	%y, %l6
 	INCR64(CPUINFO_VA+CI_NINTR)	! cnt.v_ints++ (clobbers %o0,%o1)
 	rdpr	%tt, %l5		! Find out our current IPL
@@ -3814,7 +3887,7 @@ sparc_intr_retry:
 	 nop
 
 	STACKFRAME(-CC64FSZ)		! Get a clean register window
-	LOAD_ASCIZ(%o0, "sparc_interrupt: func %p arg %p\r\n")
+	LOAD_ASCIZ(%o0, "sparc_interrupt: func %p arg %p\n")
 	mov	%i0, %o2		! arg
 	GLOBTOLOC
 	call	prom_printf
@@ -3874,7 +3947,7 @@ intrcmplt:
 	 nop
 
 	STACKFRAME(-CC64FSZ)		! Get a clean register window
-	LOAD_ASCIZ(%o0, "sparc_interrupt:  done\r\n")
+	LOAD_ASCIZ(%o0, "sparc_interrupt:  done\n")
 	GLOBTOLOC
 	call	prom_printf
 	 nop
@@ -3886,8 +3959,8 @@ intrcmplt:
 	ldub	[%sp + CC64FSZ + STKB + TF_OLDPIL], %l3	! restore old %pil
 	wrpr	%l3, 0, %pil
 
-	ba,a,pt	%icc, return_from_trap
-	 nop
+	b	return_from_trap
+	 ldx	[%sp + CC64FSZ + STKB + TF_TSTATE], %g1	! Load this for return_from_trap
 
 #ifdef notyet
 /*
@@ -3920,6 +3993,7 @@ zshard:
  * registers are:
  *
  *	[%sp + CC64FSZ + STKB] => trap frame
+ *      %g1 => tstate from trap frame
  *
  * We must load all global, out, and trap registers from the trap frame.
  *
@@ -3945,7 +4019,7 @@ return_from_trap:
 	!!
 	!! We'll make sure we flush our pcb here, rather than later.
 	!!
-	ldx	[%sp + CC64FSZ + STKB + TF_TSTATE], %g1
+!	ldx	[%sp + CC64FSZ + STKB + TF_TSTATE], %g1	! already passed in, no need to reload
 	btst	TSTATE_PRIV, %g1			! returning to userland?
 
 	!!
@@ -4034,12 +4108,30 @@ return_from_trap:
  *
  */
 rft_kernel:
-	rdpr	%tl, %g4				! Grab a set of trap registers
+	rdpr	%tl, %g4			! Grab a set of trap registers
 	inc	%g4
 	wrpr	%g4, %g0, %tl
 	wrpr	%g3, 0, %tnpc
 	wrpr	%g2, 0, %tpc
 	wrpr	%g1, 0, %tstate
+
+	rdpr	%canrestore, %g2
+	brnz	%g2, 1f
+	 nop
+
+	wr	%g0, ASI_NUCLEUS, %asi
+	rdpr	%cwp, %g1
+	dec	%g1
+	wrpr	%g1, %cwp
+#ifdef _LP64
+	FILL	ldxa, %sp+BIAS, 8, %asi
+#else
+	FILL	lda, %sp, 4, %asi
+#endif
+	restored
+	inc	%g1
+	wrpr	%g1, %cwp
+1:
 	restore
 	rdpr	%tstate, %g1			! Since we may have trapped our regs may be toast
 	rdpr	%cwp, %g2
@@ -4526,7 +4618,7 @@ ENTRY_NOPROFILE(cpu_initialize)	/* for cosmetic reasons - nicer backtrace */
 	 nop
 	.data
 1:
-	.asciz	"Setting trap base...\r\n"
+	.asciz	"Setting trap base...\n"
 	_ALIGN
 	.text
 0:	
@@ -4624,7 +4716,7 @@ ENTRY_NOPROFILE(cpu_initialize)	/* for cosmetic reasons - nicer backtrace */
 
 	.data
 1:
-	.asciz	"Calling startup routine %p with stack at %p...\r\n"
+	.asciz	"Calling startup routine %p with stack at %p...\n"
 	_ALIGN
 	.text
 0:	
@@ -4643,7 +4735,7 @@ ENTRY_NOPROFILE(cpu_initialize)	/* for cosmetic reasons - nicer backtrace */
 	 nop
 	.data
 1:
-	.asciz	"main() returned\r\n"
+	.asciz	"main() returned\n"
 	_ALIGN
 	.text
 
@@ -4697,7 +4789,7 @@ ENTRY(cpu_mp_startup)
 	or	%l4, 0xfff, %l4			! We can just load this in 12 (of 13) bits
 	andn	%l1, %l4, %l1			! Mask the phys page number into RA
 	or	%l2, %l1, %l1			! Now take care of the 8 high bits V|NFO|SW
-	or	%l1, 0x0141, %l2		! And low 13 bits IE=0|E=0|CP=0|CV=0|P=1|
+	or	%l1, 0x0741, %l2		! And low 13 bits IE=0|E=0|CP=1|CV=1|P=1|
 						!		  X=0|W=1|SW=00|SZ=0001
 
 	/*
@@ -5020,7 +5112,7 @@ ENTRY(sp_tlb_flush_pte_us)
 	restore
 	.data
 1:
-	.asciz	"sp_tlb_flush_pte_us:	demap ctx=%x va=%08x res=%x\r\n"
+	.asciz	"sp_tlb_flush_pte_us:	demap ctx=%x va=%08x res=%x\n"
 	_ALIGN
 	.text
 2:
@@ -5074,7 +5166,7 @@ ENTRY(sp_tlb_flush_pte_usiii)
 	restore
 	.data
 1:
-	.asciz	"sp_tlb_flush_pte_usiii:	demap ctx=%x va=%08x res=%x\r\n"
+	.asciz	"sp_tlb_flush_pte_usiii:	demap ctx=%x va=%08x res=%x\n"
 	_ALIGN
 	.text
 2:
@@ -5915,15 +6007,9 @@ ENTRY(lwp_trampoline)
 	 mov	%l1, %o0
 
 	/*
-	 * Going to userland - set proper tstate in trap frame
-	 */
-	set	(ASI_PRIMARY_NO_FAULT<<TSTATE_ASI_SHIFT)|((PSTATE_USER)<<TSTATE_PSTATE_SHIFT), %g1
-	stx	%g1, [%sp + CC64FSZ + STKB + TF_TSTATE]
-
-	/*
 	 * Here we finish up as in syscall, but simplified.
 	 */
-	ba,a,pt	%icc, return_from_trap
+	b	return_from_trap
 	 nop
 
 /*

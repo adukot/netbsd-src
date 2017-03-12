@@ -1,4 +1,4 @@
-/*	$NetBSD: blacklistd.c,v 1.32 2015/01/28 22:30:42 christos Exp $	*/
+/*	$NetBSD: blacklistd.c,v 1.34 2016/04/04 15:52:56 christos Exp $	*/
 
 /*-
  * Copyright (c) 2015 The NetBSD Foundation, Inc.
@@ -32,12 +32,15 @@
 #include "config.h"
 #endif
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: blacklistd.c,v 1.32 2015/01/28 22:30:42 christos Exp $");
+__RCSID("$NetBSD: blacklistd.c,v 1.34 2016/04/04 15:52:56 christos Exp $");
 
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/queue.h>
 
+#ifdef HAVE_LIBUTIL_H
+#include <libutil.h>
+#endif
 #ifdef HAVE_UTIL_H
 #include <util.h>
 #endif
@@ -284,6 +287,7 @@ update(void)
 		return;
 	}
 
+again:
 	for (n = 0, f = 1; state_iterate(state, &c, &dbi, f) == 1;
 	    f = 0, n++)
 	{
@@ -305,6 +309,7 @@ update(void)
 			    buf, c.c_lmask, c.c_port, c.c_duration);
 		}
 		state_del(state, &c);
+		goto again;
 	}
 }
 

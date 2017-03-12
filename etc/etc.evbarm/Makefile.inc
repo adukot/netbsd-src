@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.inc,v 1.68 2015/01/27 20:26:34 jmcneill Exp $
+#	$NetBSD: Makefile.inc,v 1.79 2015/12/13 23:02:56 jmcneill Exp $
 #
 #	etc.evbarm/Makefile.inc -- evbarm-specific etc Makefile targets
 #
@@ -13,10 +13,13 @@ EVBARM_BOARDS.${i}=
 .endfor
 
 .if !empty(MACHINE_ARCH:M*eb)
+IMAGEENDIAN=	be
 # big endian boards
 KERNEL_SETS.armv4+=		IXM1200
 EVBARM_BOARDS.xscale+=		ADI_BRH
 KERNEL_SETS.xscale+=		NSLU2
+EVBARM_BOARDS.armv7+=		ALLWINNER_A80
+EVBARM_BOARDS.armv7hf+=		ALLWINNER_A80
 EVBARM_BOARDS.armv7+=		BCM5301X
 EVBARM_BOARDS.armv7hf+=		BCM5301X
 #EVBARM_BOARDS.armv7+=		BCM56340
@@ -29,9 +32,8 @@ EVBARM_BOARDS.armv7+=		CUBIETRUCK
 EVBARM_BOARDS.armv7hf+=		CUBIETRUCK
 EVBARM_BOARDS.armv7+=		HUMMINGBIRD_A31
 EVBARM_BOARDS.armv7hf+=		HUMMINGBIRD_A31
-EVBARM_BOARDS.armv7+=		ALLWINNER_A80
-EVBARM_BOARDS.armv7hf+=		ALLWINNER_A80
 .else
+IMAGEENDIAN=	le
 # little endian boards
 #EVBARM_BOARDS.armv4+=		ARMADILLO210
 #EVBARM_BOARDS.armv4+=		ARMADILLO9
@@ -71,9 +73,13 @@ EVBARM_BOARDS.armv5t+=		SHEEVAPLUG
 #EVBARM_BOARDS.armv6hf+= 	IMX31LITE
 EVBARM_BOARDS.armv6+=		RPI
 EVBARM_BOARDS.armv6hf+=	 	RPI
+KERNEL_SETS.armv6+=		RPI2
+KERNEL_SETS.armv6hf+=	 	RPI2
 EVBARM_BOARDS.armv6+=		TISDP2420
 EVBARM_BOARDS.armv6hf+= 	TISDP2420
 #EVBARM_BOARDS.armv6+=		TISDP2430
+EVBARM_BOARDS.armv7+=		ALLWINNER_A80
+EVBARM_BOARDS.armv7hf+=		ALLWINNER_A80
 EVBARM_BOARDS.armv7+=		ARMADAXP
 EVBARM_BOARDS.armv7hf+=		ARMADAXP
 EVBARM_BOARDS.armv7+=		BCM5301X
@@ -92,23 +98,30 @@ EVBARM_BOARDS.armv7+=		CUBIEBOARD
 EVBARM_BOARDS.armv7hf+= 	CUBIEBOARD
 EVBARM_BOARDS.armv7+=		CUBIETRUCK
 EVBARM_BOARDS.armv7hf+= 	CUBIETRUCK
+EVBARM_BOARDS.armv7+=		CUBOX-I
+EVBARM_BOARDS.armv7hf+= 	CUBOX-I
 EVBARM_BOARDS.armv7+=		HUMMINGBIRD_A31
 EVBARM_BOARDS.armv7hf+=		HUMMINGBIRD_A31
-EVBARM_BOARDS.armv7+=		ALLWINNER_A80
-EVBARM_BOARDS.armv7hf+=		ALLWINNER_A80
 #EVBARM_BOARDS.armv7+=		IGEPV2
+EVBARM_BOARDS.armv7+=		TEGRA
+EVBARM_BOARDS.armv7hf+=		TEGRA
+EVBARM_BOARDS.armv7+=		KOBO
+EVBARM_BOARDS.armv7hf+= 	KOBO
 EVBARM_BOARDS.armv7+=		MIRABOX
 EVBARM_BOARDS.armv7hf+=		MIRABOX
 #EVBARM_BOARDS.armv7+=		N900
 EVBARM_BOARDS.armv7+=		NETWALKER
 EVBARM_BOARDS.armv7hf+=		NETWALKER
+EVBARM_BOARDS.armv7+=		ODROID-C1
+EVBARM_BOARDS.armv7hf+=		ODROID-C1
 EVBARM_BOARDS.armv7+=		OMAP5EVM
 EVBARM_BOARDS.armv7hf+=		OMAP5EVM
-#EVBARM_BOARDS.armv7+=		OVERO
+EVBARM_BOARDS.armv7+=		OVERO
+EVBARM_BOARDS.armv7hf+=		OVERO
 EVBARM_BOARDS.armv7+=		PANDABOARD
 EVBARM_BOARDS.armv7hf+= 	PANDABOARD
-EVBARM_BOARDS.armv7+=		KOBO
-EVBARM_BOARDS.armv7hf+= 	KOBO
+EVBARM_BOARDS.armv7+=		RPI2
+EVBARM_BOARDS.armv7hf+=	 	RPI2
 .endif
 
 IMAGE.rel=	${RELEASEDIR}/${RELEASEMACHINEDIR}
@@ -123,10 +136,11 @@ __mkimage: .USE
 	TOOL_GZIP=${TOOL_GZIP} \
 	TOOL_MKNOD=${TOOL_MKNOD} \
 	TOOL_PAX=${TOOL_PAX} \
+	TOOL_MKUBOOTIMAGE=${TOOL_MKUBOOTIMAGE} \
 	TOOL_MTREE=${TOOL_MTREE} \
 	HOST_SH=${HOST_SH} \
 	${HOST_SH} ${MKIMAGE} -x -h ${.TARGET:S/smp_//} -D ${DESTDIR} \
-	    -K ${.ALLSRC} -S ${NETBSDSRCDIR} ${MKI_OPTS.${.TARGET}} \
+	    -S ${NETBSDSRCDIR} -B ${IMAGEENDIAN} ${MKI_OPTS.${.TARGET}} \
 	    ${IMAGE.dir}/${.TARGET:S/smp_//}.img.gz
 
 ARCHES.arm=		armv4 xscale armv5t armv6 armv7
@@ -155,22 +169,21 @@ BUILD_KERNELS+=		${board}_INSTALL
 KERNEL_SETS+=		${KERNEL_SETS.${arch}}
 .endfor
 
-.if !empty(KERNEL_SETS:MBEAGLEBOARD) && !empty(KERNEL_SETS:MBEAGLEBONE)
-smp_beagleboard: ${IMAGE.kern}/netbsd-BEAGLEBOARD.ub.gz __mkimage
-#            XXX ${IMAGE.kern}/netbsd-BEAGLEBONE.ub.gz
-.if empty(ALL_KERNELS) || (!empty(ALL_KERNELS:MBEAGLEBOARD) && !empty(ALL_KERNELS:MBEAGLEBONE))
-SNAP_MD_POST_DEPS+=	smp_beagleboard
-.endif
+.if !empty(MACHINE_ARCH:M*armv7*) && empty(ALL_KERNELS)
+smp_armv7: __mkimage
+MKI_OPTS.smp_armv7=	-K ${IMAGE.kern}
+SNAP_MD_POST_DEPS+=	smp_armv7
 .endif
 
 .if !empty(KERNEL_SETS:MRPI)
-smp_rpi: ${IMAGE.kern}/netbsd-RPI.bin.gz __mkimage
+smp_rpi: __mkimage
 .if empty(ALL_KERNELS) || !empty(ALL_KERNELS:MRPI)
+MKI_OPTS.smp_rpi=	-K ${IMAGE.kern}/netbsd-RPI.bin.gz
 SNAP_MD_POST_DEPS+=	smp_rpi
 .endif
-MKI_OPTS.smp_rpi_inst="-b"
 smp_rpi_inst: ${IMAGE.instk}/netbsd-RPI_INSTALL.bin.gz __mkimage
 .if empty(ALL_KERNELS) || !empty(ALL_KERNELS:MRPI_INSTALL)
+MKI_OPTS.smp_rpi_inst=	-b -K ${IMAGE.instk}/netbsd-RPI_INSTALL.bin.gz
 SNAP_MD_POST_DEPS+=	smp_rpi_inst
 .endif
 .endif

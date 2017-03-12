@@ -1,4 +1,4 @@
-/*	$NetBSD: intr.c,v 1.4 2014/12/26 18:06:52 macallan Exp $ */
+/*	$NetBSD: intr.c,v 1.10 2016/01/29 01:54:14 macallan Exp $ */
 
 /*-
  * Copyright (c) 2014 Michael Lorenz
@@ -27,9 +27,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: intr.c,v 1.4 2014/12/26 18:06:52 macallan Exp $");
+__KERNEL_RCSID(0, "$NetBSD: intr.c,v 1.10 2016/01/29 01:54:14 macallan Exp $");
 
 #define __INTR_PRIVATE
+
+#include "opt_multiprocessor.h"
 
 #include <sys/param.h>
 #include <sys/cpu.h>
@@ -46,9 +48,15 @@ __KERNEL_RCSID(0, "$NetBSD: intr.c,v 1.4 2014/12/26 18:06:52 macallan Exp $");
 
 #include "opt_ingenic.h"
 
+#ifdef INGENIC_INTR_DEBUG
+#define DPRINTF printf
+#else
+#define DPRINTF while (0) printf
+#endif
+
 extern void ingenic_clockintr(uint32_t);
 extern void ingenic_puts(const char *);
-
+extern struct clockframe cf;
 /*
  * This is a mask of bits to clear in the SR when we go to a
  * given hardware interrupt priority level.
@@ -89,6 +97,7 @@ struct intrhand {
 };
 
 struct intrhand intrs[NINTR];
+struct evcnt clockintrs;
 
 void ingenic_irq(int);
 
@@ -100,6 +109,9 @@ evbmips_intr_init(void)
 
 	ipl_sr_map = ingenic_ipl_sr_map;
 
+	evcnt_attach_dynamic(&clockintrs,
+	    EVCNT_TYPE_INTR, NULL, "timer", "intr");
+
 	/* zero all handlers */
 	for (i = 0; i < NINTR; i++) {
 		intrs[i].ih_func = NULL;
@@ -107,7 +119,7 @@ evbmips_intr_init(void)
 		snprintf(intrs[i].ih_name, sizeof(intrs[i].ih_name),
 		    "irq %d", i);
 		evcnt_attach_dynamic(&intrs[i].ih_count, EVCNT_TYPE_INTR,
-		    NULL, "PIC", intrs[i].ih_name);
+		    NULL, "INTC", intrs[i].ih_name);
 	}
 
 	/* mask all peripheral IRQs */
@@ -117,8 +129,13 @@ evbmips_intr_init(void)
 	/* allow peripheral interrupts to core 0 only */
 	reg = MFC0(12, 4);	/* reset entry and interrupts */
 	reg &= 0xffff0000;
-	reg |= REIM_IRQ0_M | REIM_MIRQ0_M | REIM_MIRQ1_M;
+	reg |= REIM_IRQ0_M | REIM_MIRQ0_M;
+#ifdef MULTIPROCESSOR
+	reg |= REIM_MIRQ1_M;
+#endif
 	MTC0(reg, 12, 4);
+	MTC0(0, 20, 1);	/* ping the 2nd core */
+	DPRINTF("%s %08x\n", __func__, reg);
 }
 
 void
@@ -139,26 +156,30 @@ evbmips_iointr(int ipl, vaddr_t pc, uint32_t ipending)
 
 	/*
 	 * XXX
-	 * the manual counts the softint bits as INT0 and INT1, out headers
+	 * the manual counts the softint bits as INT0 and INT1, our headers
 	 * don't so everything here looks off by two
 	 */
 	if (ipending & MIPS_INT_MASK_1) {
 		/*
 		 * this is a mailbox interrupt / IPI
-		 * for now just print the message and clear it
 		 */
 		uint32_t reg;
+		int s = splsched();
 
 		/* read pending IPIs */
 		reg = MFC0(12, 3);
 		if (id == 0) {
 			if (reg & CS_MIRQ0_P) {
+#ifdef MULTIPROCESSOR
+				uint32_t tag;
+				tag = MFC0(CP0_CORE_MBOX, 0);
 	
+				ipi_process(curcpu(), tag);
 #ifdef INGENIC_INTR_DEBUG
 				snprintf(buffer, 256,
-				    "IPI for core 0, msg %08x\n",
-				    MFC0(CP0_CORE_MBOX, 0));
+				    "IPI for core 0, msg %08x\n", tag);
 				ingenic_puts(buffer);
+#endif
 #endif
 				reg &= (~CS_MIRQ0_P);
 				/* clear it */
@@ -166,24 +187,34 @@ evbmips_iointr(int ipl, vaddr_t pc, uint32_t ipending)
 			}
 		} else if (id == 1) {
 			if (reg & CS_MIRQ1_P) {
+#ifdef MULTIPROCESSOR
+				uint32_t tag;
+				tag = MFC0(CP0_CORE_MBOX, 1);
+				ingenic_puts("1");
+				if (tag & 0x400)
+					hardclock(&cf);
+				//ipi_process(curcpu(), tag);
 #ifdef INGENIC_INTR_DEBUG
 				snprintf(buffer, 256,
-				    "IPI for core 1, msg %08x\n",
-				    MFC0(CP0_CORE_MBOX, 1));
+				    "IPI for core 1, msg %08x\n", tag);
 				ingenic_puts(buffer);
 #endif
-				reg &= ( 7 - CS_MIRQ1_P);
+#endif
+				reg &= (~CS_MIRQ1_P);
 				/* clear it */
 				MTC0(reg, 12, 3);
 			}
 		}
+		splx(s);
 	}
 	if (ipending & MIPS_INT_MASK_2) {
 		/* this is a timer interrupt */
 		ingenic_clockintr(id);
+		clockintrs.ev_count++;
 		ingenic_puts("INT2\n");
 	}
 	if (ipending & MIPS_INT_MASK_0) {
+		uint32_t mask;
 		/* peripheral interrupt */
 
 		/*
@@ -196,8 +227,12 @@ evbmips_iointr(int ipl, vaddr_t pc, uint32_t ipending)
 		 * and IPIs. If that doesn't work we'll have to send an IPI to
 		 * core1 for each timer tick.  
 		 */
-		if (readreg(JZ_ICPR0) & 0x0c000000) {
+		mask = readreg(JZ_ICPR0);
+		if (mask & 0x0c000000) {
+			writereg(JZ_ICMSR0, 0x0c000000);
 			ingenic_clockintr(id);
+			writereg(JZ_ICMCR0, 0x0c000000);
+			clockintrs.ev_count++;
 		}
 		ingenic_irq(ipl);
 		KASSERT(id == 0);
@@ -207,13 +242,14 @@ evbmips_iointr(int ipl, vaddr_t pc, uint32_t ipending)
 void
 ingenic_irq(int ipl)
 {
-	uint32_t irql, irqh, mask;
+	uint32_t irql, irqh, mask, ll, hh;
 	int bit, idx, bail;
 #ifdef INGENIC_INTR_DEBUG
 	char buffer[16];
 #endif
 
 	irql = readreg(JZ_ICPR0);
+	irqh = readreg(JZ_ICPR1);
 #ifdef INGENIC_INTR_DEBUG
 	if (irql != 0) {
 		snprintf(buffer, 16, " il%08x", irql);
@@ -221,17 +257,21 @@ ingenic_irq(int ipl)
 	}
 #endif
 	bail = 32;
+	ll = irql;
+	hh = irqh;
+	writereg(JZ_ICMSR0, ll);
+	writereg(JZ_ICMSR1, hh);
 	bit = ffs32(irql);
 	while (bit != 0) {
 		idx = bit - 1;
 		mask = 1 << idx;
+		intrs[idx].ih_count.ev_count++;
 		if (intrs[idx].ih_func != NULL) {
 			if (intrs[idx].ih_ipl == IPL_VM)
 				KERNEL_LOCK(1, NULL);
 			intrs[idx].ih_func(intrs[idx].ih_arg);	
 			if (intrs[idx].ih_ipl == IPL_VM)
 				KERNEL_UNLOCK_ONE(NULL);
-			intrs[idx].ih_count.ev_count++;
 		} else {
 			/* spurious interrupt, mask it */
 			writereg(JZ_ICMSR0, mask);
@@ -242,7 +282,6 @@ ingenic_irq(int ipl)
 		KASSERT(bail > 0);
 	}
 
-	irqh = readreg(JZ_ICPR1);
 #ifdef INGENIC_INTR_DEBUG
 	if (irqh != 0) {
 		snprintf(buffer, 16, " ih%08x", irqh);
@@ -254,13 +293,13 @@ ingenic_irq(int ipl)
 		idx = bit - 1;
 		mask = 1 << idx;
 		idx += 32;
+		intrs[idx].ih_count.ev_count++;
 		if (intrs[idx].ih_func != NULL) {
 			if (intrs[idx].ih_ipl == IPL_VM)
 				KERNEL_LOCK(1, NULL);
 			intrs[idx].ih_func(intrs[idx].ih_arg);	
 			if (intrs[idx].ih_ipl == IPL_VM)
 				KERNEL_UNLOCK_ONE(NULL);
-			intrs[idx].ih_count.ev_count++;
 		} else {
 			/* spurious interrupt, mask it */
 			writereg(JZ_ICMSR1, mask);
@@ -268,6 +307,8 @@ ingenic_irq(int ipl)
 		irqh &= ~mask;
 		bit = ffs32(irqh);
 	}
+	writereg(JZ_ICMCR0, ll);
+	writereg(JZ_ICMCR1, hh);
 }
 
 void *

@@ -1,7 +1,7 @@
-/*	$NetBSD: sample-update.c,v 1.1.1.4 2014/12/10 03:34:46 christos Exp $	*/
+/*	$NetBSD: sample-update.c,v 1.1.1.6 2015/12/17 03:22:13 christos Exp $	*/
 
 /*
- * Copyright (C) 2009, 2010, 2012-2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2009, 2010, 2012-2015  Internet Systems Consortium, Inc. ("ISC")
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -43,6 +43,7 @@
 #include <isc/lib.h>
 #include <isc/mem.h>
 #include <isc/parseint.h>
+#include <isc/print.h>
 #include <isc/sockaddr.h>
 #include <isc/string.h>
 #include <isc/util.h>
@@ -187,7 +188,9 @@ main(int argc, char *argv[]) {
 		hints.ai_family = AF_UNSPEC;
 		hints.ai_socktype = SOCK_DGRAM;
 		hints.ai_protocol = IPPROTO_UDP;
+#ifdef AI_NUMERICHOST
 		hints.ai_flags = AI_NUMERICHOST;
+#endif
 		gai_error = getaddrinfo(auth_server, "53", &hints, &res);
 		if (gai_error != 0) {
 			fprintf(stderr, "getaddrinfo failed: %s\n",
@@ -209,7 +212,9 @@ main(int argc, char *argv[]) {
 		hints.ai_family = AF_UNSPEC;
 		hints.ai_socktype = SOCK_DGRAM;
 		hints.ai_protocol = IPPROTO_UDP;
+#ifdef AI_NUMERICHOST
 		hints.ai_flags = AI_NUMERICHOST;
+#endif
 		gai_error = getaddrinfo(recursive_server, "53", &hints, &res);
 		if (gai_error != 0) {
 			fprintf(stderr, "getaddrinfo failed: %s\n",
@@ -683,11 +688,8 @@ make_prereq(isc_mem_t *mctx, char *cmdline, isc_boolean_t ispositive,
 			rdatalist->rdclass = dns_rdataclass_any;
 	} else
 		rdatalist->rdclass = dns_rdataclass_none;
-	rdatalist->covers = 0;
-	rdatalist->ttl = 0;
 	rdata->rdclass = rdatalist->rdclass;
 	rdata->type = rdatatype;
-	ISC_LIST_INIT(rdatalist->rdata);
 	ISC_LIST_APPEND(rdatalist->rdata, rdata, link);
 	ISC_LIST_APPEND(usedrdatalists, rdatalist, link);
 

@@ -1,4 +1,4 @@
-/*	$NetBSD: if_loop.c,v 1.80 2014/06/07 11:00:29 rmind Exp $	*/
+/*	$NetBSD: if_loop.c,v 1.86 2016/04/28 01:37:17 knakahara Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -65,14 +65,15 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_loop.c,v 1.80 2014/06/07 11:00:29 rmind Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_loop.c,v 1.86 2016/04/28 01:37:17 knakahara Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_inet.h"
 #include "opt_atalk.h"
-#include "opt_ipx.h"
 #include "opt_mbuftrace.h"
 #include "opt_mpls.h"
-
+#include "opt_net_mpsafe.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -105,11 +106,6 @@ __KERNEL_RCSID(0, "$NetBSD: if_loop.c,v 1.80 2014/06/07 11:00:29 rmind Exp $");
 #include <netinet6/in6_var.h>
 #include <netinet6/in6_offload.h>
 #include <netinet/ip6.h>
-#endif
-
-#ifdef IPX
-#include <netipx/ipx.h>
-#include <netipx/ipx_if.h>
 #endif
 
 #ifdef MPLS
@@ -209,7 +205,7 @@ loop_clone_destroy(struct ifnet *ifp)
 
 int
 looutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
-    struct rtentry *rt)
+    const struct rtentry *rt)
 {
 	pktqueue_t *pktq = NULL;
 	struct ifqueue *ifq = NULL;
@@ -218,7 +214,9 @@ looutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	size_t pktlen;
 
 	MCLAIM(m, ifp->if_mowner);
+#ifndef NET_MPSAFE
 	KASSERT(KERNEL_LOCKED_P());
+#endif
 
 	if ((m->m_flags & M_PKTHDR) == 0)
 		panic("looutput: no header mbuf");
@@ -243,24 +241,20 @@ looutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	 */
 	if ((ALTQ_IS_ENABLED(&ifp->if_snd) || TBR_IS_ENABLED(&ifp->if_snd)) &&
 	    ifp->if_start == lostart) {
-		struct altq_pktattr pktattr;
 		int error;
 
 		/*
 		 * If the queueing discipline needs packet classification,
 		 * do it before prepending the link headers.
 		 */
-		IFQ_CLASSIFY(&ifp->if_snd, m, dst->sa_family, &pktattr);
+		IFQ_CLASSIFY(&ifp->if_snd, m, dst->sa_family);
 
 		M_PREPEND(m, sizeof(uint32_t), M_DONTWAIT);
 		if (m == NULL)
 			return (ENOBUFS);
 		*(mtod(m, uint32_t *)) = dst->sa_family;
 
-		s = splnet();
-		IFQ_ENQUEUE(&ifp->if_snd, m, &pktattr, error);
-		(*ifp->if_start)(ifp);
-		splx(s);
+		error = ifp->if_transmit(ifp, m);
 		return (error);
 	}
 #endif /* ALTQ */
@@ -304,12 +298,6 @@ looutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 		m->m_pkthdr.csum_flags = 0;
 		m->m_flags |= M_LOOP;
 		pktq = ip6_pktq;
-		break;
-#endif
-#ifdef IPX
-	case AF_IPX:
-		ifq = &ipxintrq;
-		isr = NETISR_IPX;
 		break;
 #endif
 #ifdef NETATALK
@@ -382,12 +370,6 @@ lostart(struct ifnet *ifp)
 		case AF_INET6:
 			m->m_flags |= M_LOOP;
 			pktq = ip6_pktq;
-			break;
-#endif
-#ifdef IPX
-		case AF_IPX:
-			ifq = &ipxintrq;
-			isr = NETISR_IPX;
 			break;
 #endif
 #ifdef NETATALK

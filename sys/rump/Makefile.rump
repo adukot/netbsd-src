@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.rump,v 1.103 2014/12/02 01:59:10 pooka Exp $
+#	$NetBSD: Makefile.rump,v 1.120 2015/11/15 13:50:10 pooka Exp $
 #
 
 .if !defined(_RUMP_MK)
@@ -13,7 +13,6 @@ NOLINT=		# kernel code
 # compile-time options may override this at a later date.
 .if (${MACHINE_ARCH} == "i386" || ${MACHINE_ARCH} == "x86_64")
 _RUMP_NATIVEABI= yes
-CPPFLAGS+=	-D_RUMP_NATIVE_ABI
 .else
 _RUMP_NATIVEABI= no
 CPPFLAGS:=	-I${RUMPTOP}/include ${CPPFLAGS}
@@ -30,19 +29,31 @@ CPPFLAGS+=	-DMIPS1=1
 .endif
 .endif
 
-CPPFLAGS+=	-DMAXUSERS=32
-CPPFLAGS+=	-DCOMPAT_50=1 -DCOMPAT_60=1
+# which NetBSD compat to build
+RUMP_NBCOMPAT?=default
+.if ${RUMP_NBCOMPAT} == "all" || ${RUMP_NBCOMPAT} == "default"
+RUMP_NBCOMPAT=	50 60 70
+.endif
+.if ${RUMP_NBCOMPAT} == "none"
+RUMP_NBCOMPAT=
+.endif
+RUMP_NBCOMPAT:=	${RUMP_NBCOMPAT:S/,/ /g}
+CPPFLAGS+=	${RUMP_NBCOMPAT:C/[1-9]0/-DCOMPAT_&/g}
 
 CPPFLAGS+=	-nostdinc
 CFLAGS+=	-ffreestanding -fno-strict-aliasing
 
 CWARNFLAGS+=	-Wno-format-zero-length -Wno-pointer-sign
-CPPFLAGS+=	-D_KERNEL -DMULTIPROCESSOR -D_MODULE -DMODULAR
-CPPFLAGS+=	-DDEBUGPRINT
+
+CPPFLAGS+=	-imacros ${RUMPTOP}/include/opt/opt_rumpkernel.h
+.ifdef BUILDRUMP_IMACROS
+CPPFLAGS+=	-imacros ${BUILDRUMP_IMACROS}
+.endif
+
 CPPFLAGS+=	-I${.CURDIR} -I.
 CPPFLAGS+=	-I${RUMPTOP}/../../common/include
 CPPFLAGS+=	-I${RUMPTOP}/include
-CPPFLAGS+=	-I${RUMPTOP}/librump/rumpkern/opt
+CPPFLAGS+=	-I${RUMPTOP}/include/opt
 
 SHLIB_MAJOR?=	0
 SHLIB_MINOR?=	0
@@ -109,7 +120,7 @@ CPPFLAGS+=	-DKTRACE
 
 # make sure __NetBSD__ gets defined (for builds on non-NetBSD)
 # also, give those builds a way to undef the local compiler's macros
-CPPFLAGS+=	-D__NetBSD__ ${RUMPKERN_UNDEF}
+CPPFLAGS+=	${RUMPKERN_UNDEF}
 
 RUMPKERNEL=	This is NetBSD and I am the rump.  Good evening.
 
@@ -118,7 +129,7 @@ RUMPKERNEL=	This is NetBSD and I am the rump.  Good evening.
 CPPFLAGS+=	-DPPC_OEA
 .endif
 
-# If this file changes, we need a full rebuild
+# If any of these files change, we need a full rebuild
 DPSRCS+=	${RUMPTOP}/Makefile.rump
 
 #
@@ -230,6 +241,10 @@ __archivebuild: .USE
 	${AR} ${_ARFL} ${.TARGET} \
 	    `NM=${NM} ${LORDER} ${.ALLSRC:M*o} | ${TSORT}`
 .endif
+
+COMMENT?=	(no description)
+rumpdescribe: .PHONY
+	@printf '%-24s %s\n' '${LIB}' '${COMMENT}'
 
 _BSD_IOCONF_MK_USER_=1
 .include <bsd.ioconf.mk>

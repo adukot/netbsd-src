@@ -1,4 +1,4 @@
-# 	$NetBSD: TADPOLE3GX,v 1.65 2014/11/16 16:01:43 manu Exp $
+# 	$NetBSD: TADPOLE3GX,v 1.67 2015/09/26 11:16:13 maxv Exp $
 
 include "arch/sparc/conf/std.sparc"
 
@@ -55,11 +55,6 @@ config		netbsd	root on ? type ?
 ## System call tracing (see ktrace(1)).
 options 	KTRACE
 
-## Collect statistics on kernel malloc's and free's.  This does have a
-## significant performance hit on slower machines, so it is intended for
-## diagnostic use only.
-#options 	KMEMSTATS
-
 ## System V compatible IPC subsystem.  (msgctl(2), semctl(2), and shmctl(2))
 options 	SYSVMSG		# System V message queues
 options 	SYSVSEM		# System V semaphores
@@ -80,6 +75,7 @@ options 	NFS_BOOT_DHCP
 ## serial console break or keyboard reset, where the PROM would normally
 ## intercept.  DDB_HISTORY_SIZE adds up/down arrow command history.
 options 	DDB			# kernel dynamic debugger
+pseudo-device	ksyms
 options 	DDB_HISTORY_SIZE=100	# enable history editing in DDB
 #options 	DDB_ONPANIC=1		# see also sysctl(7): `ddb.onpanic'
 

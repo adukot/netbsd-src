@@ -24,11 +24,12 @@
  * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
+/*
+ * Copyright (c) 2012, Joyent, Inc.  All rights reserved.
+ */
 
 #ifndef	_CTF_IMPL_H
 #define	_CTF_IMPL_H
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #include <sys/types.h>
 #include <sys/errno.h>
@@ -149,6 +150,7 @@ typedef struct ctf_dtdef {
 	char *dtd_name;		/* name associated with definition (if any) */
 	ctf_id_t dtd_type;	/* type identifier for this definition */
 	ctf_type_t dtd_data;	/* type node (see <sys/ctf.h>) */
+	int dtd_ref;		/* recfount for dyanmic types */
 	union {
 		ctf_list_t dtu_members;	/* struct, union, or enum */
 		ctf_arinfo_t dtu_arr;	/* array */
@@ -269,7 +271,9 @@ enum {
 	ECTF_DTFULL,		/* CTF type is full (no more members allowed) */
 	ECTF_FULL,		/* CTF container is full */
 	ECTF_DUPMEMBER,		/* duplicate member name definition */
-	ECTF_CONFLICT		/* conflicting type definition present */
+	ECTF_CONFLICT,		/* conflicting type definition present */
+	ECTF_REFERENCED,	/* type has outstanding references */
+	ECTF_NOTDYN		/* type is not a dynamic type */
 };
 
 extern ssize_t ctf_get_ctt_size(const ctf_file_t *, const ctf_type_t *,
@@ -299,7 +303,7 @@ extern ctf_dtdef_t *ctf_dtd_lookup(ctf_file_t *, ctf_id_t);
 extern void ctf_decl_init(ctf_decl_t *, char *, size_t);
 extern void ctf_decl_fini(ctf_decl_t *);
 extern void ctf_decl_push(ctf_decl_t *, ctf_file_t *, ctf_id_t);
-extern void ctf_decl_sprintf(ctf_decl_t *, const char *, ...);
+extern void ctf_decl_sprintf(ctf_decl_t *, const char *, ...) __printflike(2,3);
 
 extern const char *ctf_strraw(ctf_file_t *, uint_t);
 extern const char *ctf_strptr(ctf_file_t *, uint_t);
@@ -319,7 +323,7 @@ extern void ctf_free(void *, size_t);
 
 extern char *ctf_strdup(const char *);
 extern const char *ctf_strerror(int);
-extern void ctf_dprintf(const char *, ...);
+extern void ctf_dprintf(const char *, ...) __printflike(1, 2);
 
 extern void *ctf_zopen(int *);
 

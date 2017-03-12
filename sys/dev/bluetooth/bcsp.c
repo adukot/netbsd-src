@@ -1,4 +1,4 @@
-/*	$NetBSD: bcsp.c,v 1.25 2014/11/16 16:20:00 ozaki-r Exp $	*/
+/*	$NetBSD: bcsp.c,v 1.29 2015/08/20 14:40:17 christos Exp $	*/
 /*
  * Copyright (c) 2007 KIYOHARA Takashi
  * All rights reserved.
@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: bcsp.c,v 1.25 2014/11/16 16:20:00 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: bcsp.c,v 1.29 2015/08/20 14:40:17 christos Exp $");
 
 #include <sys/types.h>
 #include <sys/param.h>
@@ -131,7 +131,6 @@ struct bcsp_softc {
 #define	BCSP_XMIT	(1 << 0)	/* transmit active */
 #define	BCSP_ENABLED	(1 << 1)	/* is enabled */
 
-void bcspattach(int);
 static int bcsp_match(device_t, cfdata_t, void *);
 static void bcsp_attach(device_t, device_t, void *);
 static int bcsp_detach(device_t, int);
@@ -1128,16 +1127,16 @@ bcsp_tx_reliable_pkt(struct bcsp_softc *sc, struct mbuf *m, u_int protocol_id)
 
 	for (pldlen = 0, _m = m; _m != NULL; _m = _m->m_next) {
 		if (_m->m_len < 0)
-			return false;
+			goto out;
 		pldlen += _m->m_len;
 	}
 	if (pldlen > 0xfff)
-		return false;
+		goto out;
 	if (protocol_id == BCSP_IDENT_ACKPKT || protocol_id > 15)
-		return false;
+		goto out;
 
 	if (sc->sc_seq_winspace == 0)
-		return false;
+		goto out;
 
 	M_PREPEND(m, sizeof(bcsp_hdr_t), M_DONTWAIT);
 	if (m == NULL) {
@@ -1168,12 +1167,15 @@ bcsp_tx_reliable_pkt(struct bcsp_softc *sc, struct mbuf *m, u_int protocol_id)
 	_m = m_copym(m, 0, M_COPYALL, M_DONTWAIT);
 	if (_m == NULL) {
 		aprint_error_dev(sc->sc_dev, "out of memory\n");
-		return false;
+		goto out;
 	}
 	MBUFQ_ENQUEUE(&sc->sc_seq_retryq, _m);
 	bcsp_mux_transmit(sc);
 
 	return true;
+out:
+	m_freem(m);
+	return false;
 }
 
 #if 0
@@ -1364,14 +1366,14 @@ bcsp_tx_unreliable_pkt(struct bcsp_softc *sc, struct mbuf *m, u_int protocol_id)
 
 	for (pldlen = 0, _m = m; _m != NULL; _m = m->m_next) {
 		if (_m->m_len < 0)
-			return false;
+			goto out;
 		pldlen += _m->m_len;
 	}
 	DPRINTFN(1, (" pldlen=%d\n", pldlen));
 	if (pldlen > 0xfff)
-		return false;
+		goto out;
 	if (protocol_id == BCSP_IDENT_ACKPKT || protocol_id > 15)
-		return false;
+		goto out;
 
 	M_PREPEND(m, sizeof(bcsp_hdr_t), M_DONTWAIT);
 	if (m == NULL) {
@@ -1397,6 +1399,9 @@ bcsp_tx_unreliable_pkt(struct bcsp_softc *sc, struct mbuf *m, u_int protocol_id)
 	bcsp_mux_transmit(sc);
 
 	return true;
+out:
+	m_freem(m);
+	return false;
 }
 
 #if 0

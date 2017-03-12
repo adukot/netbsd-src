@@ -1,5 +1,5 @@
 %{
-/* $NetBSD: cgram.y,v 1.67 2014/09/26 15:26:01 christos Exp $ */
+/* $NetBSD: cgram.y,v 1.76 2016/02/27 21:37:14 christos Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -35,7 +35,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: cgram.y,v 1.67 2014/09/26 15:26:01 christos Exp $");
+__RCSID("$NetBSD: cgram.y,v 1.76 2016/02/27 21:37:14 christos Exp $");
 #endif
 
 #include <stdlib.h>
@@ -68,6 +68,8 @@ static int olwarn = LWARN_BAD;
 static	int	toicon(tnode_t *, int);
 static	void	idecl(sym_t *, int, sbuf_t *);
 static	void	ignuptorp(void);
+static	sym_t	*symbolrename(sym_t *, sbuf_t *);
+
 
 #ifdef DEBUG
 static inline void CLRWFLGS(const char *file, size_t line);
@@ -105,9 +107,17 @@ static inline void RESTORE(const char *file, size_t line)
 #define SAVE(f, l)	olwarn = lwarn
 #define RESTORE(f, l) (void)(olwarn == LWARN_BAD ? (clrwflgs(), 0) : (lwarn = olwarn))
 #endif
+
+/* unbind the anonymous struct members from the struct */
+static void
+anonymize(sym_t *s)
+{
+	for ( ; s; s = s->s_nxt)
+		s->s_styp = NULL;
+}
 %}
 
-%expect 75
+%expect 80
 
 %union {
 	int	y_int;
@@ -196,6 +206,8 @@ static inline void RESTORE(const char *file, size_t line)
 %token <y_type>		T_AT_TUINION
 %token <y_type>		T_AT_TUNION
 %token <y_type>		T_AT_UNUSED
+%token <y_type>		T_AT_WEAK
+%token <y_type>		T_AT_VISIBILITY
 %token <y_type>		T_AT_FORMAT
 %token <y_type>		T_AT_FORMAT_PRINTF
 %token <y_type>		T_AT_FORMAT_SCANF
@@ -501,6 +513,8 @@ type_attribute_spec:
 	| T_AT_FORMAT T_LPARN type_attribute_format_type T_COMMA
 	    constant T_COMMA constant T_RPARN
 	| T_AT_UNUSED
+	| T_AT_WEAK
+	| T_AT_VISIBILITY T_LPARN constant T_RPARN
 	| T_QUAL {
 		if ($1 != CONST)	
 			yyerror("Bad attribute");
@@ -698,14 +712,22 @@ member_declaration:
 		$$ = $4;
 	  }
 	| noclass_declmods deftyp {
+		symtyp = FVFT;
 		/* struct or union member must be named */
-		warning(49);
-		$$ = NULL;
+		if (!Sflag)
+			warning(49);
+		/* add all the members of the anonymous struct/union */
+		$$ = dcs->d_type->t_str->memb;
+		anonymize($$);
 	  }
 	| noclass_declspecs deftyp {
+		symtyp = FVFT;
 		/* struct or union member must be named */
-		warning(49);
-		$$ = NULL;
+		if (!Sflag)
+			warning(49);
+		$$ = dcs->d_type->t_str->memb;
+		/* add all the members of the anonymous struct/union */
+		anonymize($$);
 	  }
 	| error {
 		symtyp = FVFT;
@@ -890,7 +912,7 @@ type_init_decls:
 	;
 
 notype_init_decl:
-	  notype_decl opt_asm_or_symbolrename {
+	notype_decl opt_asm_or_symbolrename {
 		idecl($1, 0, $2);
 		chksz($1);
 	  }
@@ -902,7 +924,7 @@ notype_init_decl:
 	;
 
 type_init_decl:
-	  type_decl opt_asm_or_symbolrename {
+	type_decl opt_asm_or_symbolrename {
 		idecl($1, 0, $2);
 		chksz($1);
 	  }
@@ -939,7 +961,7 @@ notype_direct_decl:
 		$$ = addarray($1, 1, toicon($3, 0));
 	  }
 	| notype_direct_decl param_list opt_asm_or_symbolrename {
-		$$ = addfunc($1, $2);
+		$$ = addfunc(symbolrename($1, $3), $2);
 		popdecl();
 		blklev--;
 	  }
@@ -972,7 +994,7 @@ type_direct_decl:
 		$$ = addarray($1, 1, toicon($3, 0));
 	  }
 	| type_direct_decl param_list opt_asm_or_symbolrename {
-		$$ = addfunc($1, $2);
+		$$ = addfunc(symbolrename($1, $3), $2);
 		popdecl();
 		blklev--;
 	  }
@@ -1009,7 +1031,7 @@ direct_param_decl:
 		$$ = addarray($1, 1, toicon($3, 0));
 	  }
 	| direct_param_decl param_list opt_asm_or_symbolrename {
-		$$ = addfunc($1, $2);
+		$$ = addfunc(symbolrename($1, $3), $2);
 		popdecl();
 		blklev--;
 	  }
@@ -1025,7 +1047,7 @@ notype_param_decl:
 	;
 
 direct_notype_param_decl:
-	  T_NAME {
+	  identifier {
 		$$ = dname(getsym($1));
 	  }
 	| T_LPARN notype_param_decl T_RPARN {
@@ -1038,7 +1060,7 @@ direct_notype_param_decl:
 		$$ = addarray($1, 1, toicon($3, 0));
 	  }
 	| direct_notype_param_decl param_list opt_asm_or_symbolrename {
-		$$ = addfunc($1, $2);
+		$$ = addfunc(symbolrename($1, $3), $2);
 		popdecl();
 		blklev--;
 	  }
@@ -1210,7 +1232,7 @@ initializer:
 	;
 
 init_expr:
-	  expr				%prec T_COMMA {
+	| expr				%prec T_COMMA {
 		mkinit($1);
 	  }
 	| init_by_name init_expr	%prec T_COMMA
@@ -1241,16 +1263,25 @@ range:
 	  }
 	;
 
-init_by_name:
-	  T_LBRACK range T_RBRACK T_ASSIGN {
+init_field:
+	  T_LBRACK range T_RBRACK {
 		if (!Sflag)
 			warning(321);
 	  }
-	| point identifier T_ASSIGN {
+	| point identifier {
 		if (!Sflag)
 			warning(313);
 		memberpush($2);
 	  }
+	;
+
+init_field_list:
+	  init_field
+	| init_field_list init_field
+	;
+
+init_by_name:
+	  init_field_list T_ASSIGN
 	| identifier T_COLON {
 		gnuism(315);
 		memberpush($1);
@@ -1325,12 +1356,12 @@ direct_abs_decl:
 		$$ = addarray($1, 1, toicon($3, 0));
 	  }
 	| abs_decl_param_list opt_asm_or_symbolrename {
-		$$ = addfunc(aname(), $1);
+		$$ = addfunc(symbolrename(aname(), $2), $1);
 		popdecl();
 		blklev--;
 	  }
 	| direct_abs_decl abs_decl_param_list opt_asm_or_symbolrename {
-		$$ = addfunc($1, $2);
+		$$ = addfunc(symbolrename($1, $3), $2);
 		popdecl();
 		blklev--;
 	  }
@@ -1921,8 +1952,10 @@ toicon(tnode_t *tn, int required)
 	/*
 	 * Abstract declarations are used inside expression. To free
 	 * the memory would be a fatal error.
+	 * We don't free blocks that are inside casts because these
+	 * will be used later to match types.
 	 */
-	if (dcs->d_ctx != ABSTRACT)
+	if (tn->tn_op != CON && dcs->d_ctx != ABSTRACT)
 		tfreeblk();
 
 	if ((t = v->v_tspec) == FLOAT || t == DOUBLE || t == LDOUBLE) {
@@ -1961,7 +1994,7 @@ idecl(sym_t *decl, int initflg, sbuf_t *renaming)
 	case EXTERN:
 		if (renaming != NULL) {
 			if (decl->s_rename != NULL)
-				LERROR("idecl()");
+				LERROR("idecl(rename)");
 
 			s = getlblk(1, renaming->sb_len + 1);
 	                (void)memcpy(s, renaming->sb_name, renaming->sb_len + 1);
@@ -1989,7 +2022,7 @@ idecl(sym_t *decl, int initflg, sbuf_t *renaming)
 		decl1loc(decl, initflg);
 		break;
 	default:
-		LERROR("idecl()");
+		LERROR("idecl(%d)", dcs->d_ctx);
 	}
 
 	if (initflg && !initerr)
@@ -2020,4 +2053,12 @@ ignuptorp(void)
 	}
 
 	yyclearin;
+}
+
+static	sym_t *
+symbolrename(sym_t *s, sbuf_t *sb)
+{
+	if (sb)
+		s->s_rename = sb->sb_name;
+	return s;
 }

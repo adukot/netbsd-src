@@ -1,4 +1,4 @@
-/*	$NetBSD: hist.c,v 1.2 2014/12/19 20:43:20 christos Exp $	*/
+/*	$NetBSD: hist.c,v 1.4 2016/01/08 21:35:42 christos Exp $	*/
 
 /*
  * This program can be used to calibrate the clock reading jitter of a

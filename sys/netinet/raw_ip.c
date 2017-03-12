@@ -1,4 +1,4 @@
-/*	$NetBSD: raw_ip.c,v 1.146 2014/11/10 18:52:51 maxv Exp $	*/
+/*	$NetBSD: raw_ip.c,v 1.157 2016/04/26 08:44:44 ozaki-r Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -65,12 +65,14 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: raw_ip.c,v 1.146 2014/11/10 18:52:51 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: raw_ip.c,v 1.157 2016/04/26 08:44:44 ozaki-r Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_inet.h"
 #include "opt_compat_netbsd.h"
 #include "opt_ipsec.h"
 #include "opt_mrouting.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/sysctl.h>
@@ -84,7 +86,6 @@ __KERNEL_RCSID(0, "$NetBSD: raw_ip.c,v 1.146 2014/11/10 18:52:51 maxv Exp $");
 #include <sys/kauth.h>
 
 #include <net/if.h>
-#include <net/route.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
@@ -111,7 +112,7 @@ struct inpcbtable rawcbtable;
 
 int	 rip_pcbnotify(struct inpcbtable *, struct in_addr,
     struct in_addr, int, int, void (*)(struct inpcb *, int));
-int	 rip_connect_pcb(struct inpcb *, struct mbuf *);
+static int	 rip_connect_pcb(struct inpcb *, struct sockaddr_in *);
 static void	 rip_disconnect1(struct inpcb *);
 
 static void sysctl_net_inet_raw_setup(struct sysctllog **);
@@ -309,17 +310,11 @@ rip_ctlinput(int cmd, const struct sockaddr *sa, void *v)
  * Tack on options user may have setup with control call.
  */
 int
-rip_output(struct mbuf *m, ...)
+rip_output(struct mbuf *m, struct inpcb *inp)
 {
-	struct inpcb *inp;
 	struct ip *ip;
 	struct mbuf *opts;
 	int flags;
-	va_list ap;
-
-	va_start(ap, m);
-	inp = va_arg(ap, struct inpcb *);
-	va_end(ap);
 
 	flags =
 	    (inp->inp_socket->so_options & SO_DONTROUTE) | IP_ALLOWBROADCAST
@@ -480,12 +475,9 @@ rip_ctloutput(int op, struct socket *so, struct sockopt *sopt)
 }
 
 int
-rip_connect_pcb(struct inpcb *inp, struct mbuf *nam)
+rip_connect_pcb(struct inpcb *inp, struct sockaddr_in *addr)
 {
-	struct sockaddr_in *addr = mtod(nam, struct sockaddr_in *);
 
-	if (nam->m_len != sizeof(*addr))
-		return (EINVAL);
 	if (IFNET_EMPTY())
 		return (EADDRNOTAVAIL);
 	if (addr->sin_family != AF_INET)
@@ -547,7 +539,7 @@ rip_detach(struct socket *so)
 }
 
 static int
-rip_accept(struct socket *so, struct mbuf *nam)
+rip_accept(struct socket *so, struct sockaddr *nam)
 {
 	KASSERT(solocked(so));
 
@@ -557,23 +549,22 @@ rip_accept(struct socket *so, struct mbuf *nam)
 }
 
 static int
-rip_bind(struct socket *so, struct mbuf *nam, struct lwp *l)
+rip_bind(struct socket *so, struct sockaddr *nam, struct lwp *l)
 {
 	struct inpcb *inp = sotoinpcb(so);
-	struct sockaddr_in *addr;
+	struct sockaddr_in *addr = (struct sockaddr_in *)nam;
 	int error = 0;
 	int s;
+	struct ifaddr *ia;
 
 	KASSERT(solocked(so));
 	KASSERT(inp != NULL);
 	KASSERT(nam != NULL);
 
+	if (addr->sin_len != sizeof(*addr))
+		return EINVAL;
+
 	s = splsoftnet();
-	addr = mtod(nam, struct sockaddr_in *);
-	if (nam->m_len != sizeof(*addr)) {
-		error = EINVAL;
-		goto release;
-	}
 	if (IFNET_EMPTY()) {
 		error = EADDRNOTAVAIL;
 		goto release;
@@ -582,11 +573,19 @@ rip_bind(struct socket *so, struct mbuf *nam, struct lwp *l)
 		error = EAFNOSUPPORT;
 		goto release;
 	}
-	if (!in_nullhost(addr->sin_addr) &&
-	    ifa_ifwithaddr(sintosa(addr)) == 0) {
+	if ((ia = ifa_ifwithaddr(sintosa(addr))) == 0 &&
+	    !in_nullhost(addr->sin_addr))
+	{
 		error = EADDRNOTAVAIL;
 		goto release;
 	}
+        if (ia && ((struct in_ifaddr *)ia)->ia4_flags &
+	            (IN6_IFF_NOTREADY | IN_IFF_DETACHED))
+	{
+		error = EADDRNOTAVAIL;
+		goto release;
+	}
+
 	inp->inp_laddr = addr->sin_addr;
 
 release:
@@ -603,7 +602,7 @@ rip_listen(struct socket *so, struct lwp *l)
 }
 
 static int
-rip_connect(struct socket *so, struct mbuf *nam, struct lwp *l)
+rip_connect(struct socket *so, struct sockaddr *nam, struct lwp *l)
 {
 	struct inpcb *inp = sotoinpcb(so);
 	int error = 0;
@@ -614,7 +613,7 @@ rip_connect(struct socket *so, struct mbuf *nam, struct lwp *l)
 	KASSERT(nam != NULL);
 
 	s = splsoftnet();
-	error = rip_connect_pcb(inp, nam);
+	error = rip_connect_pcb(inp, (struct sockaddr_in *)nam);
 	if (! error)
 		soisconnected(so);
 	splx(s);
@@ -690,7 +689,7 @@ rip_stat(struct socket *so, struct stat *ub)
 }
 
 static int
-rip_peeraddr(struct socket *so, struct mbuf *nam)
+rip_peeraddr(struct socket *so, struct sockaddr *nam)
 {
 	int s;
 
@@ -699,14 +698,14 @@ rip_peeraddr(struct socket *so, struct mbuf *nam)
 	KASSERT(nam != NULL);
 
 	s = splsoftnet();
-	in_setpeeraddr(sotoinpcb(so), nam);
+	in_setpeeraddr(sotoinpcb(so), (struct sockaddr_in *)nam);
 	splx(s);
 
 	return 0;
 }
 
 static int
-rip_sockaddr(struct socket *so, struct mbuf *nam)
+rip_sockaddr(struct socket *so, struct sockaddr *nam)
 {
 	int s;
 
@@ -715,7 +714,7 @@ rip_sockaddr(struct socket *so, struct mbuf *nam)
 	KASSERT(nam != NULL);
 
 	s = splsoftnet();
-	in_setsockaddr(sotoinpcb(so), nam);
+	in_setsockaddr(sotoinpcb(so), (struct sockaddr_in *)nam);
 	splx(s);
 
 	return 0;
@@ -738,7 +737,7 @@ rip_recvoob(struct socket *so, struct mbuf *m, int flags)
 }
 
 static int
-rip_send(struct socket *so, struct mbuf *m, struct mbuf *nam,
+rip_send(struct socket *so, struct mbuf *m, struct sockaddr *nam,
     struct mbuf *control, struct lwp *l)
 {
 	struct inpcb *inp = sotoinpcb(so);
@@ -765,7 +764,7 @@ rip_send(struct socket *so, struct mbuf *m, struct mbuf *nam,
 			error = EISCONN;
 			goto die;
 		}
-		error = rip_connect_pcb(inp, nam);
+		error = rip_connect_pcb(inp, (struct sockaddr_in *)nam);
 		if (error) {
 		die:
 			m_freem(m);
@@ -813,40 +812,6 @@ rip_purgeif(struct socket *so, struct ifnet *ifp)
 	return 0;
 }
 
-int
-rip_usrreq(struct socket *so, int req, struct mbuf *m, struct mbuf *nam,
-    struct mbuf *control, struct lwp *l)
-{
-	KASSERT(req != PRU_ATTACH);
-	KASSERT(req != PRU_DETACH);
-	KASSERT(req != PRU_ACCEPT);
-	KASSERT(req != PRU_BIND);
-	KASSERT(req != PRU_LISTEN);
-	KASSERT(req != PRU_CONNECT);
-	KASSERT(req != PRU_CONNECT2);
-	KASSERT(req != PRU_DISCONNECT);
-	KASSERT(req != PRU_SHUTDOWN);
-	KASSERT(req != PRU_ABORT);
-	KASSERT(req != PRU_CONTROL);
-	KASSERT(req != PRU_SENSE);
-	KASSERT(req != PRU_PEERADDR);
-	KASSERT(req != PRU_SOCKADDR);
-	KASSERT(req != PRU_RCVD);
-	KASSERT(req != PRU_RCVOOB);
-	KASSERT(req != PRU_SEND);
-	KASSERT(req != PRU_SENDOOB);
-	KASSERT(req != PRU_PURGEIF);
-
-	KASSERT(solocked(so));
-
-	if (sotoinpcb(so) == NULL)
-		return EINVAL;
-
-	panic("rip_usrreq");
-
-	return 0;
-}
-
 PR_WRAP_USRREQS(rip)
 #define	rip_attach	rip_attach_wrapper
 #define	rip_detach	rip_detach_wrapper
@@ -867,7 +832,6 @@ PR_WRAP_USRREQS(rip)
 #define	rip_send	rip_send_wrapper
 #define	rip_sendoob	rip_sendoob_wrapper
 #define	rip_purgeif	rip_purgeif_wrapper
-#define	rip_usrreq	rip_usrreq_wrapper
 
 const struct pr_usrreqs rip_usrreqs = {
 	.pr_attach	= rip_attach,
@@ -889,7 +853,6 @@ const struct pr_usrreqs rip_usrreqs = {
 	.pr_send	= rip_send,
 	.pr_sendoob	= rip_sendoob,
 	.pr_purgeif	= rip_purgeif,
-	.pr_generic	= rip_usrreq,
 };
 
 static void

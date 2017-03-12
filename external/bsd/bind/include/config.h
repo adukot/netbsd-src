@@ -181,14 +181,15 @@ int sigwait(const unsigned int *set, int *sig);
 /* Define to enable "rrset-order fixed" syntax. */
 #define DNS_RDATASET_FIXED 1
 
+/* Define to enable the "fetches-per-server" and "fetches-per-zone" options.
+   */
+#define ENABLE_FETCHLIMIT 1
+
 /* Define to enable rpz-nsdname rules. */
 #define ENABLE_RPZ_NSDNAME 1
 
 /* Define to enable rpz-nsip rules. */
 #define ENABLE_RPZ_NSIP 1
-
-/* Define to enable 'sit' support. */
-#define ENABLE_SIT 1
 
 /* Solaris hack to get select_large_fdset. */
 /* #undef FD_SETSIZE */
@@ -201,9 +202,6 @@ int sigwait(const unsigned int *set, int *sig);
    instead. Don't use 'offsetof (struct s, d[0])', as this doesn't work with
    MSVC and with C++ compilers. */
 #define FLEXIBLE_ARRAY_MEMBER /**/
-
-/* Define to 1 if you have the `AES_encrypt' function. */
-#define HAVE_AES_ENCRYPT 1
 
 /* Define to 1 if you have the `chroot' function. */
 #define HAVE_CHROOT 1
@@ -238,6 +236,12 @@ int sigwait(const unsigned int *set, int *sig);
 /* Define to 1 if you have the <fcntl.h> header file. */
 #define HAVE_FCNTL_H 1
 
+/* Define to 1 if you have the `fseeko' function. */
+#define HAVE_FSEEKO 1
+
+/* Define to 1 if you have the `ftello' function. */
+#define HAVE_FTELLO 1
+
 /* Build with GeoIP support */
 /* #undef HAVE_GEOIP */
 
@@ -246,6 +250,9 @@ int sigwait(const unsigned int *set, int *sig);
 
 /* Build with GeoIP Country IPv6 support */
 /* #undef HAVE_GEOIP_V6 */
+
+/* Define to use gperftools CPU profiler. */
+/* #undef HAVE_GPERFTOOLS_PROFILER */
 
 /* Define to 1 if you have the <gssapi/gssapi.h> header file. */
 #define HAVE_GSSAPI_GSSAPI_H 1
@@ -259,7 +266,7 @@ int sigwait(const unsigned int *set, int *sig);
 /* Define to 1 if you have the <gssapi_krb5.h> header file. */
 /* #undef HAVE_GSSAPI_KRB5_H */
 
-/* Define to 1 if you have the `if_nametoindex' function. */
+/* Define to 1 if you have the if_nametoindex function. */
 #define HAVE_IF_NAMETOINDEX 1
 
 /* Define to 1 if you have the <inttypes.h> header file. */
@@ -267,6 +274,9 @@ int sigwait(const unsigned int *set, int *sig);
 
 /* Define if libjson was found */
 /* #undef HAVE_JSON */
+
+/* Define if json-c was found */
+/* #undef HAVE_JSON_C */
 
 /* Define to 1 if you have the <kerberosv5/krb5.h> header file. */
 /* #undef HAVE_KERBEROSV5_KRB5_H */
@@ -460,6 +470,9 @@ int sigwait(const unsigned int *set, int *sig);
 /* Define to 1 if you have the `usleep' function. */
 #define HAVE_USLEEP 1
 
+/* HMAC_*() return ints */
+/* #undef HMAC_RETURN_INT */
+
 /* Use HMAC-SHA1 for Source Identity Token generation */
 /* #undef HMAC_SHA1_SIT */
 
@@ -474,6 +487,9 @@ int sigwait(const unsigned int *set, int *sig);
 
 /* Define to the flags type used by getnameinfo(3). */
 #define IRS_GETNAMEINFO_FLAGS_T int
+
+/* Define to the sockaddr length type used by getnameinfo(3). */
+#define IRS_GETNAMEINFO_SOCKLEN_T socklen_t
 
 /* Define to allow building of objects for dlopen(). */
 #define ISC_DLZ_DLOPEN 1
@@ -529,6 +545,9 @@ int sigwait(const unsigned int *set, int *sig);
 /* Defined if you need to use ioctl(FIONBIO) instead a fcntl call to make
    non-blocking. */
 /* #undef USE_FIONBIO_IOCTL */
+
+/* Define to enable very verbose query trace logging. */
+#define WANT_QUERYTRACE 1
 
 /* define if idnkit support is to be included. */
 /* #undef WITH_IDN */

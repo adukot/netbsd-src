@@ -1,4 +1,4 @@
-/*	$NetBSD: evutil_rand.c,v 1.2 2014/12/19 20:43:18 christos Exp $	*/
+/*	$NetBSD: evutil_rand.c,v 1.4 2016/01/08 21:35:40 christos Exp $	*/
 
 /*
  * Copyright (c) 2007-2012 Niels Provos and Nick Mathewson

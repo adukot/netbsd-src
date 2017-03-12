@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2014, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -116,7 +116,7 @@ const char                  *PolarityDecode[] =
  * RETURN:      None
  *
  * DESCRIPTION: External interface.
- *              Create and open the mapfile and emit all of the collected
+ *              Map file has already been opened. Emit all of the collected
  *              hardware mapping information. Includes: GPIO information,
  *              Serial information, and a dump of the entire ACPI device tree.
  *
@@ -126,8 +126,6 @@ void
 MpEmitMappingInfo (
     void)
 {
-    char                    *NewFilename;
-
 
     /* Mapfile option enabled? */
 
@@ -135,22 +133,6 @@ MpEmitMappingInfo (
     {
         return;
     }
-
-    /* Create/Open a map file */
-
-    NewFilename = FlGenerateFilename (Gbl_OutputFilenamePrefix,
-        FILE_SUFFIX_MAP);
-    if (!NewFilename)
-    {
-        AslCommonError (ASL_ERROR, ASL_MSG_LISTING_FILENAME,
-            0, 0, 0, 0, NULL, NULL);
-    }
-
-    /* Open the hex file, text mode (closed at compiler exit) */
-
-    FlOpenFile (ASL_FILE_MAP_OUTPUT, NewFilename, "w+t");
-    AslCompilerSignon (ASL_FILE_MAP_OUTPUT);
-    AslCompilerFileHeader (ASL_FILE_MAP_OUTPUT);
 
     if (!Gbl_GpioList)
     {
@@ -225,7 +207,7 @@ MpEmitGpioInfo (
         /* Print header info for the controller itself */
 
         if (!PrevDeviceName ||
-            ACPI_STRCMP (PrevDeviceName, Info->DeviceName))
+            strcmp (PrevDeviceName, Info->DeviceName))
         {
             FlPrintFile (ASL_FILE_MAP_OUTPUT,
                 "\n\nGPIO Controller:  %-8s  %-28s",
@@ -378,7 +360,7 @@ MpEmitSerialInfo (
         /* Print header info for the controller itself */
 
         if (!PrevDeviceName ||
-            ACPI_STRCMP (PrevDeviceName, Info->DeviceName))
+            strcmp (PrevDeviceName, Info->DeviceName))
         {
             FlPrintFile (ASL_FILE_MAP_OUTPUT, "\n\n%s Controller:  ",
                 Type);
@@ -471,7 +453,7 @@ MpEmitDeviceTree (
     /* Walk the namespace from the root */
 
     (void) AcpiNsWalkNamespace (ACPI_TYPE_DEVICE, ACPI_ROOT_OBJECT,
-            ACPI_UINT32_MAX, FALSE, MpEmitOneDevice, NULL, NULL, NULL);
+        ACPI_UINT32_MAX, FALSE, MpEmitOneDevice, NULL, NULL, NULL);
 }
 
 
@@ -551,7 +533,7 @@ MpXrefDevices (
 
     /* Walk the entire parse tree */
 
-    TrWalkParseTree (RootNode, ASL_WALK_VISIT_DOWNWARD,
+    TrWalkParseTree (Gbl_ParseTreeRoot, ASL_WALK_VISIT_DOWNWARD,
         MpNamespaceXrefBegin, NULL, Info);
 
     if (!Info->References)
@@ -630,9 +612,6 @@ MpNamespaceXrefBegin (
 
     if (Op->Asl.Node == Info->TargetNode)
     {
-        DevicePathname = AcpiNsGetExternalPathname (
-            Info->TargetNode);
-
         while (ParentOp && (!ParentOp->Asl.Node))
         {
             ParentOp = ParentOp->Asl.Parent;
@@ -654,6 +633,8 @@ MpNamespaceXrefBegin (
                 DevicePathname, HidString);
 
             Info->References++;
+
+            ACPI_FREE (DevicePathname);
         }
     }
 

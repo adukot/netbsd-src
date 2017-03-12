@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.142 2014/11/10 21:15:19 christos Exp $
+#	$NetBSD: Makefile,v 1.165 2015/12/26 01:00:01 pgoyette Exp $
 
 .include <bsd.own.mk>
 
@@ -16,6 +16,7 @@ SUBDIR+=	ccd
 SUBDIR+=	cd9660
 SUBDIR+=	cgd
 SUBDIR+=	chfs
+SUBDIR+=	clockctl
 SUBDIR+=	crypto
 SUBDIR+=	coda
 SUBDIR+=	coda5
@@ -25,6 +26,7 @@ SUBDIR+=	coredump
 SUBDIR+=	dbcool
 SUBDIR+=	des
 SUBDIR+=	dk_subr
+SUBDIR+=	drvctl
 SUBDIR+=	efs
 SUBDIR+=	ext2fs
 SUBDIR+=	exec_script
@@ -40,6 +42,7 @@ SUBDIR+=	gpioow
 SUBDIR+=	gpiosim
 SUBDIR+=	hfs
 SUBDIR+=	hythygtemp
+SUBDIR+=	i2cexec
 SUBDIR+=	if_axe
 SUBDIR+=	if_axen
 SUBDIR+=	if_npflog
@@ -79,6 +82,7 @@ SUBDIR+=	procfs
 SUBDIR+=	ptyfs
 SUBDIR+=	puffs
 SUBDIR+=	putter
+SUBDIR+=	raid
 SUBDIR+=	scsiverbose
 SUBDIR+=	sdtemp
 SUBDIR+=	secmodel_bsd44
@@ -88,10 +92,17 @@ SUBDIR+=	securelevel
 SUBDIR+=	skipjack
 SUBDIR+=	smbfs
 SUBDIR+=	spdmem
+SUBDIR+=	sysmon
+SUBDIR+=	sysmon_envsys
+SUBDIR+=	sysmon_power
+SUBDIR+=	sysmon_taskq
+SUBDIR+=	sysmon_wdog
 SUBDIR+=	sysvbfs
+SUBDIR+=	sysv_ipc
 SUBDIR+=	suser
 SUBDIR+=	swcrypto
 SUBDIR+=	swsensor
+SUBDIR+=	swwdog
 SUBDIR+=	tmpfs
 SUBDIR+=	uatp
 SUBDIR+=	udf
@@ -101,6 +112,7 @@ SUBDIR+=	usbverbose
 SUBDIR+=	vcoda
 SUBDIR+=	v7fs
 SUBDIR+=	vnd
+SUBDIR+=	wapbl
 SUBDIR+=	zlib
 SUBDIR+=	tprof
 .if (defined(NOTYET))
@@ -135,10 +147,12 @@ SUBDIR+=	coretemp
 SUBDIR+=	est
 SUBDIR+=	hdafg
 SUBDIR+=	hdaudio
+SUBDIR+=	hdaudio_pci
 SUBDIR+=	hdaudioverbose
 SUBDIR+=	hpet
 SUBDIR+=	odcm
 SUBDIR+=	powernow
+SUBDIR+=	tco
 SUBDIR+=	tprof_pmi
 SUBDIR+=	tprof_amdpmi
 SUBDIR+=	vmt
@@ -195,9 +209,20 @@ SUBDIR+=	wmihp
 SUBDIR+=	wmimsi
 .endif
 
+.if ${MACHINE_CPU} == "arm" \
+    || (!empty(MACHINE_ARCH:Mmips64*) && !defined(BSD_MK_COMPAT_FILE))
+SUBDIR+=	compat_netbsd32
+SUBDIR+=	compat_netbsd32_nfssrv
+SUBDIR+=	compat_netbsd32_mqueue
+SUBDIR+=	compat_netbsd32_sysvipc
+.endif
+
 .if ${MACHINE_ARCH} == "x86_64"
 SUBDIR+=	compat_linux32
 SUBDIR+=	compat_netbsd32
+SUBDIR+=	compat_netbsd32_nfssrv
+SUBDIR+=	compat_netbsd32_mqueue
+SUBDIR+=	compat_netbsd32_sysvipc
 .endif
 
 .if ${MACHINE_ARCH} == "i386"
@@ -216,6 +241,7 @@ SUBDIR+=	sisdrm
 SUBDIR+=	tdfxdrm
 SUBDIR+=	viac7temp
 SUBDIR+=	viadrm
+SUBDIR+=	viadrmums
 .endif
 
 .if ${MACHINE_ARCH} == "i386" || \
@@ -309,10 +335,13 @@ SUBDIR+=	auvitek
 SUBDIR+=	coram
 SUBDIR+=	cxdtv
 SUBDIR+=	emdtv
+SUBDIR+=	spkr
 .endif
 
 .if (${MKISCSI} != "no")
 SUBDIR+=	iscsi
 .endif
+
+SUBDIR+=	examples	# build these regularly to avoid bit-rot
 
 .include <bsd.subdir.mk>

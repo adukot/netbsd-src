@@ -1,8 +1,8 @@
-/* $NetBSD: defs.h,v 1.14 2015/01/30 10:20:43 roy Exp $ */
+/* $NetBSD: defs.h,v 1.27 2016/05/09 10:15:59 roy Exp $ */
 
 /*
  * dhcpcd - DHCP client daemon
- * Copyright (c) 2006-2015 Roy Marples <roy@marples.name>
+ * Copyright (c) 2006-2016 Roy Marples <roy@marples.name>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,7 +30,7 @@
 #define CONFIG_H
 
 #define PACKAGE			"dhcpcd"
-#define VERSION			"6.7.1"
+#define VERSION			"6.11.0"
 
 #ifndef CONFIG
 # define CONFIG			SYSCONFDIR "/" PACKAGE ".conf"
@@ -48,10 +48,10 @@
 # define SECRET			SYSCONFDIR "/" PACKAGE ".secret"
 #endif
 #ifndef LEASEFILE
-# define LEASEFILE		DBDIR "/" PACKAGE "-%s.lease"
+# define LEASEFILE		DBDIR "/" PACKAGE "-%s%s.lease"
 #endif
 #ifndef LEASEFILE6
-# define LEASEFILE6		DBDIR "/" PACKAGE "-%s%s.lease6"
+# define LEASEFILE6		LEASEFILE "6"
 #endif
 #ifndef PIDFILE
 # define PIDFILE		RUNDIR "/" PACKAGE "%s%s%s.pid"

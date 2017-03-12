@@ -1,4 +1,4 @@
-/*	$NetBSD: midirecord.c,v 1.6 2015/01/03 22:57:54 joerg Exp $	*/
+/*	$NetBSD: midirecord.c,v 1.10 2015/09/23 05:31:01 mrg Exp $	*/
 
 /*
  * Copyright (c) 2014 Matthew R. Green
@@ -33,7 +33,7 @@
 #include <sys/cdefs.h>
 
 #ifndef lint
-__RCSID("$NetBSD: midirecord.c,v 1.6 2015/01/03 22:57:54 joerg Exp $");
+__RCSID("$NetBSD: midirecord.c,v 1.10 2015/09/23 05:31:01 mrg Exp $");
 #endif
 
 #include <sys/param.h>
@@ -72,8 +72,10 @@ static ssize_t	data_size;
 static struct timeval record_time;
 static struct timeval start_time;
 static int	tempo = 120;
+static unsigned	round_beats = 1;
 static unsigned	notes_per_beat = 24;
 static bool ignore_timer_fail = false;
+static bool stdout_mode = false;
 
 static void debug_log(const char *, size_t, const char *, ...)
     __printflike(3, 4);
@@ -121,7 +123,7 @@ main(int argc, char *argv[])
 			    "channels");
 			break;
 		case 'D':
-			debug++;
+			debug = true;
 			break;
 		case 'd':
 			parse_ints(optarg, &filt_devnos, &num_filt_devnos,
@@ -142,6 +144,11 @@ main(int argc, char *argv[])
 			break;
 		case 'r':
 			raw_output = optarg;
+			break;
+		case 'R':
+			decode_uint(optarg, &round_beats);
+			if (round_beats == 0)
+				errx(1, "-R <round_beats> must be a positive integer");
 			break;
 		case 't':
 			no_time_limit = 0;
@@ -191,8 +198,10 @@ main(int argc, char *argv[])
 		outfd = open(*argv, mode, 0666);
 		if (outfd < 0)
 			err(1, "could not open %s", *argv);
-	} else
+	} else {
+		stdout_mode = true;
 		outfd = STDOUT_FILENO;
+	}
 
 	/* open the raw output file */
 	if (raw_output) {
@@ -234,7 +243,7 @@ main(int argc, char *argv[])
 	data_size = 0;
 
 	if (verbose)
-		fprintf(stderr, "tempo=%d notes_per_beat=%d\n",
+		fprintf(stderr, "tempo=%d notes_per_beat=%u\n",
 		   tempo, notes_per_beat);
 
 	if (!no_time_limit && verbose)
@@ -279,7 +288,7 @@ debug_log(const char *file, size_t line, const char *fmt, ...)
 
 	if (!debug)
 		return;
-	fprintf(stderr, "%s:%zd: ", file, line);
+	fprintf(stderr, "%s:%zu: ", file, line);
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);
 	va_end(ap);
@@ -298,7 +307,7 @@ midi_event_local_to_output(seq_event_t e, u_char *buffer, size_t bufsize)
 {
 	size_t	size = 0;
 
-	LOG("UNHANDLED SEQ_COCAL");
+	LOG("UNHANDLED SEQ_LOCAL");
 
 	return size;
 }
@@ -313,6 +322,7 @@ midi_event_timer_wait_abs_to_output(
 	size_t bufsize)
 {
 	static unsigned prev_div;
+	static int prev_leftover;
 	unsigned cur_div;
 	unsigned val = 0, xdiv;
 	int vallen = 0, i;
@@ -321,7 +331,15 @@ midi_event_timer_wait_abs_to_output(
 		prev_div = e.t_WAIT_ABS.divisions;
 	cur_div = e.t_WAIT_ABS.divisions;
 
-	xdiv = cur_div - prev_div;
+	xdiv = cur_div - prev_div + prev_leftover;
+	if (round_beats != 1) {
+		// round to closest
+		prev_leftover = xdiv % round_beats;
+		xdiv -= prev_leftover;
+		if (verbose)
+			fprintf(stderr, "adjusted beat value to %x (leftover = %d)\n",
+			    xdiv, prev_leftover);
+	}
 	if (xdiv) {
 		while (xdiv) {
 			uint32_t extra = val ? 0x80 : 0;
@@ -711,7 +729,7 @@ rewrite_header(void)
 {
 
 	/* can't do this here! */
-	if (outfd == STDOUT_FILENO)
+	if (stdout_mode)
 		return;
 
 	if (lseek(outfd, (off_t)0, SEEK_SET) == (off_t)-1)
@@ -734,7 +752,7 @@ write_midi_header(void)
 		0, 0, /* ntracks */
 		0, 0, /* notes per beat */
 	};
-	/* XXX only spport one track so far */
+	/* XXX only support one track so far */
 	unsigned ntracks = 1;
 	unsigned char track[] = {
 		'M', 'T', 'r', 'k',

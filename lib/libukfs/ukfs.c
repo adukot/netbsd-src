@@ -1,4 +1,4 @@
-/*	$NetBSD: ukfs.c,v 1.57 2011/02/22 15:42:15 pooka Exp $	*/
+/*	$NetBSD: ukfs.c,v 1.59 2016/01/25 11:45:57 pooka Exp $	*/
 
 /*
  * Copyright (c) 2007, 2008, 2009  Antti Kantee.  All Rights Reserved.
@@ -61,6 +61,7 @@
 #include <rump/ukfs.h>
 
 #include <rump/rump.h>
+#include <rump/rumpvnode_if.h>
 #include <rump/rump_syscalls.h>
 
 #include "ukfs_int_disklabel.h"
@@ -182,9 +183,9 @@ _ukfs_init(int version)
 	int rv;
 
 	if (version != UKFS_VERSION) {
-		printf("incompatible ukfs version, %d vs. %d\n",
-		    version, UKFS_VERSION);
 		errno = EPROGMISMATCH;
+		warn("incompatible ukfs version, %d vs. %d",
+		    version, UKFS_VERSION);
 		return -1;
 	}
 
@@ -213,8 +214,8 @@ ukfs_part_probe(char *devpath, struct ukfs_part **partp)
 	int devfd = -1;
 
 	if ((p = strstr(devpath, UKFS_PARTITION_SCANMAGIC)) != NULL) {
-		fprintf(stderr, "ukfs: %%PART is deprecated.  use "
-		    "%%DISKLABEL instead\n");
+		warnx("ukfs: %%PART is deprecated.  use "
+		    "%%DISKLABEL instead");
 		errno = ENODEV;
 		return -1;
 	}
@@ -1152,7 +1153,7 @@ ukfs_modload(const char *fname)
 		const char *dlmsg = dlerror();
 		if (strstr(dlmsg, "Undefined symbol"))
 			return 0;
-		warnx("dlopen %s failed: %s\n", fname, dlmsg);
+		warnx("dlopen %s failed: %s", fname, dlmsg);
 		/* XXXerrno */
 		return -1;
 	}

@@ -1,5 +1,5 @@
 /*	$KAME: dccp_tfrc.c,v 1.16 2006/03/01 17:34:08 nishida Exp $	*/
-/*	$NetBSD: dccp_tfrc.c,v 1.1 2015/02/10 19:11:52 rjs Exp $ */
+/*	$NetBSD: dccp_tfrc.c,v 1.3 2016/04/26 08:44:44 ozaki-r Exp $ */
 
 /*
  * Copyright (c) 2003  Nils-Erik Mattsson
@@ -32,9 +32,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: dccp_tfrc.c,v 1.1 2015/02/10 19:11:52 rjs Exp $");
+__KERNEL_RCSID(0, "$NetBSD: dccp_tfrc.c,v 1.3 2016/04/26 08:44:44 ozaki-r Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_dccp.h"
+#endif
 
 /*
  * This implementation conforms to the drafts of DCCP dated Mars 2003.
@@ -62,7 +64,6 @@ __KERNEL_RCSID(0, "$NetBSD: dccp_tfrc.c,v 1.1 2015/02/10 19:11:52 rjs Exp $");
 #include <sys/callout.h>
 
 #include <net/if.h>
-#include <net/route.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>

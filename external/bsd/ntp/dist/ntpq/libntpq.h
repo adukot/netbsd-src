@@ -1,4 +1,4 @@
-/*	$NetBSD: libntpq.h,v 1.2 2014/12/19 20:43:18 christos Exp $	*/
+/*	$NetBSD: libntpq.h,v 1.5 2016/01/08 21:35:40 christos Exp $	*/
 
 /*****************************************************************************
  *
@@ -38,7 +38,7 @@
 #define NTP_STATUS_INVALID      0
 #define NTP_STATUS_FALSETICKER  1
 #define NTP_STATUS_EXCESS       2
-#define NTP_STATUS_OUTLYER      3
+#define NTP_STATUS_OUTLIER      3
 #define NTP_STATUS_CANDIDATE    4
 #define NTP_STATUS_SELECTED     5
 #define NTP_STATUS_SYSPEER      6
@@ -108,4 +108,4 @@ extern int ntpq_read_assoc_clockvars( associd_t associd, char *resultbuf, int ma
 extern int ntpq_dogetassoc(void);
 extern char ntpq_decodeaddrtype(sockaddr_u *sock);
 extern int ntpq_doquerylist(struct ntpq_varlist *, int, associd_t, int,
-			    u_short *, int *, const char **datap);
+			    u_short *, size_t *, const char **datap);

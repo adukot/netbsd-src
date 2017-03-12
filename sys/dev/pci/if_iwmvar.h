@@ -1,5 +1,5 @@
-/*	$NetBSD: if_iwmvar.h,v 1.3 2015/02/13 18:57:47 nonaka Exp $	*/
-/*	OpenBSD: if_iwmvar.h,v 1.3 2015/02/07 07:10:44 phessler Exp 	*/
+/*	$NetBSD: if_iwmvar.h,v 1.9 2015/11/06 14:22:17 nonaka Exp $	*/
+/*	OpenBSD: if_iwmvar.h,v 1.7 2015/03/02 13:51:10 jsg Exp 	*/
 
 /*
  * Copyright (c) 2014 genua mbh <info@genua.de>
@@ -167,7 +167,7 @@ struct iwm_fw_info {
 		struct iwm_fw_onesect {
 			void *fws_data;
 			uint32_t fws_len;
-			uint32_t fws_devoff; 
+			uint32_t fws_devoff;
 
 			void *fws_alloc;
 			size_t fws_allocsize;
@@ -287,17 +287,18 @@ struct iwm_rx_ring {
 	int			cur;
 };
 
-#define IWM_FLAG_USE_ICT	0x01
-#define IWM_FLAG_HW_INITED	0x02
-#define IWM_FLAG_STOPPED	0x04
-#define IWM_FLAG_RFKILL		0x08
-#define IWM_FLAG_BUSY		0x10
-#define IWM_FLAG_ATTACHED	0x20
+#define IWM_FLAG_USE_ICT	__BIT(0)
+#define IWM_FLAG_HW_INITED	__BIT(1)
+#define IWM_FLAG_STOPPED	__BIT(2)
+#define IWM_FLAG_RFKILL		__BIT(3)
+#define IWM_FLAG_BUSY		__BIT(4)
+#define IWM_FLAG_ATTACHED	__BIT(5)
+#define IWM_FLAG_FW_LOADED	__BIT(6)
 
 struct iwm_ucode_status {
 	uint32_t uc_error_event_table;
 	uint32_t uc_log_event_table;
-	
+
 	int uc_ok;
 	int uc_intr;
 };
@@ -321,8 +322,8 @@ enum IWM_CMD_MODE {
 	IWM_CMD_SEND_IN_RFKILL	= (1 << 2),
 };
 enum iwm_hcmd_dataflag {
-        IWM_HCMD_DFL_NOCOPY     = (1 << 0),
-        IWM_HCMD_DFL_DUP        = (1 << 1),
+	IWM_HCMD_DFL_NOCOPY     = (1 << 0),
+	IWM_HCMD_DFL_DUP        = (1 << 1),
 };
 
 /*
@@ -376,6 +377,7 @@ struct iwm_softc {
 
 	bus_space_tag_t sc_st;
 	bus_space_handle_t sc_sh;
+	pci_intr_handle_t *sc_pihp;
 
 	bus_size_t sc_sz;
 	bus_dma_tag_t sc_dmat;
@@ -388,14 +390,14 @@ struct iwm_softc {
 	struct iwm_dma_info		sched_dma;
 	uint32_t			sched_base;
 
-        /* TX/RX rings. */
+	/* TX/RX rings. */
 	struct iwm_tx_ring txq[IWM_MVM_MAX_QUEUES];
 	struct iwm_rx_ring rxq;
 	int qfullmsk;
 
 	int sc_sf_state;
 
-        /* ICT table. */
+	/* ICT table. */
 	struct iwm_dma_info	ict_dma;
 	int			ict_cur;
 
@@ -472,6 +474,10 @@ struct iwm_softc {
 
 	struct iwm_notif_statistics sc_stats;
 	int sc_noise;
+
+	int host_interrupt_operation_mode;
+
+	struct sysctllog *sc_clog;
 
 	struct bpf_if *		sc_drvbpf;
 

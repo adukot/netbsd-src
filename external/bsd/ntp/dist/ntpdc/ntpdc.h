@@ -1,4 +1,4 @@
-/*	$NetBSD: ntpdc.h,v 1.4 2014/12/19 20:43:18 christos Exp $	*/
+/*	$NetBSD: ntpdc.h,v 1.7 2016/01/08 21:35:39 christos Exp $	*/
 
 /*
  * ntpdc.h - definitions of interest to ntpdc
@@ -65,5 +65,5 @@ extern	int impl_ver;
 extern	int showhostnames;
 extern	int s_port;
 
-extern	int	doquery	(int, int, int, int, int, char *, int *, int *, char **, int, int);
+extern	int	doquery	(int, int, int, size_t, size_t, const char *, size_t *, size_t *, const char **, int, int);
 extern	const char * nntohost	(sockaddr_u *);

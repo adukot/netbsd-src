@@ -1,4 +1,4 @@
-/*	$NetBSD: bwi.c,v 1.25 2015/01/07 07:05:48 ozaki-r Exp $	*/
+/*	$NetBSD: bwi.c,v 1.27 2016/03/02 19:26:15 christos Exp $	*/
 /*	$OpenBSD: bwi.c,v 1.74 2008/02/25 21:13:30 mglocker Exp $	*/
 
 /*
@@ -48,7 +48,7 @@
 
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: bwi.c,v 1.25 2015/01/07 07:05:48 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: bwi.c,v 1.27 2016/03/02 19:26:15 christos Exp $");
 
 #include <sys/param.h>
 #include <sys/callout.h>
@@ -3782,7 +3782,7 @@ bwi_set_gains(struct bwi_mac *mac, const struct bwi_gains *gains)
 		bwi_tbl_write_2(mac, tbl_gain_ofs2 + i, tbl_gain);
 	}
 
-	if (gains == NULL || (gains != NULL && gains->phy_gain != -1)) {
+	if (gains == NULL || gains->phy_gain != -1) {
 		uint16_t phy_gain1, phy_gain2;
 
 		if (gains != NULL) {
@@ -9140,7 +9140,6 @@ bwi_encap(struct bwi_softc *sc, int idx, struct mbuf *m,
 
 		MGETHDR(m_new, M_DONTWAIT, MT_DATA);
 		if (m_new == NULL) {
-			m_freem(m);
 			error = ENOBUFS;
 			aprint_error_dev(sc->sc_dev,
 			    "can't defrag TX buffer (1)\n");
@@ -9151,7 +9150,6 @@ bwi_encap(struct bwi_softc *sc, int idx, struct mbuf *m,
 		if (m->m_pkthdr.len > MHLEN) {
 			MCLGET(m_new, M_DONTWAIT);
 			if (!(m_new->m_flags & M_EXT)) {
-				m_freem(m);
 				m_freem(m_new);
 				error = ENOBUFS;
 			}

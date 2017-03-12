@@ -1,4 +1,4 @@
-/*	$NetBSD: ntpq-subs.c,v 1.8 2014/12/19 20:43:18 christos Exp $	*/
+/*	$NetBSD: ntpq-subs.c,v 1.14 2016/05/01 23:32:01 christos Exp $	*/
 
 /*
  * ntpq-subs.c - subroutines which are called to perform ntpq commands.
@@ -24,9 +24,9 @@ static	struct varlist *findlistvar (struct varlist *, char *);
 static	void	doaddvlist	(struct varlist *, const char *);
 static	void	dormvlist	(struct varlist *, const char *);
 static	void	doclearvlist	(struct varlist *);
-static	void	makequerydata	(struct varlist *, int *, char *);
+static	void	makequerydata	(struct varlist *, size_t *, char *);
 static	int	doquerylist	(struct varlist *, int, associd_t, int,
-				 u_short *, int *, const char **);
+				 u_short *, size_t *, const char **);
 static	void	doprintvlist	(struct varlist *, FILE *);
 static	void	addvars 	(struct parse *, FILE *);
 static	void	rmvars		(struct parse *, FILE *);
@@ -58,10 +58,12 @@ static	void	authinfo	(struct parse *, FILE *);
 static	void	pstats	 	(struct parse *, FILE *);
 static	long	when		(l_fp *, l_fp *, l_fp *);
 static	char *	prettyinterval	(char *, size_t, long);
-static	int	doprintpeers	(struct varlist *, int, int, int, const char *, FILE *, int);
+static	int	doprintpeers	(struct varlist *, int, int, size_t, const char *, FILE *, int);
 static	int	dogetpeers	(struct varlist *, associd_t, FILE *, int);
 static	void	dopeers 	(int, FILE *, int);
 static	void	peers		(struct parse *, FILE *);
+static	void	doapeers 	(int, FILE *, int);
+static	void	apeers		(struct parse *, FILE *);
 static	void	lpeers		(struct parse *, FILE *);
 static	void	doopeers	(int, FILE *, int);
 static	void	opeers		(struct parse *, FILE *);
@@ -158,6 +160,9 @@ struct xcmd opcmds[] = {
 	{ "peers",  peers,      { OPT|IP_VERSION, NO, NO, NO },
 	  { "-4|-6", "", "", "" },
 	  "obtain and print a list of the server's peers [IP version]" },
+	{ "apeers",  apeers,      { OPT|IP_VERSION, NO, NO, NO },
+	  { "-4|-6", "", "", "" },
+	  "obtain and print a list of the server's peers and their assocIDs [IP version]" },
 	{ "lpeers", lpeers,     { OPT|IP_VERSION, NO, NO, NO },
 	  { "-4|-6", "", "", "" },
 	  "obtain and print a list of all peers and clients [IP version]" },
@@ -332,12 +337,15 @@ typedef struct var_display_collection_tag {
 		l_fp		lfp;	/* NTP_LFP */
 	} v;				/* retrieved value */
 } vdc;
-#define VDC_INIT(a, b, c) { .tag = a, .display = b, .type = c }
-
+#if !defined(MISSING_C99_STRUCT_INIT)
+# define VDC_INIT(a, b, c) { .tag = a, .display = b, .type = c }
+#else
+# define VDC_INIT(a, b, c) { a, b, c }
+#endif
 /*
  * other local function prototypes
  */
-void		mrulist_ctrl_c_hook(void);
+static int	mrulist_ctrl_c_hook(void);
 static mru *	add_mru(mru *);
 static int	collect_mru_list(const char *, l_fp *);
 static int	fetch_nonce(char *, size_t);
@@ -434,7 +442,7 @@ doaddvlist(
 	)
 {
 	struct varlist *vl;
-	int len;
+	size_t len;
 	char *name;
 	char *value;
 
@@ -469,7 +477,7 @@ dormvlist(
 	)
 {
 	struct varlist *vl;
-	int len;
+	size_t len;
 	char *name;
 	char *value;
 
@@ -521,14 +529,14 @@ doclearvlist(
 static void
 makequerydata(
 	struct varlist *vlist,
-	int *datalen,
+	size_t *datalen,
 	char *data
 	)
 {
 	register struct varlist *vl;
 	register char *cp, *cpend;
-	register int namelen, valuelen;
-	register int totallen;
+	register size_t namelen, valuelen;
+	register size_t totallen;
 
 	cp = data;
 	cpend = data + *datalen;
@@ -557,7 +565,7 @@ makequerydata(
 			cp += valuelen;
 		}
 	}
-	*datalen = cp - data;
+	*datalen = (size_t)(cp - data);
 }
 
 
@@ -571,12 +579,12 @@ doquerylist(
 	associd_t associd,
 	int auth,
 	u_short *rstatus,
-	int *dsize,
+	size_t *dsize,
 	const char **datap
 	)
 {
 	char data[CTL_MAX_DATA_LEN];
-	int datalen;
+	size_t datalen;
 
 	datalen = sizeof(data);
 	makequerydata(vlist, &datalen, data);
@@ -680,7 +688,7 @@ dolist(
 {
 	const char *datap;
 	int res;
-	int dsize;
+	size_t dsize;
 	u_short rstatus;
 	int quiet;
 
@@ -760,7 +768,7 @@ writelist(
 	const char *datap;
 	int res;
 	associd_t associd;
-	int dsize;
+	size_t dsize;
 	u_short rstatus;
 
 	if (pcmd->nargs == 0) {
@@ -802,8 +810,8 @@ readvar(
 	)
 {
 	associd_t	associd;
-	u_int		tmpcount;
-	u_int		u;
+	size_t		tmpcount;
+	size_t		u;
 	int		type;
 	struct varlist	tmplist[MAXLIST];
 
@@ -843,7 +851,7 @@ writevar(
 	int res;
 	associd_t associd;
 	int type;
-	int dsize;
+	size_t dsize;
 	u_short rstatus;
 	struct varlist tmplist[MAXLIST];
 
@@ -1065,7 +1073,7 @@ dogetassoc(
 	const char *datap;
 	const u_short *pus;
 	int res;
-	int dsize;
+	size_t dsize;
 	u_short rstatus;
 
 	res = doquery(CTL_OP_READSTAT, 0, 0, 0, (char *)0, &rstatus,
@@ -1085,7 +1093,7 @@ dogetassoc(
 		if (numhosts > 1)
 			fprintf(stderr, "server=%s ", currenthost);
 		fprintf(stderr,
-			"***Server returned %d octets, should be multiple of 4\n",
+			"***Server returned %zu octets, should be multiple of 4\n",
 			dsize);
 		return 0;
 	}
@@ -1196,7 +1204,7 @@ printassoc(
 				break;
 
 			case CTL_PST_SEL_SELCAND:
-				condition = "outlyer";
+				condition = "outlier";
 				break;
 
 			case CTL_PST_SEL_SYNCCAND:
@@ -1373,7 +1381,7 @@ saveconfig(
 {
 	const char *datap;
 	int res;
-	int dsize;
+	size_t dsize;
 	u_short rstatus;
 
 	if (0 == pcmd->nargs)
@@ -1390,7 +1398,7 @@ saveconfig(
 	if (0 == dsize)
 		fprintf(fp, "(no response message, curiously)");
 	else
-		fprintf(fp, "%.*s", dsize, datap);
+		fprintf(fp, "%.*s", (int)dsize, datap); /* cast is wobbly */
 }
 
 
@@ -1558,6 +1566,26 @@ struct varlist peervarlist[] = {
 	{ 0,		0 }
 };
 
+struct varlist apeervarlist[] = {
+	{ "srcadr",	0 },	/* 0 */
+	{ "refid",	0 },	/* 1 */
+	{ "assid",	0 },	/* 2 */
+	{ "stratum",	0 },	/* 3 */
+	{ "hpoll",	0 },	/* 4 */
+	{ "ppoll",	0 },	/* 5 */
+	{ "reach",	0 },	/* 6 */
+	{ "delay",	0 },	/* 7 */
+	{ "offset",	0 },	/* 8 */
+	{ "jitter",	0 },	/* 9 */
+	{ "dispersion", 0 },	/* 10 */
+	{ "rec",	0 },	/* 11 */
+	{ "reftime",	0 },	/* 12 */
+	{ "srcport",	0 },	/* 13 */
+	{ "hmode",	0 },	/* 14 */
+	{ "srchost",	0 },	/* 15 */
+	{ 0,		0 }
+};
+
 
 /*
  * Decode an incoming data buffer and print a line in the peer list
@@ -1567,7 +1595,7 @@ doprintpeers(
 	struct varlist *pvl,
 	int associd,
 	int rstatus,
-	int datalen,
+	size_t datalen,
 	const char *data,
 	FILE *fp,
 	int af
@@ -1576,7 +1604,7 @@ doprintpeers(
 	char *name;
 	char *value = NULL;
 	int c;
-	int len;
+	size_t len;
 	int have_srchost;
 	int have_dstadr;
 	int have_da_rid;
@@ -1628,7 +1656,7 @@ doprintpeers(
 				fprintf(stderr, "malformed %s=%s\n",
 					name, value);
 		} else if (!strcmp("srchost", name)) {
-			if (pvl == peervarlist) {
+			if (pvl == peervarlist || pvl == apeervarlist) {
 				len = strlen(value);
 				if (2 < len &&
 				    (size_t)len < sizeof(clock_name)) {
@@ -1653,7 +1681,8 @@ doprintpeers(
 		} else if (!strcmp("hmode", name)) {
 			decodeint(value, &hmode);
 		} else if (!strcmp("refid", name)) {
-			if (pvl == peervarlist) {
+			if (   (pvl == peervarlist)
+			    && (drefid == REFID_IPV4)) {
 				have_da_rid = TRUE;
 				drlen = strlen(value);
 				if (0 == drlen) {
@@ -1674,6 +1703,37 @@ doprintpeers(
 				} else {
 					have_da_rid = FALSE;
 				}
+			} else if (   (pvl == apeervarlist)
+				   || (pvl == peervarlist)) {
+				/* no need to check drefid == REFID_HASH */
+				have_da_rid = TRUE;
+				drlen = strlen(value);
+				if (0 == drlen) {
+					dstadr_refid = "";
+				} else if (drlen <= 4) {
+					ZERO(u32);
+					memcpy(&u32, value, drlen);
+					dstadr_refid = refid_str(u32, 1);
+					//fprintf(stderr, "apeervarlist S1 refid: value=<%s>\n", value);
+				} else if (decodenetnum(value, &refidadr)) {
+					if (SOCK_UNSPEC(&refidadr))
+						dstadr_refid = "0.0.0.0";
+					else if (ISREFCLOCKADR(&refidadr))
+						dstadr_refid =
+						    refnumtoa(&refidadr);
+					else {
+						char *buf = emalloc(10);
+						int i = ntohl(refidadr.sa4.sin_addr.s_addr);
+
+						snprintf(buf, 10,
+							"%0x", i);
+						dstadr_refid = buf;
+					//fprintf(stderr, "apeervarlist refid: value=<%x>\n", i);
+					}
+					//fprintf(stderr, "apeervarlist refid: value=<%s>\n", value);
+				} else {
+					have_da_rid = FALSE;
+				}
 			}
 		} else if (!strcmp("stratum", name)) {
 			decodeuint(value, &stratum);
@@ -1690,8 +1750,8 @@ doprintpeers(
 		} else if (!strcmp("offset", name)) {
 			decodetime(value, &estoffset);
 		} else if (!strcmp("jitter", name)) {
-			if (pvl == peervarlist &&
-			    decodetime(value, &estjitter))
+			if ((pvl == peervarlist || pvl == apeervarlist)
+			    && decodetime(value, &estjitter))
 				have_jitter = 1;
 		} else if (!strcmp("rootdisp", name) ||
 			   !strcmp("dispersion", name)) {
@@ -1704,6 +1764,8 @@ doprintpeers(
 		} else if (!strcmp("reftime", name)) {
 			if (!decodets(value, &reftime))
 				L_CLR(&reftime);
+		} else {
+			// fprintf(stderr, "UNRECOGNIZED name=%s ", name);
 		}
 	}
 
@@ -1755,7 +1817,8 @@ doprintpeers(
 	else
 		c = flash2[CTL_PEER_STATVAL(rstatus) & 0x3];
 	if (numhosts > 1) {
-		if (peervarlist == pvl && have_dstadr) {
+		if ((pvl == peervarlist || pvl == apeervarlist)
+		    && have_dstadr) {
 			serverlocal = nntohost_col(&dstadr,
 			    (size_t)min(LIB_BUFLENGTH - 1, maxhostlen),
 			    TRUE);
@@ -1782,8 +1845,14 @@ doprintpeers(
 			drlen = strlen(dstadr_refid);
 			makeascii(drlen, dstadr_refid, fp);
 		}
-		while (drlen++ < 15)
-			fputc(' ', fp);
+		if (pvl == apeervarlist) {
+			while (drlen++ < 9)
+				fputc(' ', fp);
+			fprintf(fp, "%-6d", associd);
+		} else {
+			while (drlen++ < 15)
+				fputc(' ', fp);
+		}
 		fprintf(fp,
 			" %2ld %c %4.4s %4.4s  %3lo  %7.7s %8.7s %7.7s\n",
 			stratum, type,
@@ -1817,7 +1886,7 @@ dogetpeers(
 {
 	const char *datap;
 	int res;
-	int dsize;
+	size_t dsize;
 	u_short rstatus;
 
 #ifdef notdef
@@ -1903,11 +1972,91 @@ dopeers(
 
 
 /*
+ * doapeers - print a peer spreadsheet with assocIDs
+ */
+static void
+doapeers(
+	int showall,
+	FILE *fp,
+	int af
+	)
+{
+	u_int		u;
+	char		fullname[LENHOSTNAME];
+	sockaddr_u	netnum;
+	const char *	name_or_num;
+	size_t		sl;
+
+	if (!dogetassoc(fp))
+		return;
+
+	for (u = 0; u < numhosts; u++) {
+		if (getnetnum(chosts[u].name, &netnum, fullname, af)) {
+			name_or_num = nntohost(&netnum);
+			sl = strlen(name_or_num);
+			maxhostlen = max(maxhostlen, sl);
+		}
+	}
+	if (numhosts > 1)
+		fprintf(fp, "%-*.*s ", (int)maxhostlen, (int)maxhostlen,
+			"server (local)");
+	fprintf(fp,
+		"     remote       refid   assid  st t when poll reach   delay   offset  jitter\n");
+	if (numhosts > 1)
+		for (u = 0; u <= maxhostlen; u++)
+			fprintf(fp, "=");
+	fprintf(fp,
+		"==============================================================================\n");
+
+	for (u = 0; u < numassoc; u++) {
+		if (!showall &&
+		    !(CTL_PEER_STATVAL(assoc_cache[u].status)
+		      & (CTL_PST_CONFIG|CTL_PST_REACH))) {
+			if (debug)
+				fprintf(stderr, "eliding [%d]\n",
+					(int)assoc_cache[u].assid);
+			continue;
+		}
+		if (!dogetpeers(apeervarlist, (int)assoc_cache[u].assid,
+				fp, af))
+			return;
+	}
+	return;
+}
+
+
+/*
  * peers - print a peer spreadsheet
  */
 /*ARGSUSED*/
 static void
 peers(
+	struct parse *pcmd,
+	FILE *fp
+	)
+{
+	if (drefid == REFID_HASH) {
+		apeers(pcmd, fp);
+	} else {
+		int af = 0;
+
+		if (pcmd->nargs == 1) {
+			if (pcmd->argval->ival == 6)
+				af = AF_INET6;
+			else
+				af = AF_INET;
+		}
+		dopeers(0, fp, af);
+	}
+}
+
+
+/*
+ * apeers - print a peer spreadsheet, with assocIDs
+ */
+/*ARGSUSED*/
+static void
+apeers(
 	struct parse *pcmd,
 	FILE *fp
 	)
@@ -1920,7 +2069,7 @@ peers(
 		else
 			af = AF_INET;
 	}
-	dopeers(0, fp, af);
+	doapeers(0, fp, af);
 }
 
 
@@ -2046,7 +2195,7 @@ config (
 {
 	const char *cfgcmd;
 	u_short rstatus;
-	int rsize;
+	size_t rsize;
 	const char *rdata;
 	char *resp;
 	int res;
@@ -2061,7 +2210,8 @@ config (
 			"Keyword = %s\n"
 			"Command = %s\n", pcmd->keyword, cfgcmd);
 
-	res = doquery(CTL_OP_CONFIGURE, 0, 1, strlen(cfgcmd), cfgcmd,
+	res = doquery(CTL_OP_CONFIGURE, 0, 1,
+		      strlen(cfgcmd), cfgcmd,
 		      &rstatus, &rsize, &rdata);
 
 	if (res != 0)
@@ -2103,6 +2253,10 @@ config (
  *    Longer lines will lead to unpredictable results.
  * 3. Since this function is sending a line at a time, we can't update
  *    the control key through the configuration file (YUCK!!)
+ *
+ * Pearly: There are a few places where 'size_t' is cast to 'int' based
+ * on the assumption that 'int' can hold the size of the involved
+ * buffers without overflow.
  */
 static void 
 config_from_file (
@@ -2111,8 +2265,9 @@ config_from_file (
 	)
 {
 	u_short rstatus;
-	int rsize;
+	size_t rsize;
 	const char *rdata;
+	char * cp;
 	int res;
 	FILE *config_fd;
 	char config_cmd[MAXLINE];
@@ -2137,33 +2292,47 @@ config_from_file (
 	printf("Sending configuration file, one line at a time.\n");
 	i = 0;
 	while (fgets(config_cmd, MAXLINE, config_fd) != NULL) {
-		config_len = strlen(config_cmd);
-		/* ensure even the last line has newline, if possible */
-		if (config_len > 0 && 
-		    config_len + 2 < sizeof(config_cmd) &&
-		    '\n' != config_cmd[config_len - 1])
-			config_cmd[config_len++] = '\n';
+		/* Eliminate comments first. */
+		cp = strchr(config_cmd, '#');
+		config_len = (NULL != cp)
+		    ? (size_t)(cp - config_cmd)
+		    : strlen(config_cmd);
+		
+		/* [Bug 3015] make sure there's no trailing whitespace;
+		 * the fix for [Bug 2853] on the server side forbids
+		 * those. And don't transmit empty lines, as this would
+		 * just be waste.
+		 */
+		while (config_len != 0 &&
+		       (u_char)config_cmd[config_len-1] <= ' ')
+			--config_len;
+		config_cmd[config_len] = '\0';
+
 		++i;
+		if (0 == config_len)
+			continue;
+
 		retry_limit = 2;
 		do 
 			res = doquery(CTL_OP_CONFIGURE, 0, 1,
-				      strlen(config_cmd), config_cmd,
+				      config_len, config_cmd,
 				      &rstatus, &rsize, &rdata);
 		while (res != 0 && retry_limit--);
 		if (res != 0) {
-			printf("Line No: %d query failed: %s", i,
-			       config_cmd);
-			printf("Subsequent lines not sent.\n");
+			printf("Line No: %d query failed: %.*s\n"
+			       "Subsequent lines not sent.\n",
+			       i, (int)config_len, config_cmd);
 			fclose(config_fd);
 			return;
 		}
 
-		if (rsize > 0 && '\n' == rdata[rsize - 1])
-			rsize--;
-		if (rsize > 0 && '\r' == rdata[rsize - 1])
-			rsize--;
-		printf("Line No: %d %.*s: %s", i, rsize, rdata,
-		       config_cmd);
+		/* Right-strip the result code string, then output the
+		 * last line executed, with result code. */
+		while (rsize != 0 && (u_char)rdata[rsize - 1] <= ' ')
+			--rsize;
+		printf("Line No: %d %.*s: %.*s\n", i,
+		       (int)rsize, rdata,
+		       (int)config_len, config_cmd);
 	}
 	printf("Done sending file\n");
 	fclose(config_fd);
@@ -2179,9 +2348,9 @@ fetch_nonce(
 	const char	nonce_eq[] = "nonce=";
 	int		qres;
 	u_short		rstatus;
-	int		rsize;
+	size_t		rsize;
 	const char *	rdata;
-	int		chars;
+	size_t		chars;
 
 	/*
 	 * Retrieve a nonce specific to this client to demonstrate to
@@ -2198,11 +2367,11 @@ fetch_nonce(
 	if ((size_t)rsize <= sizeof(nonce_eq) - 1 ||
 	    strncmp(rdata, nonce_eq, sizeof(nonce_eq) - 1)) {
 		fprintf(stderr, "unexpected nonce response format: %.*s\n",
-			rsize, rdata);
+			(int)rsize, rdata); /* cast is wobbly */
 		return FALSE;
 	}
 	chars = rsize - (sizeof(nonce_eq) - 1);
-	if (chars >= (int)cb_nonce)
+	if (chars >= cb_nonce)
 		return FALSE;
 	memcpy(nonce, rdata + sizeof(nonce_eq) - 1, chars);
 	nonce[chars] = '\0';
@@ -2247,7 +2416,7 @@ add_mru(
 		}
 		UNLINK_DLIST(mon, mlink);
 		UNLINK_SLIST(unlinked, hash_table[hash], mon, hlink, mru);
-		NTP_INSIST(unlinked == mon);
+		INSIST(unlinked == mon);
 		mru_dupes++;
 		TRACE(2, ("(updated from %08x.%08x) ", mon->last.l_ui,
 		      mon->last.l_uf));
@@ -2281,10 +2450,11 @@ add_mru(
 	} while (0)
 
 
-void
+int
 mrulist_ctrl_c_hook(void)
 {
 	mrulist_interrupted = TRUE;
+	return TRUE;
 }
 
 
@@ -2309,10 +2479,10 @@ collect_mru_list(
 	char req_buf[CTL_MAX_DATA_LEN];
 	char *req;
 	char *req_end;
-	int chars;
+	size_t chars;
 	int qres;
 	u_short rstatus;
-	int rsize;
+	size_t rsize;
 	const char *rdata;
 	int limit;
 	int frags;
@@ -2342,7 +2512,7 @@ collect_mru_list(
 	mru_count = 0;
 	INIT_DLIST(mru_list, mlink);
 	cb = NTP_HASH_SIZE * sizeof(*hash_table);
-	NTP_INSIST(NULL == hash_table);
+	INSIST(NULL == hash_table);
 	hash_table = emalloc_zero(cb);
 
 	c_mru_l_rc = FALSE;
@@ -2355,11 +2525,6 @@ collect_mru_list(
 	mon = emalloc_zero(cb);
 	ZERO(*pnow);
 	ZERO(last_older);
-	mrulist_interrupted = FALSE;
-	set_ctrl_c_hook(&mrulist_ctrl_c_hook);
-	fprintf(stderr,
-		"Ctrl-C will stop MRU retrieval and display partial results.\n");
-	fflush(stderr);
 	next_report = time(NULL) + MRU_REPORT_SECS;
 
 	limit = min(3 * MAXFRAGS, ntpd_row_limit);
@@ -2372,8 +2537,9 @@ collect_mru_list(
 		if (debug)
 			fprintf(stderr, "READ_MRU parms: %s\n", req_buf);
 
-		qres = doqueryex(CTL_OP_READ_MRU, 0, 0, strlen(req_buf),
-			         req_buf, &rstatus, &rsize, &rdata, TRUE);
+		qres = doqueryex(CTL_OP_READ_MRU, 0, 0,
+				 strlen(req_buf), req_buf,
+				 &rstatus, &rsize, &rdata, TRUE);
 
 		if (CERR_UNKNOWNVAR == qres && ri > 0) {
 			/*
@@ -2386,7 +2552,7 @@ collect_mru_list(
 					ri);
 			while (ri--) {
 				recent = HEAD_DLIST(mru_list, mlink);
-				NTP_INSIST(recent != NULL);
+				INSIST(recent != NULL);
 				if (debug)
 					fprintf(stderr,
 						"tossing prior entry %s to resync\n",
@@ -2395,7 +2561,7 @@ collect_mru_list(
 				hash = NTP_HASH_ADDR(&recent->addr);
 				UNLINK_SLIST(unlinked, hash_table[hash],
 					     recent, hlink, mru);
-				NTP_INSIST(unlinked == recent);
+				INSIST(unlinked == recent);
 				free(recent);
 				mru_count--;
 			}
@@ -2637,7 +2803,7 @@ collect_mru_list(
 		if (have_now)
 			list_complete = TRUE;
 		if (list_complete) {
-			NTP_INSIST(0 == ri || have_addr_older);
+			INSIST(0 == ri || have_addr_older);
 		}
 		if (mrulist_interrupted) {
 			printf("mrulist retrieval interrupted by operator.\n"
@@ -2723,14 +2889,13 @@ collect_mru_list(
 				 ri, sptoa(&recent->addr), ri,
 				 recent->last.l_ui, recent->last.l_uf);
 			chars = strlen(buf);
-			if (REQ_ROOM - chars < 1)
+			if ((size_t)REQ_ROOM <= chars)
 				break;
 			memcpy(req, buf, chars + 1);
 			req += chars;
 		}
 	}
 
-	set_ctrl_c_hook(NULL);
 	c_mru_l_rc = TRUE;
 	goto retain_hash_table;
 
@@ -2940,6 +3105,12 @@ mrulist(
 	int lstint;
 	size_t i;
 
+	mrulist_interrupted = FALSE;
+	push_ctrl_c_handler(&mrulist_ctrl_c_hook);
+	fprintf(stderr,
+		"Ctrl-C will stop MRU retrieval and display partial results.\n");
+	fflush(stderr);
+
 	order = MRUSORT_DEF;
 	parms_buf[0] = '\0';
 	parms = parms_buf;
@@ -3001,17 +3172,17 @@ mrulist(
 		goto cleanup_return;
 
 	/* construct an array of entry pointers in default order */
-	sorted = emalloc(mru_count * sizeof(*sorted));
+	sorted = eallocarray(mru_count, sizeof(*sorted));
 	ppentry = sorted;
 	if (MRUSORT_R_DEF != order) {
 		ITER_DLIST_BEGIN(mru_list, recent, mlink, mru)
-			NTP_INSIST(ppentry < sorted + mru_count);
+			INSIST(ppentry < sorted + mru_count);
 			*ppentry = recent;
 			ppentry++;
 		ITER_DLIST_END()
 	} else {
 		REV_ITER_DLIST_BEGIN(mru_list, recent, mlink, mru)
-			NTP_INSIST(ppentry < sorted + mru_count);
+			INSIST(ppentry < sorted + mru_count);
 			*ppentry = recent;
 			ppentry++;
 		REV_ITER_DLIST_END()
@@ -3030,6 +3201,7 @@ mrulist(
 		qsort(sorted, mru_count, sizeof(sorted[0]),
 		      mru_qcmp_table[order]);
 
+	mrulist_interrupted = FALSE;
 	printf(	"lstint avgint rstr r m v  count rport remote address\n"
 		"==============================================================================\n");
 		/* '=' x 78 */
@@ -3056,6 +3228,11 @@ mrulist(
 			nntohost(&recent->addr));
 		if (showhostnames)
 			fflush(fp);
+		if (mrulist_interrupted) {
+			fputs("\n --interrupted--\n", fp);
+			fflush(fp);
+			break;
+		}
 	}
 	fflush(fp);
 	if (debug) {
@@ -3080,6 +3257,8 @@ cleanup_return:
 	free(hash_table);
 	hash_table = NULL;
 	INIT_DLIST(mru_list, mlink);
+
+	pop_ctrl_c_handler(&mrulist_ctrl_c_hook);
 }
 
 
@@ -3098,7 +3277,7 @@ validate_ifnum(
 {
 	if (prow->ifnum == ifnum)
 		return;
-	if (prow->ifnum + 1 == ifnum) {
+	if (prow->ifnum + 1 <= ifnum) {
 		if (*pfields < IFSTATS_FIELDS)
 			fprintf(fp, "Warning: incomplete row with %d (of %d) fields",
 				*pfields, IFSTATS_FIELDS);
@@ -3177,7 +3356,7 @@ ifstats(
 	const char	up_fmt[] =	"up.%u";	/* uptime */
 	const char *	datap;
 	int		qres;
-	int		dsize;
+	size_t		dsize;
 	u_short		rstatus;
 	char *		tag;
 	char *		val;
@@ -3244,6 +3423,7 @@ ifstats(
 		case 'n':
 			if (1 == sscanf(tag, name_fmt, &ui)) {
 				/* strip quotes */
+				INSIST(val);
 				len = strlen(val);
 				if (len >= 2 &&
 				    len - 2 < sizeof(row.name)) {
@@ -3392,7 +3572,7 @@ reslist(
 	const int qdata_chars =		COUNTOF(qdata) - 1;
 	const char *	datap;
 	int		qres;
-	int		dsize;
+	size_t		dsize;
 	u_short		rstatus;
 	char *		tag;
 	char *		val;
@@ -3491,7 +3671,7 @@ collect_display_vdc(
 	char tagbuf[32];
 	vdc *pvdc;
 	u_short rstatus;
-	int rsize;
+	size_t rsize;
 	const char *rdata;
 	int qres;
 	char *tag;

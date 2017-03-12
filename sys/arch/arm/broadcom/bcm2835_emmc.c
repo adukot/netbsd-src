@@ -1,4 +1,4 @@
-/*	$NetBSD: bcm2835_emmc.c,v 1.21 2014/12/15 08:17:15 mlelstv Exp $	*/
+/*	$NetBSD: bcm2835_emmc.c,v 1.29 2016/02/02 13:55:50 skrll Exp $	*/
 
 /*-
  * Copyright (c) 2012 The NetBSD Foundation, Inc.
@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: bcm2835_emmc.c,v 1.21 2014/12/15 08:17:15 mlelstv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: bcm2835_emmc.c,v 1.29 2016/02/02 13:55:50 skrll Exp $");
 
 #include "bcmdmac.h"
 
@@ -60,11 +60,11 @@ struct bcmemmc_softc {
 
 	bus_space_tag_t		sc_iot;
 	bus_space_handle_t	sc_ioh;
+	bus_addr_t		sc_iob;
 	bus_size_t		sc_ios;
 	struct sdhc_host	*sc_hosts[1];
 	void			*sc_ih;
 
-	kmutex_t		sc_lock;
 	kcondvar_t		sc_cv;
 
 	enum bcmemmc_dma_state	sc_state;
@@ -74,8 +74,6 @@ struct bcmemmc_softc {
 	bus_dmamap_t		sc_dmamap;
 	bus_dma_segment_t	sc_segs[1];	/* XXX assumes enough descriptors fit in one page */
 	struct bcm_dmac_conblk	*sc_cblk;
-
-	uint32_t		sc_physaddr;
 };
 
 static int bcmemmc_match(device_t, struct cfdata *, void *);
@@ -83,7 +81,7 @@ static void bcmemmc_attach(device_t, device_t, void *);
 static void bcmemmc_attach_i(device_t);
 #if NBCMDMAC > 0
 static int bcmemmc_xfer_data_dma(struct sdhc_softc *, struct sdmmc_command *);
-static void bcmemmc_dma_done(void *);
+static void bcmemmc_dma_done(uint32_t, uint32_t, void *);
 #endif
 
 CFATTACH_DECL_NEW(bcmemmc, sizeof(struct bcmemmc_softc),
@@ -119,6 +117,7 @@ bcmemmc_attach(device_t parent, device_t self, void *aux)
 	sc->sc.sc_flags |= SDHC_FLAG_NO_HS_BIT;
 	sc->sc.sc_caps = SDHC_VOLTAGE_SUPP_3_3V | SDHC_HIGH_SPEED_SUPP |
 	    (SDHC_MAX_BLK_LEN_1024 << SDHC_MAX_BLK_LEN_SHIFT);
+	sc->sc.sc_caps2 = SDHC_SDR50_SUPP;
 
 	sc->sc.sc_host = sc->sc_hosts;
 	sc->sc.sc_clkbase = 50000;	/* Default to 50MHz */
@@ -137,13 +136,13 @@ bcmemmc_attach(device_t parent, device_t self, void *aux)
 		    "can't map registers for %s: %d\n", aaa->aaa_name, error);
 		return;
 	}
+	sc->sc_iob = aaa->aaa_addr;
 	sc->sc_ios = aaa->aaa_size;
-	sc->sc_physaddr = aaa->aaa_addr;
 
 	aprint_naive(": SDHC controller\n");
 	aprint_normal(": SDHC controller\n");
 
- 	sc->sc_ih = bcm2835_intr_establish(aaa->aaa_intr, IPL_SDMMC, sdhc_intr,
+ 	sc->sc_ih = intr_establish(aaa->aaa_intr, IPL_SDMMC, IST_LEVEL, sdhc_intr,
  	    &sc->sc);
 
 	if (sc->sc_ih == NULL) {
@@ -165,7 +164,6 @@ bcmemmc_attach(device_t parent, device_t self, void *aux)
 	sc->sc.sc_vendor_transfer_data_dma = bcmemmc_xfer_data_dma;
 
 	sc->sc_state = EMMC_DMA_STATE_IDLE;
-	mutex_init(&sc->sc_lock, MUTEX_DEFAULT, IPL_SDMMC);
 	cv_init(&sc->sc_cv, "bcmemmcdma");
 
 	int rseg;
@@ -242,8 +240,11 @@ static int
 bcmemmc_xfer_data_dma(struct sdhc_softc *sdhc_sc, struct sdmmc_command *cmd)
 {
 	struct bcmemmc_softc * const sc = device_private(sdhc_sc->sc_dev);
+	kmutex_t *plock = sdhc_host_lock(sc->sc_hosts[0]);
 	size_t seg;
 	int error;
+
+	KASSERT(mutex_owned(plock));
 
 	for (seg = 0; seg < cmd->c_dmamap->dm_nsegs; seg++) {
 		sc->sc_cblk[seg].cb_ti =
@@ -265,8 +266,7 @@ bcmemmc_xfer_data_dma(struct sdhc_softc *sdhc_sc, struct sdmmc_command *cmd)
 				sc->sc_cblk[seg].cb_ti |= DMAC_TI_DEST_WIDTH;
 			sc->sc_cblk[seg].cb_ti |= DMAC_TI_SRC_DREQ;
 			sc->sc_cblk[seg].cb_source_ad =
-			    BCM2835_PERIPHERALS_TO_BUS(sc->sc_physaddr +
-			    SDHC_DATA);
+			    sc->sc_iob + SDHC_DATA;
 			sc->sc_cblk[seg].cb_dest_ad =
 			    cmd->c_dmamap->dm_segs[seg].ds_addr;
 		} else {
@@ -282,8 +282,7 @@ bcmemmc_xfer_data_dma(struct sdhc_softc *sdhc_sc, struct sdmmc_command *cmd)
 			sc->sc_cblk[seg].cb_source_ad =
 			    cmd->c_dmamap->dm_segs[seg].ds_addr;
 			sc->sc_cblk[seg].cb_dest_ad =
-			    BCM2835_PERIPHERALS_TO_BUS(sc->sc_physaddr +
-			    SDHC_DATA);
+			    sc->sc_iob + SDHC_DATA;
 		}
 		sc->sc_cblk[seg].cb_stride = 0;
 		if (seg == cmd->c_dmamap->dm_nsegs - 1) {
@@ -303,14 +302,16 @@ bcmemmc_xfer_data_dma(struct sdhc_softc *sdhc_sc, struct sdmmc_command *cmd)
 
 	error = 0;
 
-	mutex_enter(&sc->sc_lock);
 	KASSERT(sc->sc_state == EMMC_DMA_STATE_IDLE);
 	sc->sc_state = EMMC_DMA_STATE_BUSY;
 	bcm_dmac_set_conblk_addr(sc->sc_dmac,
 	    sc->sc_dmamap->dm_segs[0].ds_addr);
-	bcm_dmac_transfer(sc->sc_dmac);
+	error = bcm_dmac_transfer(sc->sc_dmac);
+	if (error)
+		return error;
+
 	while (sc->sc_state == EMMC_DMA_STATE_BUSY) {
-		error = cv_timedwait(&sc->sc_cv, &sc->sc_lock, hz * 10);
+		error = cv_timedwait(&sc->sc_cv, plock, hz * 10);
 		if (error == EWOULDBLOCK) {
 			device_printf(sc->sc.sc_dev, "transfer timeout!\n");
 			bcm_dmac_halt(sc->sc_dmac);
@@ -319,7 +320,6 @@ bcmemmc_xfer_data_dma(struct sdhc_softc *sdhc_sc, struct sdmmc_command *cmd)
 			break;
 		}
 	}
-	mutex_exit(&sc->sc_lock);
 
 	bus_dmamap_sync(sc->sc.sc_dmat, sc->sc_dmamap, 0,
 	    sc->sc_dmamap->dm_mapsize, BUS_DMASYNC_POSTWRITE);
@@ -328,15 +328,20 @@ bcmemmc_xfer_data_dma(struct sdhc_softc *sdhc_sc, struct sdmmc_command *cmd)
 }
 
 static void
-bcmemmc_dma_done(void *arg)
+bcmemmc_dma_done(uint32_t status, uint32_t error, void *arg)
 {
 	struct bcmemmc_softc * const sc = arg;
+	kmutex_t *plock = sdhc_host_lock(sc->sc_hosts[0]);
 
-	mutex_enter(&sc->sc_lock);
+	if (status != (DMAC_CS_INT|DMAC_CS_END))
+		device_printf(sc->sc.sc_dev, "status %#x error %#x\n",
+			status,error);
+
+	mutex_enter(plock);
 	KASSERT(sc->sc_state == EMMC_DMA_STATE_BUSY);
-	sc->sc_state = EMMC_DMA_STATE_IDLE;
+	if (status & DMAC_CS_END)
+		sc->sc_state = EMMC_DMA_STATE_IDLE;
 	cv_broadcast(&sc->sc_cv);
-	mutex_exit(&sc->sc_lock);
-
+	mutex_exit(plock);
 }
 #endif

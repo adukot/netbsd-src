@@ -1,5 +1,6 @@
-/*	$NetBSD: session.c,v 1.13 2014/10/19 16:30:58 christos Exp $	*/
-/* $OpenBSD: session.c,v 1.274 2014/07/15 15:54:14 millert Exp $ */
+/*	$NetBSD: session.c,v 1.19 2016/04/14 16:42:09 christos Exp $	*/
+/* $OpenBSD: session.c,v 1.280 2016/02/16 03:37:48 djm Exp $ */
+
 /*
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
  *                    All rights reserved
@@ -35,13 +36,12 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: session.c,v 1.13 2014/10/19 16:30:58 christos Exp $");
+__RCSID("$NetBSD: session.c,v 1.19 2016/04/14 16:42:09 christos Exp $");
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/un.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
-#include <sys/param.h>
 #include <sys/queue.h>
 
 #include <errno.h>
@@ -56,6 +56,7 @@ __RCSID("$NetBSD: session.c,v 1.13 2014/10/19 16:30:58 christos Exp $");
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "xmalloc.h"
 #include "ssh.h"
@@ -147,6 +148,7 @@ login_cap_t *lc;
 #endif
 
 static int is_child = 0;
+static int in_chroot = 0;
 
 /* Name and directory of socket for authentication agent forwarding. */
 static char *auth_sock_name = NULL;
@@ -768,8 +770,8 @@ int
 do_exec(Session *s, const char *command)
 {
 	int ret;
-	const char *forced = NULL;
-	char session_type[1024], *tty = NULL;
+	const char *forced = NULL, *tty = NULL;
+	char session_type[1024];
 
 	if (options.adm_forced_command) {
 		original_command = command;
@@ -804,13 +806,14 @@ do_exec(Session *s, const char *command)
 			tty += 5;
 	}
 
-	verbose("Starting session: %s%s%s for %s from %.200s port %d",
+	verbose("Starting session: %s%s%s for %s from %.200s port %d id %d",
 	    session_type,
 	    tty == NULL ? "" : " on ",
 	    tty == NULL ? "" : tty,
 	    s->pw->pw_name,
 	    get_remote_ipaddr(),
-	    get_remote_port());
+	    get_remote_port(),
+	    s->self);
 
 #ifdef GSSAPI
 	if (options.gss_authentication) {
@@ -974,7 +977,7 @@ child_set_env(char ***envp, u_int *envsizep, const char *name,
 			if (envsize >= 1000)
 				fatal("child_set_env: too many env vars");
 			envsize += 50;
-			env = (*envp) = xrealloc(env, envsize, sizeof(char *));
+			env = (*envp) = xreallocarray(env, envsize, sizeof(char *));
 			*envsizep = envsize;
 		}
 		/* Need to set the NULL pointer at end of array beyond the new slot. */
@@ -1223,7 +1226,7 @@ do_setup_env(Session *s, const char *shell)
 	 * Pull in any environment variables that may have
 	 * been set by PAM.
 	 */
-	if (options.use_pam) {
+	if (options.use_pam && !options.use_login) {
 		char **p;
 
 		p = fetch_pam_child_environment();
@@ -1339,16 +1342,17 @@ do_nologin(struct passwd *pw)
 	if (login_getcapbool(lc, "ignorenologin", 0) || pw->pw_uid == 0)
 		return;
 	nl = login_getcapstr(lc, "nologin", def_nl, def_nl);
-
+#else
+	if (pw->pw_uid == 0)
+		return;
+	nl = def_nl;
+#endif
 	if (stat(nl, &sb) == -1) {
 		if (nl != def_nl)
 			free(nl);
 		return;
 	}
-#else
-	if (pw->pw_uid)
-		nl = def_nl;
-#endif
+
 	/* /etc/nologin exists.  Print its contents if we can and exit. */
 	logit("User %.100s not allowed because %s exists", pw->pw_name, nl);
 	if ((f = fopen(nl, "r")) != NULL) {
@@ -1367,7 +1371,7 @@ static void
 safely_chroot(const char *path, uid_t uid)
 {
 	const char *cp;
-	char component[MAXPATHLEN];
+	char component[PATH_MAX];
 	struct stat st;
 
 	if (*path != '/')
@@ -1458,7 +1462,7 @@ do_setusercontext(struct passwd *pw)
 		}
 # endif /* USE_PAM */
 #endif
-		if (options.chroot_directory != NULL &&
+		if (!in_chroot && options.chroot_directory != NULL &&
 		    strcasecmp(options.chroot_directory, "none") != 0) {
                         tmp = tilde_expand_filename(options.chroot_directory,
 			    pw->pw_uid);
@@ -1470,6 +1474,7 @@ do_setusercontext(struct passwd *pw)
 			/* Make sure we don't attempt to chroot again */
 			free(options.chroot_directory);
 			options.chroot_directory = NULL;
+			in_chroot = 1;
 		}
 
 #ifdef HAVE_LOGIN_CAP
@@ -1525,11 +1530,11 @@ launch_login(struct passwd *pw, const char *hostname)
 static void
 child_close_fds(void)
 {
-	extern AuthenticationConnection *auth_conn;
+	extern int auth_sock;
 
-	if (auth_conn) {
-		ssh_close_authentication_connection(auth_conn);
-		auth_conn = NULL;
+	if (auth_sock != -1) {
+		close(auth_sock);
+		auth_sock = -1;
 	}
 
 	if (packet_get_connection_in() == packet_get_connection_out())
@@ -1557,7 +1562,7 @@ child_close_fds(void)
 	 * initgroups, because at least on Solaris 2.3 it leaves file
 	 * descriptors open.
 	 */
-	closefrom(STDERR_FILENO + 1);
+	(void)closefrom(STDERR_FILENO + 1);
 }
 
 /*
@@ -1679,16 +1684,16 @@ do_child(Session *s, const char *command)
 	if (chdir(pw->pw_dir) < 0) {
 		/* Suppress missing homedir warning for chroot case */
 		r = login_getcapbool(lc, "requirehome", 0);
-		if (r || options.chroot_directory == NULL ||
-		    strcasecmp(options.chroot_directory, "none") == 0)
+		if (r || !in_chroot) {
 			fprintf(stderr, "Could not chdir to home "
 			    "directory %s: %s\n", pw->pw_dir,
 			    strerror(errno));
+		}
 		if (r)
 			exit(1);
 	}
 
-	closefrom(STDERR_FILENO + 1);
+	(void)closefrom(STDERR_FILENO + 1);
 
 	if (!options.use_login)
 		do_rc_files(s, shell);
@@ -1800,7 +1805,7 @@ session_new(void)
 			return NULL;
 		debug2("%s: allocate (allocated %d max %d)",
 		    __func__, sessions_nalloc, options.max_sessions);
-		tmp = xrealloc(sessions, sessions_nalloc + 1,
+		tmp = xreallocarray(sessions, sessions_nalloc + 1,
 		    sizeof(*sessions));
 		if (tmp == NULL) {
 			error("%s: cannot allocate %d sessions",
@@ -2127,7 +2132,7 @@ session_env_req(Session *s)
 	for (i = 0; i < options.num_accept_env; i++) {
 		if (match_pattern(name, options.accept_env[i])) {
 			debug2("Setting env %d: %s=%s", s->num_env, name, val);
-			s->env = xrealloc(s->env, s->num_env + 1,
+			s->env = xreallocarray(s->env, s->num_env + 1,
 			    sizeof(*s->env));
 			s->env[s->num_env].name = name;
 			s->env[s->num_env].val = val;
@@ -2391,7 +2396,12 @@ session_close(Session *s)
 {
 	u_int i;
 
-	debug("session_close: session %d pid %ld", s->self, (long)s->pid);
+	verbose("Close session: user %s from %.200s port %d id %d",
+	    s->pw->pw_name,
+	    get_remote_ipaddr(),
+	    get_remote_port(),
+	    s->self);
+
 	if (s->ttyfd != -1)
 		session_pty_cleanup(s);
 	free(s->term);
@@ -2537,7 +2547,7 @@ session_setup_x11fwd(Session *s)
 		debug("X11 forwarding disabled in server configuration file.");
 		return 0;
 	}
-	if (!options.xauth_location ||
+	if (options.xauth_location == NULL ||
 	    (stat(options.xauth_location, &st) == -1)) {
 		packet_send_debug("No xauth program; cannot forward with spoofing.");
 		return 0;

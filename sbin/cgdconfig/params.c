@@ -1,4 +1,4 @@
-/* $NetBSD: params.c,v 1.25 2014/12/14 12:31:39 mlelstv Exp $ */
+/* $NetBSD: params.c,v 1.28 2015/11/24 14:07:18 christos Exp $ */
 
 /*-
  * Copyright (c) 2002, 2003 The NetBSD Foundation, Inc.
@@ -31,10 +31,12 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: params.c,v 1.25 2014/12/14 12:31:39 mlelstv Exp $");
+__RCSID("$NetBSD: params.c,v 1.28 2015/11/24 14:07:18 christos Exp $");
 #endif
 
 #include <sys/types.h>
+#include <sys/param.h>
+#include <sys/stat.h>
 
 #include <err.h>
 #include <errno.h>
@@ -46,6 +48,7 @@ __RCSID("$NetBSD: params.c,v 1.25 2014/12/14 12:31:39 mlelstv Exp $");
 #include "params.h"
 #include "pkcs5_pbkdf2.h"
 #include "utils.h"
+#include "cgdconfig.h"
 #include "extern.h"
 
 static void	params_init(struct params *);
@@ -277,7 +280,7 @@ params_verify_method(string_t *in)
 
 	if (p->verify_method == VERIFY_UNKNOWN)
 		warnx("params_setverify_method: unrecognized "
-		    "verify method \"%s\"\n", vm);
+		    "verify method \"%s\"", vm);
 	return p;
 }
 
@@ -515,7 +518,7 @@ keygen_method(string_t *in)
 	string_free(in);
 
 	if (kg->kg_method == KEYGEN_UNKNOWN)
-		warnx("unrecognized key generation method \"%s\"\n", kgm);
+		warnx("unrecognized key generation method \"%s\"", kgm);
 	return kg;
 }
 
@@ -618,8 +621,16 @@ params_cget(const char *fn)
 {
 	struct params	*p;
 	FILE		*f;
+	char		filename[MAXPATHLEN];
 
-	if ((f = fopen(fn, "r")) == NULL) {
+	if ((f = fopen(fn, "r")) == NULL && fn[0] != '/') {
+		snprintf(filename, sizeof(filename), "%s/%s",
+		    CGDCONFIG_DIR, fn);
+		fn = filename;
+		f = fopen(fn, "r");
+	}
+
+	if (f == NULL) {
 		warn("failed to open params file \"%s\"", fn);
 		return NULL;
 	}

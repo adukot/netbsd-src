@@ -1,4 +1,4 @@
-/*	$NetBSD: cpu.c,v 1.123 2015/02/11 04:44:11 palle Exp $ */
+/*	$NetBSD: cpu.c,v 1.128 2016/04/17 14:32:03 martin Exp $ */
 
 /*
  * Copyright (c) 1996
@@ -52,7 +52,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: cpu.c,v 1.123 2015/02/11 04:44:11 palle Exp $");
+__KERNEL_RCSID(0, "$NetBSD: cpu.c,v 1.128 2016/04/17 14:32:03 martin Exp $");
 
 #include "opt_multiprocessor.h"
 
@@ -72,10 +72,10 @@ __KERNEL_RCSID(0, "$NetBSD: cpu.c,v 1.123 2015/02/11 04:44:11 palle Exp $");
 #include <machine/pmap.h>
 #include <machine/sparc64.h>
 #include <machine/openfirm.h>
+#include <machine/hypervisor.h>
+#include <machine/mdesc.h>
 
 #include <sparc64/sparc64/cache.h>
-#include <sparc64/hypervisor.h>
-#include <sparc64/mdesc.h>
 
 #define SUN4V_MONDO_QUEUE_SIZE	32
 #define SUN4V_QUEUE_ENTRY_SIZE	64
@@ -161,18 +161,21 @@ cpu_cache_info_sun4v(const char *type, int level, const char *prop)
 	uint64_t val = 0;;
 	idx = mdesc_find_node_by_idx(idx, "cache");
 	while (idx != -1 && val == 0) {
-		const char *p;
-		size_t len = 0;
-		p = mdesc_get_prop_data(idx, "type", &len);
-		if (p == NULL)
-			panic("No type found\n");
-		if (len == 0)
-			panic("Len is zero");
-		if (type == NULL || strcmp(p, type) == 0) {
-			uint64_t l;
-			l = mdesc_get_prop_val(idx, "level");
-			if (l == level)
-				val = mdesc_get_prop_val(idx, prop);
+		const char *name = mdesc_name_by_idx(idx);
+		if (strcmp("cache", name) == 0) {
+			const char *p;
+			size_t len = 0;
+			p = mdesc_get_prop_data(idx, "type", &len);
+			if (p == NULL)
+				panic("No type found\n");
+			if (len == 0)
+				panic("Len is zero");
+			if (type == NULL || strcmp(p, type) == 0) {
+				uint64_t l;
+				l = mdesc_get_prop_val(idx, "level");
+				if (l == level)
+					val = mdesc_get_prop_val(idx, prop);
+			}
 		}
 		if (val == 0)
 			idx = mdesc_next_node(idx);
@@ -260,7 +263,7 @@ cpu_dcache_associativity(int node)
 		return prom_getpropint(node, "dcache-associativity", 1);
 }
 
-static int
+int
 cpu_ecache_size(int node)
 {
 	if (CPU_ISSUN4V)
@@ -287,7 +290,7 @@ cpu_ecache_nlines(int node)
 		return prom_getpropint(node, "ecache-nlines", 32768);
 }
 
-static int
+int
 cpu_ecache_associativity(int node)
 {
 	if (CPU_ISSUN4V) {

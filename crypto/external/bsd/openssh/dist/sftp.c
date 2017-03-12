@@ -1,5 +1,6 @@
-/*	$NetBSD: sftp.c,v 1.13 2014/10/19 16:30:58 christos Exp $	*/
-/* $OpenBSD: sftp.c,v 1.164 2014/07/09 01:45:10 djm Exp $ */
+/*	$NetBSD: sftp.c,v 1.18 2016/03/11 01:55:00 christos Exp $	*/
+/* $OpenBSD: sftp.c,v 1.172 2016/02/15 09:47:49 dtucker Exp $ */
+
 /*
  * Copyright (c) 2001-2004 Damien Miller <djm@openbsd.org>
  *
@@ -17,13 +18,13 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: sftp.c,v 1.13 2014/10/19 16:30:58 christos Exp $");
+__RCSID("$NetBSD: sftp.c,v 1.18 2016/03/11 01:55:00 christos Exp $");
+#include <sys/param.h>	/* MIN MAX */
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
-#include <sys/param.h>
 #include <sys/statvfs.h>
 
 #include <ctype.h>
@@ -38,6 +39,7 @@ __RCSID("$NetBSD: sftp.c,v 1.13 2014/10/19 16:30:58 christos Exp $");
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 #include <util.h>
 #include <stdarg.h>
 
@@ -47,7 +49,8 @@ __RCSID("$NetBSD: sftp.c,v 1.13 2014/10/19 16:30:58 christos Exp $");
 #include "misc.h"
 
 #include "sftp.h"
-#include "buffer.h"
+#include "ssherr.h"
+#include "sshbuf.h"
 #include "sftp-common.h"
 #include "sftp-client.h"
 #include "fmt_scaled.h"
@@ -185,7 +188,7 @@ static const struct CMD cmds[] = {
 	{ "quit",	I_QUIT,		NOARGS	},
 	{ "reget",	I_REGET,	REMOTE	},
 	{ "rename",	I_RENAME,	REMOTE	},
-	{ "reput",      I_REPUT,        LOCAL   },
+	{ "reput",	I_REPUT,	LOCAL	},
 	{ "rm",		I_RM,		REMOTE	},
 	{ "rmdir",	I_RMDIR,	REMOTE	},
 	{ "symlink",	I_SYMLINK,	REMOTE	},
@@ -233,9 +236,9 @@ help(void)
 	    "df [-hi] [path]                    Display statistics for current directory or\n"
 	    "                                   filesystem containing 'path'\n"
 	    "exit                               Quit sftp\n"
-	    "get [-Ppr] remote [local]          Download file\n"
-	    "reget remote [local]		Resume download file\n"
-	    "reput [local] remote               Resume upload file\n"
+	    "get [-afPpRr] remote [local]       Download file\n"
+	    "reget [-fPpRr] remote [local]      Resume download file\n"
+	    "reput [-fPpRr] [local] remote      Resume upload file\n"
 	    "help                               Display this help text\n"
 	    "lcd path                           Change local directory to 'path'\n"
 	    "lls [ls-options [path]]            Display local directory listing\n"
@@ -246,7 +249,7 @@ help(void)
 	    "lumask umask                       Set local umask to 'umask'\n"
 	    "mkdir path                         Create remote directory\n"
 	    "progress                           Toggle display of progress meter\n"
-	    "put [-Ppr] local [remote]          Upload file\n"
+	    "put [-afPpRr] local [remote]       Upload file\n"
 	    "pwd                                Display remote working directory\n"
 	    "quit                               Quit sftp\n"
 	    "rename oldpath newpath             Rename remote file\n"
@@ -730,6 +733,8 @@ process_put(struct sftp_conn *conn, char *src, char *dst, char *pwd,
 			    fflag || global_fflag) == -1)
 				err = -1;
 		}
+		free(abs_dst);
+		abs_dst = NULL;
 	}
 
 out:
@@ -1400,7 +1405,7 @@ parse_dispatch_command(struct sftp_conn *conn, const char *cmd, char **pwd,
 	int cmdnum, i;
 	unsigned long n_arg = 0;
 	Attrib a, *aa;
-	char path_buf[MAXPATHLEN];
+	char path_buf[PATH_MAX];
 	int err = 0;
 	glob_t g;
 
@@ -1525,6 +1530,9 @@ parse_dispatch_command(struct sftp_conn *conn, const char *cmd, char **pwd,
 		err = do_df(conn, path1, hflag, iflag);
 		break;
 	case I_LCHDIR:
+		tmp = tilde_expand_filename(path1, getuid());
+		free(path1);
+		path1 = tmp;
 		if (chdir(path1) == -1) {
 			error("Couldn't change local directory to "
 			    "\"%s\": %s", path1, strerror(errno));
@@ -1838,8 +1846,8 @@ complete_match(EditLine *el, struct sftp_conn *conn, char *remote_path,
 	if (remote != LOCAL) {
 		tmp = make_absolute(tmp, remote_path);
 		remote_glob(conn, tmp, GLOB_DOOFFS|GLOB_MARK, NULL, &g);
+	} else
 		glob(tmp, GLOB_LIMIT|GLOB_DOOFFS|GLOB_MARK, NULL, &g);
-	}
 	
 	/* Determine length of pwd so we can trim completion display */
 	for (hadglob = tmplen = pwdlen = 0; tmp[tmplen] != 0; tmplen++) {
@@ -1957,7 +1965,7 @@ complete(EditLine *el, int ch)
 
 	/* Figure out which argument the cursor points to */
 	cursor = lf->cursor - lf->buffer;
-	line = (char *)xmalloc(cursor + 1);
+	line = xmalloc(cursor + 1);
 	memcpy(line, lf->buffer, cursor);
 	line[cursor] = '\0';
 	argv = makeargv(line, &carg, 1, &quote, &terminated);
@@ -1965,7 +1973,7 @@ complete(EditLine *el, int ch)
 
 	/* Get all the arguments on the line */
 	len = lf->lastchar - lf->buffer;
-	line = (char *)xmalloc(len + 1);
+	line = xmalloc(len + 1);
 	memcpy(line, lf->buffer, len);
 	line[len] = '\0';
 	argv = makeargv(line, &argc, 1, NULL, NULL);
@@ -2083,8 +2091,8 @@ interactive_loop(struct sftp_conn *conn, const char *file1, const char *file2)
 		free(dir);
 	}
 
-	setlinebuf(stdout);
-	setlinebuf(infile);
+	setvbuf(stdout, NULL, _IOLBF, 0);
+	setvbuf(infile, NULL, _IOLBF, 0);
 
 	interactive = !batchmode && isatty(STDIN_FILENO);
 	err = 0;
@@ -2228,6 +2236,7 @@ main(int argc, char **argv)
 	size_t num_requests = DEFAULT_NUM_REQUESTS;
 	long long limit_kbps = 0;
 
+	ssh_malloc_init();	/* must be called before any mallocs */
 	/* Ensure that fds 0, 1 and 2 are open or directed to /dev/null */
 	sanitise_stdfd();
 	setlocale(LC_CTYPE, "");

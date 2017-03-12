@@ -1,4 +1,4 @@
-/*	$NetBSD: ip_carp.c,v 1.59 2014/07/31 02:37:25 ozaki-r Exp $	*/
+/*	$NetBSD: ip_carp.c,v 1.64 2016/04/28 00:16:56 ozaki-r Exp $	*/
 /*	$OpenBSD: ip_carp.c,v 1.113 2005/11/04 08:11:54 mcbride Exp $	*/
 
 /*
@@ -27,11 +27,13 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef _KERNEL_OPT
 #include "opt_inet.h"
 #include "opt_mbuftrace.h"
+#endif
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ip_carp.c,v 1.59 2014/07/31 02:37:25 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ip_carp.c,v 1.64 2016/04/28 00:16:56 ozaki-r Exp $");
 
 /*
  * TODO:
@@ -99,6 +101,8 @@ __KERNEL_RCSID(0, "$NetBSD: ip_carp.c,v 1.59 2014/07/31 02:37:25 ozaki-r Exp $")
 #include <sys/sha1.h>
 
 #include <netinet/ip_carp.h>
+
+#include "ioconf.h"
 
 struct carp_mc_entry {
 	LIST_ENTRY(carp_mc_entry)	mc_entries;
@@ -193,7 +197,6 @@ static int	carp_hmac_verify(struct carp_softc *, u_int32_t *,
 static void	carp_setroute(struct carp_softc *, int);
 static void	carp_proto_input_c(struct mbuf *, struct carp_header *,
 		    sa_family_t);
-void	carpattach(int);
 static void	carpdetach(struct carp_softc *);
 static int	carp_prepare_ad(struct mbuf *, struct carp_softc *,
 		    struct carp_header *);
@@ -391,7 +394,7 @@ carp_setroute(struct carp_softc *sc, int cmd)
 			(void)rtrequest(RTM_GET, ifa->ifa_addr, ifa->ifa_addr,
 			    ifa->ifa_netmask, RTF_HOST, &rt);
 			hr_otherif = (rt && rt->rt_ifp != &sc->sc_if &&
-			    rt->rt_flags & (RTF_CLONING|RTF_CLONED));
+			    (rt->rt_flags & RTF_CONNECTED));
 			if (rt != NULL) {
 				rtfree(rt);
 				rt = NULL;
@@ -408,22 +411,22 @@ carp_setroute(struct carp_softc *sc, int cmd)
 			case RTM_ADD:
 				if (hr_otherif) {
 					ifa->ifa_rtrequest = NULL;
-					ifa->ifa_flags &= ~RTF_CLONING;
+					ifa->ifa_flags &= ~RTF_CONNECTED;
 
 					rtrequest(RTM_ADD, ifa->ifa_addr,
 					    ifa->ifa_addr, ifa->ifa_netmask,
 					    RTF_UP | RTF_HOST, NULL);
 				}
 				if (!hr_otherif || nr_ourif || !rt) {
-					if (nr_ourif && !(rt->rt_flags &
-					    RTF_CLONING))
+					if (nr_ourif &&
+					    (rt->rt_flags & RTF_CONNECTED) == 0)
 						rtrequest(RTM_DELETE,
 						    ifa->ifa_addr,
 						    ifa->ifa_addr,
 						    ifa->ifa_netmask, 0, NULL);
 
 					ifa->ifa_rtrequest = arp_rtrequest;
-					ifa->ifa_flags |= RTF_CLONING;
+					ifa->ifa_flags |= RTF_CONNECTED;
 
 					if (rtrequest(RTM_ADD, ifa->ifa_addr,
 					    ifa->ifa_addr, ifa->ifa_netmask, 0,
@@ -446,9 +449,9 @@ carp_setroute(struct carp_softc *sc, int cmd)
 #ifdef INET6
 		case AF_INET6:
 			if (cmd == RTM_ADD)
-				in6_ifaddloop(ifa);
+				in6_ifaddlocal(ifa);
 			else
-				in6_ifremloop(ifa);
+				in6_ifremlocal(ifa);
 			break;
 #endif /* INET6 */
 		default:
@@ -2087,7 +2090,7 @@ carp_start(struct ifnet *ifp)
 
 int
 carp_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *sa,
-    struct rtentry *rt)
+    const struct rtentry *rt)
 {
 	struct carp_softc *sc = ((struct carp_softc *)ifp->if_softc);
 	KASSERT(KERNEL_LOCKED_P());

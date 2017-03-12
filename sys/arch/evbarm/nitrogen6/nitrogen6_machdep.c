@@ -1,4 +1,4 @@
-/*	$NetBSD: nitrogen6_machdep.c,v 1.1 2014/09/25 05:05:28 ryo Exp $	*/
+/*	$NetBSD: nitrogen6_machdep.c,v 1.6 2016/02/25 12:22:30 joerg Exp $	*/
 
 /*-
  * Copyright (c) 2012 The NetBSD Foundation, Inc.
@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: nitrogen6_machdep.c,v 1.1 2014/09/25 05:05:28 ryo Exp $");
+__KERNEL_RCSID(0, "$NetBSD: nitrogen6_machdep.c,v 1.6 2016/02/25 12:22:30 joerg Exp $");
 
 #include "opt_evbarm_boardtype.h"
 #include "opt_arm_debug.h"
@@ -94,9 +94,8 @@ u_int uboot_args[4] = { 0 };
 #define CONMODE ((TTYDEF_CFLAG & ~(CSIZE | CSTOPB | PARENB)) | CS8) /* 8N1 */
 #endif
 
-static const bus_addr_t comcnaddr = (bus_addr_t)CONADDR;
-static const int comcnspeed = CONSPEED;
-static const int comcnmode = CONMODE | CLOCAL;
+void nitrogen6_setup_iomux(void);
+void nitrogen6_device_register(device_t, void *);
 
 #ifdef KGDB
 #include <sys/kgdb.h>
@@ -134,6 +133,15 @@ static const struct pmap_devmap devmap[] = {
 	{ 0, 0, 0, 0, 0 }
 };
 
+#ifdef PMAP_NEED_ALLOC_POOLPAGE
+static struct boot_physmem bp_highgig = {
+	.bp_start = IMX6_MEM_BASE / NBPG,
+	.bp_pages = (KERNEL_VM_BASE - KERNEL_BASE) / NBPG,
+	.bp_freelist = VM_FREELIST_ISADMA,
+	.bp_flags = 0,
+};
+#endif
+
 /*
  * u_int initarm(...)
  *
@@ -160,6 +168,9 @@ initarm(void *arg)
 	arm_cpu_max = (scu_cfg & SCU_CFG_CPUMAX) + 1;
 	membar_producer();
 #endif /* MULTIPROCESSOR */
+
+	nitrogen6_setup_iomux();
+
 	consinit();
 
 	/*
@@ -213,24 +224,40 @@ initarm(void *arg)
 	bootconfig.dram[0].address = KERN_VTOPHYS(KERNEL_BASE);
 	bootconfig.dram[0].pages = memsize / PAGE_SIZE;
 
-	arm32_bootmem_init(bootconfig.dram[0].address,
-	    bootconfig.dram[0].pages * PAGE_SIZE, (paddr_t)KERNEL_BASE_phys);
+#ifdef __HAVE_MM_MD_DIRECT_MAPPED_PHYS
+	const bool mapallmem_p = true;
+#ifndef PMAP_NEED_ALLOC_POOLPAGE
+	if (memsize > KERNEL_VM_BASE - KERNEL_BASE) {
+		printf("%s: dropping RAM size from %luMB to %uMB\n",
+		   __func__, (unsigned long) (memsize >> 20),
+		   (KERNEL_VM_BASE - KERNEL_BASE) >> 20);
+		memsize = KERNEL_VM_BASE - KERNEL_BASE;
+	}
+#endif
+#else /* !__HAVE_MM_MD_DIRECT_MAPPED_PHYS */
+	const bool mapallmem_p = false;
+#endif /* __HAVE_MM_MD_DIRECT_MAPPED_PHYS */
 
-	/*
-	 * This is going to do all the hard work of setting up the first and
-	 * and second level page tables.  Pages of memory will be allocated
-	 * and mapped for other structures that are required for system
-	 * operation.  When it returns, physical_freestart and free_pages will
-	 * have been updated to reflect the allocations that were made.  In
-	 * addition, kernel_l1pt, kernel_pt_table[], systempage, irqstack,
-	 * abtstack, undstack, kernelstack, msgbufphys will be set to point to
-	 * the memory that was allocated for them.
-	 */
-	arm32_kernel_vm_init(KERNEL_VM_BASE, ARM_VECTORS_HIGH, 0, devmap, true);
+	arm32_bootmem_init(bootconfig.dram[0].address,
+	    memsize, (paddr_t)KERNEL_BASE_phys);
+	arm32_kernel_vm_init(KERNEL_VM_BASE, ARM_VECTORS_LOW, 0, devmap,
+	    mapallmem_p);
 
 	/* we've a specific device_register routine */
-	evbarm_device_register = imx6_device_register;
+	evbarm_device_register = nitrogen6_device_register;
 
+#ifdef PMAP_NEED_ALLOC_POOLPAGE
+	/*
+	 * If we couldn't map all of memory via TTBR1, limit the memory the
+	 * kernel can allocate from to be from the highest available 1GB.
+	 */
+	if (atop(memsize) > bp_highgig.bp_pages) {
+		bp_highgig.bp_start += atop(memsize) - bp_highgig.bp_pages;
+		arm_poolpage_vmfreelist = bp_highgig.bp_freelist;
+		return initarm_common(KERNEL_VM_BASE, KERNEL_VM_SIZE,
+		    &bp_highgig, 1);
+	}
+#endif
 	return initarm_common(KERNEL_VM_BASE, KERNEL_VM_SIZE, NULL, 0);
 }
 
@@ -272,7 +299,7 @@ consinit(void)
 		paddr_t consaddr;
 
 		consaddr = CONADDR;
-		imxuart_cons_attach(&imx_bs_tag, consaddr, consrate, consmode);
+		imxuart_cons_attach(&armv7_generic_bs_tag, consaddr, consrate, consmode);
 		return;
 	}
 # endif /* (NIMXUART > 0) && defined(IMXUARTCONSOLE) */

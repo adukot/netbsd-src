@@ -10,6 +10,8 @@ MULTILIB_OPTIONS        = m64/m32
 MULTILIB_DIRNAMES       = 64 32
 MULTILIB_OSDIRNAMES	= . ../lib/powerpc
 
+MULTILIB_MATCHES        = $(MULTILIB_MATCHES_FLOAT)
+
 # We want fine grained libraries, so use the new code to build the
 # floating point emulation libraries.
 # fp-bit is only to be used by 32-bit multilibs

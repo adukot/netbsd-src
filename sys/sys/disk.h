@@ -1,4 +1,4 @@
-/*	$NetBSD: disk.h,v 1.63 2014/12/31 20:13:41 mlelstv Exp $	*/
+/*	$NetBSD: disk.h,v 1.67 2016/04/27 02:19:12 christos Exp $	*/
 
 /*-
  * Copyright (c) 1996, 1997, 2004 The NetBSD Foundation, Inc.
@@ -470,18 +470,19 @@ struct disk {
 	struct cpu_disklabel *dk_cpulabel;
 };
 
+#ifdef _KERNEL
 struct dkdriver {
 	void	(*d_strategy)(struct buf *);
 	void	(*d_minphys)(struct buf *);
-#ifdef notyet
-	int	(*d_open)(dev_t, int, int, struct proc *);
-	int	(*d_close)(dev_t, int, int, struct proc *);
-	int	(*d_ioctl)(dev_t, u_long, void *, int, struct proc *);
-	int	(*d_dump)(dev_t);
-	void	(*d_start)(struct buf *, daddr_t);
-	int	(*d_mklabel)(struct disk *);
-#endif
+	int	(*d_open)(dev_t, int, int, struct lwp *);
+	int	(*d_close)(dev_t, int, int, struct lwp *);
+	int	(*d_diskstart)(device_t, struct buf *);
+	void	(*d_iosize)(device_t, int *);
+	int	(*d_dumpblocks)(device_t, void *, daddr_t, int);
+	int	(*d_lastclose)(device_t);
+	int	(*d_discard)(device_t, off_t, off_t);
 };
+#endif
 
 /* states */
 #define	DK_CLOSED	0		/* drive is closed */
@@ -518,6 +519,8 @@ struct disk_strategy {
 
 #define	DK_BSIZE2BLKSHIFT(b)	((ffs((b) / DEV_BSIZE)) - 1)
 #define	DK_BSIZE2BYTESHIFT(b)	(ffs((b)) - 1)
+#define DK_DEV_BSIZE_OK(b) \
+    ((b) >= DEV_BSIZE && ((b) & ((b) - 1)) == 0 && (b) <= MAXPHYS)
 
 #ifdef _KERNEL
 extern	int disk_count;			/* number of disks in global disklist */
@@ -544,9 +547,11 @@ int	dkwedge_list(struct disk *, struct dkwedge_list *, struct lwp *);
 void	dkwedge_discover(struct disk *);
 int	dkwedge_read(struct disk *, struct vnode *, daddr_t, void *, size_t);
 device_t dkwedge_find_by_wname(const char *);
+device_t dkwedge_find_by_parent(const char *, size_t *);
 const char *dkwedge_get_parent_name(dev_t);
 void	dkwedge_print_wnames(void);
 device_t dkwedge_find_partition(device_t, daddr_t, uint64_t);
+
 #endif
 
 #endif /* _SYS_DISK_H_ */

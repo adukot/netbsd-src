@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2006-2009, 2011-2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2004, 2006-2009, 2011-2015  Internet Systems Consortium, Inc. ("ISC")
  * Copyright (C) 1999-2001  Internet Software Consortium.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
@@ -14,8 +14,6 @@
  * OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
  * PERFORMANCE OF THIS SOFTWARE.
  */
-
-/* Id: config.h.win32,v 1.28 2011/10/30 23:39:39 marka Exp  */
 
 /*
  * win32 configuration file
@@ -185,7 +183,9 @@ char *getpassphrase(const char *);
  * WIN32 specials until some other way of dealing with these is decided.
  */
 
+#if _MSC_VER < 1900
 #define snprintf _snprintf
+#endif
 #if _MSC_VER <= 1400
 #define vsnprintf _vsnprintf
 #endif
@@ -312,6 +312,9 @@ typedef __int64 off_t;
 /* Define to the flags type used by getnameinfo(3). */
 #define IRS_GETNAMEINFO_FLAGS_T int
 
+/* Define to the sockaddr length type used by getnameinfo(3). */
+#define IRS_GETNAMEINFO_SOCKLEN_T socklen_t
+
 /* Define to enable the "filter-aaaa-on-v4" and "filter-aaaa-on-v6" options.
    */
 @ALLOW_FILTER_AAAA@
@@ -352,6 +355,9 @@ typedef __int64 off_t;
 /* Define if your OpenSSL version supports AES */
 @HAVE_OPENSSL_AES@
 
+/* HMAC_*() return ints */
+@HMAC_RETURN_INT@
+
 /* Use AES for Source Identity Token generation */
 @AES_SIT@
 
@@ -387,6 +393,9 @@ typedef __int64 off_t;
 
 /* Large system tuning */
 @TUNE_LARGE@
+
+/* Verbose query trace logging */
+@WANT_QUERYTRACE@
 
 /*
  * Define to nothing if C supports flexible array members, and to 1 if it does

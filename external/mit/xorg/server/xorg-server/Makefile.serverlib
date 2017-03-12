@@ -1,9 +1,13 @@
-#	$NetBSD: Makefile.serverlib,v 1.5 2014/12/08 06:33:26 mrg Exp $
+#	$NetBSD: Makefile.serverlib,v 1.9 2016/01/25 18:00:26 christos Exp $
 
-NOLINT=         1
-NOPROFILE=      1
+.include <bsd.own.mk>		# for NETBSDSRCDIR and mk.conf processing
 
-.include <bsd.own.mk>		# for NETBSDSRCDIR
+# We can't use LIBISPRIVATE here as we need the ".so" installed.
+MKPICINSTALL:=	no
+MKLINT:=	no
+MKDEBUGLIB:=	no
+MKPROFILE:=	no
+
 .include <bsd.endian.mk>
 
 .if ${TARGET_ENDIANNESS} == "1234"

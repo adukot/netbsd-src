@@ -1,4 +1,4 @@
-/*	$NetBSD: fd.c,v 1.107 2015/01/02 19:42:07 christos Exp $	*/
+/*	$NetBSD: fd.c,v 1.110 2015/12/08 20:36:15 christos Exp $	*/
 
 /*-
  * Copyright (c) 1998, 2003, 2008 The NetBSD Foundation, Inc.
@@ -81,7 +81,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: fd.c,v 1.107 2015/01/02 19:42:07 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: fd.c,v 1.110 2015/12/08 20:36:15 christos Exp $");
 
 #include "opt_ddb.h"
 
@@ -115,7 +115,7 @@ __KERNEL_RCSID(0, "$NetBSD: fd.c,v 1.107 2015/01/02 19:42:07 christos Exp $");
 #include <sys/fdio.h>
 #include <sys/conf.h>
 #include <sys/vnode.h>
-#include <sys/rnd.h>
+#include <sys/rndsource.h>
 
 #include <prop/proplib.h>
 
@@ -253,7 +253,10 @@ void fdgetdisklabel(struct fd_softc *);
 int fd_get_parms(struct fd_softc *);
 void fdstart(struct fd_softc *);
 
-struct dkdriver fddkdriver = { fdstrategy, NULL };
+struct dkdriver fddkdriver = {
+	.d_strategy = fdstrategy,
+	.d_minphys = minphys
+};
 
 #if defined(i386) || defined(x86_64)
 const struct fd_type *fd_nvtotype(const char *, int, int);
@@ -1408,7 +1411,7 @@ fdioctl(dev_t dev, u_long cmd, void *addr, int flag, struct lwp *l)
 #endif
 
 	switch (cmd) {
-	case DIOCGPART:
+	case DIOCGPARTINFO:
 	case DIOCGDINFO:
 #ifdef __HAVE_OLD_DISKLABEL
 	case ODIOCGDINFO:

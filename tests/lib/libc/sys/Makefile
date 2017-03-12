@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.37 2015/01/31 23:06:57 christos Exp $
+# $NetBSD: Makefile,v 1.42 2016/04/06 00:45:53 christos Exp $
 
 MKMAN=	no
 
@@ -9,6 +9,7 @@ MKMAN=	no
 TESTSDIR=		${TESTSBASE}/lib/libc/sys
 
 TESTS_C+=		t_access
+TESTS_C+=		t_bind
 TESTS_C+=		t_chroot
 TESTS_C+=		t_clock_gettime
 TESTS_C+=		t_clone
@@ -64,18 +65,21 @@ TESTS_C+=		t_truncate
 TESTS_C+=		t_ucontext
 TESTS_C+=		t_umask
 TESTS_C+=		t_unlink
+TESTS_C+=		t_wait
 TESTS_C+=		t_write
 
 SRCS.t_mprotect=	t_mprotect.c ${SRCS_EXEC_PROT}
 
 LDADD.t_getpid+=        -lpthread
 
-.if (${MKRUMP} != "no")
+.if (${MKRUMP} != "no") && !defined(BSD_MK_COMPAT_FILE)
+CPPFLAGS.t_posix_fadvise.c += -D_KERNTYPES
 TESTS_C+=		t_posix_fadvise
 LDADD.t_posix_fadvise+= -lrumpvfs -lrump -lrumpuser -lrump -lpthread
 .endif
 
+CPPFLAGS.t_lwp_create.c += -D_KERNTYPES
+
 WARNS=			4
 
 .include <bsd.test.mk>
-

@@ -1,4 +1,4 @@
-/*	$NetBSD: prettydate.c,v 1.4 2014/12/19 20:43:17 christos Exp $	*/
+/*	$NetBSD: prettydate.c,v 1.8 2016/01/08 21:35:38 christos Exp $	*/
 
 /*
  * prettydate - convert a time stamp to something readable
@@ -143,7 +143,7 @@ get_struct_tm(
 			return NULL; /* That's truly pathological! */
 
 	/* 'tm' surely not NULL here! */
-	NTP_INSIST(tm != NULL);
+	INSIST(tm != NULL);
 	if (folds != 0) {
 		tm->tm_year += folds * SOLAR_CYCLE_YEARS;
 		if (tm->tm_year <= 0 || tm->tm_year >= 200)

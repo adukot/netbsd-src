@@ -1,4 +1,4 @@
-/*	$NetBSD: networking.c,v 1.9 2014/12/20 08:38:47 uebayasi Exp $	*/
+/*	$NetBSD: networking.c,v 1.14 2016/05/01 23:32:01 christos Exp $	*/
 
 #include <config.h>
 #include "networking.h"
@@ -115,7 +115,7 @@ process_pkt (
 	l_fp		sent_xmt;
 	l_fp		resp_org;
 
-	key_id = 0;
+	// key_id = 0;
 	pkt_key = NULL;
 	is_authentic = (HAVE_OPT(AUTHENTICATION)) ? 0 : -1;
 
@@ -138,10 +138,14 @@ process_pkt (
 		return PACKET_UNUSEABLE;
 	}
 	/* Note: pkt_len must be a multiple of 4 at this point! */
-	packet_end = (u_int32*)((char*)rpkt + pkt_len);
+	packet_end = (void*)((char*)rpkt + pkt_len);
 	exten_end = skip_efields(rpkt->exten, packet_end);
-	if (NULL == exten_end)
-		goto unusable;
+	if (NULL == exten_end) {
+		msyslog(LOG_ERR,
+			"%s: Missing extension field.  Discarding.",
+			func_name);
+		return PACKET_UNUSEABLE;
+	}
 	/* get size of MAC in cells; can be zero */
 	exten_len = (u_int)(packet_end - exten_end);
 
@@ -157,7 +161,10 @@ process_pkt (
 		break;
 
 	case 3: /* key ID + 3DES MAC -- unsupported! */
-		goto unusable;
+		msyslog(LOG_ERR,
+			"%s: Key ID + 3DES MAC is unsupported.  Discarding.",
+			func_name);
+		return PACKET_UNUSEABLE;
 
 	case 5:	/* key ID + MD5 MAC */
 	case 6:	/* key ID + SHA MAC */
@@ -179,7 +186,7 @@ process_pkt (
 		** keyfile and compare those md5sums.
 		*/
 		mac_size = exten_len << 2;
-		if (!auth_md5((char *)rpkt, pkt_len - mac_size,
+		if (!auth_md5(rpkt, pkt_len - mac_size,
 			      mac_size - 4, pkt_key)) {
 			is_authentic = FALSE;
 			break;
@@ -191,7 +198,10 @@ process_pkt (
 		break;
 
 	default:
-		goto unusable;
+		msyslog(LOG_ERR,
+			"%s: Unexpected extension length: %d.  Discarding.",
+			func_name, exten_len);
+		return PACKET_UNUSEABLE;
 	}
 
 	switch (is_authentic) {
@@ -254,7 +264,6 @@ process_pkt (
 		msyslog(LOG_ERR,
 			"%s: %s not in sync, skipping this server",
 			func_name, stoa(sender));
-unusable:
 		return SERVER_UNUSEABLE;
 	}
 

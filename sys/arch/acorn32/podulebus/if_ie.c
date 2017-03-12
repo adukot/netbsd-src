@@ -1,4 +1,4 @@
-/* $NetBSD: if_ie.c,v 1.34 2014/10/25 10:58:12 skrll Exp $ */
+/* $NetBSD: if_ie.c,v 1.36 2016/02/09 08:32:07 ozaki-r Exp $ */
 
 /*
  * Copyright (c) 1995 Melvin Tang-Richardson.
@@ -53,7 +53,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_ie.c,v 1.34 2014/10/25 10:58:12 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_ie.c,v 1.36 2016/02/09 08:32:07 ozaki-r Exp $");
 
 #define IGNORE_ETHER1_IDROM_CHECKSUM
 
@@ -92,11 +92,6 @@ __KERNEL_RCSID(0, "$NetBSD: if_ie.c,v 1.34 2014/10/25 10:58:12 skrll Exp $");
 #include <netinet/in_var.h>
 #include <netinet/ip.h>
 #include <netinet/if_inarp.h>
-#endif
-
-#ifdef NS
-#include <netns/ns.h>
-#include <netns/ns_if.h>
 #endif
 
 /* Import our data structres */
@@ -1287,7 +1282,7 @@ ie_read_frame(struct ie_softc *sc, int num)
 
     bpf_mtap(ifp, m);
 
-    (*ifp->if_input)(ifp, m);
+    if_percpuq_enqueue(ifp->if_percpuq, m);
 }
 
 void

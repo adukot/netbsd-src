@@ -1,8 +1,8 @@
 #!/bin/sh
 #
-# $NetBSD: postinstall,v 1.188 2014/12/30 07:02:29 apb Exp $
+# $NetBSD: postinstall,v 1.202 2016/01/30 23:45:37 christos Exp $
 #
-# Copyright (c) 2002-2008 The NetBSD Foundation, Inc.
+# Copyright (c) 2002-2015 The NetBSD Foundation, Inc.
 # All rights reserved.
 #
 # This code is derived from software contributed to The NetBSD Foundation
@@ -231,7 +231,7 @@ check_dir()
 #	and with the special name "SKIP" being used to mark gaps in the
 #	sequence.
 #	Returns 0 if ok, 1 otherwise.
-#	
+#
 check_ids()
 {
 	[ $# -ge 6 ] || err 3 "USAGE: checks_ids op type file start srcfile id [...]"
@@ -499,8 +499,8 @@ file_exists_exact()
 	[ -n "$1" ] || err 3 "USAGE: file_exists_exact path"
 	_path="${1#.}"
 	[ -h "${DEST_DIR}${_path}" ] || \
-        	[ -e "${DEST_DIR}${_path}" ] || return 1
-	while [ "${_path}" != "/" ] ; do
+		[ -e "${DEST_DIR}${_path}" ] || return 1
+	while [ "${_path}" != "/" -a "${_path}" != "." ] ; do
 		_dirname="$(dirname "${_path}" 2>/dev/null)"
 		_basename="$(basename "${_path}" 2>/dev/null)"
 		ls -fa "${DEST_DIR}${_dirname}" 2> /dev/null \
@@ -523,9 +523,9 @@ obsolete_paths()
 
 	failed=0
 	while read ofile; do
-                if ! file_exists_exact "${ofile}"; then
-                    continue
-                fi
+		if ! file_exists_exact "${ofile}"; then
+			continue
+		fi
 		ofile="${DEST_DIR}${ofile#.}"
 		cmd="rm"
 		ftype="file"
@@ -566,7 +566,7 @@ obsolete_libs()
 }
 
 _obsolete_libs()
-{ 
+{
 	dir="$1"
 
 	(
@@ -622,7 +622,7 @@ function checklib(results, line, regex) {
 }
 
 #}'
-	
+
 	)
 }
 
@@ -718,7 +718,7 @@ contents_owner()
 		find "${_dir}" \( \( ! -user "${_user}" \) -o \
 		\( ! -group "${_grp}" \) \) -a -print0 \
 		| xargs -0 chown "${_user}:${_grp}"
-	fi	
+	fi
 }
 
 # get_makevar var [var ...]
@@ -950,7 +950,7 @@ do_fontconfig()
 
 	# First, check for updates we can handle.
 	if ! $SOURCEMODE; then
-		FONTCONFIG_DIR="${SRC_DIR}/etc/fonts/conf.avail" 
+		FONTCONFIG_DIR="${SRC_DIR}/etc/fonts/conf.avail"
 	else
 		FONTCONFIG_DIR="${XSRC_DIR}/external/mit/fontconfig/dist/conf.d"
 	fi
@@ -991,7 +991,17 @@ do_fontconfig()
 		80-delicious.conf \
 		90-synthetic.conf
 	failed=$(( ${failed} + $? ))
-		
+
+	if ! $SOURCEMODE; then
+		FONTS_DIR="${SRC_DIR}/etc/fonts"
+	else
+		FONTS_DIR="${SRC_DIR}/external/mit/xorg/lib/fontconfig/etc"
+	fi
+
+	populate_dir "$op" false "${FONTS_DIR}" "${DEST_DIR}/etc/fonts" 444 \
+		fonts.conf
+	failed=$(( ${failed} + $? ))
+
 	# We can't modify conf.d easily; someone might have removed a file.
 
 	conf_d_failed=0
@@ -1178,9 +1188,13 @@ do_mtree()
 	if ! $SOURCEMODE; then
 		MTREE_DIR="${SRC_DIR}/etc/mtree"
 	else
-		${MAKE} -s -C "${SRC_DIR}/etc/mtree" emit_dist_file > \
+		/bin/rm -rf "${SCRATCHDIR}/obj"
+		mkdir "${SCRATCHDIR}/obj"
+		${MAKE} -s -C "${SRC_DIR}/etc/mtree" TOOL_AWK="${AWK}" \
+		    MAKEOBJDIR="${SCRATCHDIR}/obj" emit_dist_file > \
 		    "${SCRATCHDIR}/NetBSD.dist"
 		MTREE_DIR="${SCRATCHDIR}"
+		/bin/rm -rf "${SCRATCHDIR}/obj"
 	fi
 	compare_dir "$1" "${MTREE_DIR}" "${DEST_DIR}/etc/mtree" 444 NetBSD.dist
 	failed=$(( ${failed} + $? ))
@@ -1347,6 +1361,7 @@ httpd
 identd
 ifwatchd
 inetd
+ip6addrctl
 ipfilter
 ipfs
 ipmon
@@ -1354,6 +1369,7 @@ ipnat
 ipsec
 irdaattach
 iscsi_target
+iscsid
 isdnd
 isibootd
 kdc
@@ -1365,6 +1381,7 @@ lvm
 makemandb
 mdnsd
 mixerctl
+modules
 mopd
 motd
 mountall
@@ -1397,6 +1414,7 @@ raidframeparity
 random_seed
 rarpd
 rbootd
+resize_root
 rndctl
 root
 route6d
@@ -1489,6 +1507,16 @@ do_rc()
 		${extra_scripts}
 	failed=$(( ${failed} + $? ))
 
+	if ! find_file_in_dirlist blacklistd "blacklistd" \
+	    "${SRC_DIR}/external/bsd/blacklist/etc/rc.d" \
+	    "${SRC_DIR}/etc/rc.d"; then
+	    failed=1
+	else
+	    populate_dir "$op" true "${dir}" "${DEST_DIR}/etc/rc.d" 555 \
+		blacklistd
+	    failed=$(( ${failed} + $? ))
+	fi
+
 	if $SOURCEMODE && [ -n "${generated_scripts}" ]; then
 		# generate scripts
 		mkdir "${SCRATCHDIR}/rc"
@@ -1578,7 +1606,7 @@ do_mailerconf()
 		failed=$?
 	    fi
 	fi
-	
+
 	return ${failed}
 }
 
@@ -2000,6 +2028,33 @@ do_catpages()
 	return $failed
 }
 
+#
+#	man.conf
+#
+additem manconf "check for a mandoc usage in /etc/man.conf"
+do_manconf()
+{
+	[ -n "$1" ] || err 3 "USAGE: do_manconf  fix|check"
+	op="$1"
+	failed=0
+
+	[ -f "${DEST_DIR}/etc/man.conf" ] || return 0
+	if ${GREP} -w "mandoc" "${DEST_DIR}/etc/man.conf" >/dev/null 2>&1;
+	then
+		failed=0;
+	else
+		failed=1
+		notfixed=""
+		if [ "${op}" = "fix" ]; then
+			notfixed="${NOT_FIXED}"
+		fi
+		msg "The file /etc/man.conf has not been adapted to mandoc usage; you"
+		msg "probably want to copy a new version over. ${notfixed}"
+	fi
+
+	return ${failed}
+}
+
 
 #
 #	ptyfsoldnodes
@@ -2193,7 +2248,7 @@ Usage: ${PROGNAME} [-s srcdir] [-x xsrcdir] [-d destdir] [-m mach] [-a arch] op 
 			* A directory that contains a NetBSD source tree;
 			* A distribution set file such as "etc.tgz" or
 			  "xetc.tgz".  Pass multiple -s options to specify
-                          multiple such files;
+			  multiple such files;
 			* A temporary directory in which one or both of
 			  "etc.tgz" and "xetc.tgz" have been extracted.
 							[${SRC_DIR:-/usr/src}]
@@ -2451,7 +2506,7 @@ _Fix_me_
 		fi
 
 		;;
-		
+
 	*)
 		warn "Unknown operation '"${op}"'"
 		usage

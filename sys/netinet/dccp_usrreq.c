@@ -1,5 +1,5 @@
 /*	$KAME: dccp_usrreq.c,v 1.67 2005/11/03 16:05:04 nishida Exp $	*/
-/*	$NetBSD: dccp_usrreq.c,v 1.1 2015/02/10 19:11:52 rjs Exp $ */
+/*	$NetBSD: dccp_usrreq.c,v 1.7 2015/08/24 22:21:26 pooka Exp $ */
 
 /*
  * Copyright (c) 2003 Joacim Häggmark, Magnus Erixzon, Nils-Erik Mattsson 
@@ -67,10 +67,12 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: dccp_usrreq.c,v 1.1 2015/02/10 19:11:52 rjs Exp $");
+__KERNEL_RCSID(0, "$NetBSD: dccp_usrreq.c,v 1.7 2015/08/24 22:21:26 pooka Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_inet.h"
 #include "opt_dccp.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -91,7 +93,6 @@ __KERNEL_RCSID(0, "$NetBSD: dccp_usrreq.c,v 1.1 2015/02/10 19:11:52 rjs Exp $");
 #include <sys/queue.h>
 
 #include <net/if.h>
-#include <net/route.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
@@ -1820,12 +1821,11 @@ out:
 }
 
 static int
-dccp_bind(struct socket *so, struct mbuf *m, struct lwp *l)
+dccp_bind(struct socket *so, struct sockaddr *nam, struct lwp *l)
 {
 	struct inpcb *inp;
 	int error;
-	struct sockaddr_in *sinp;
-	struct sockaddr *nam;
+	struct sockaddr_in *sin = (struct sockaddr_in *)nam;
 
 	DCCP_DEBUG((LOG_INFO, "Entering dccp_bind!\n"));
 	INP_INFO_WLOCK(&dccpbinfo);
@@ -1836,15 +1836,13 @@ dccp_bind(struct socket *so, struct mbuf *m, struct lwp *l)
 	}
 
 	/* Do not bind to multicast addresses! */
-	nam = mtod(m, struct sockaddr *);
-	sinp = (struct sockaddr_in *)nam;
-	if (sinp->sin_family == AF_INET &&
-	    IN_MULTICAST(ntohl(sinp->sin_addr.s_addr))) {
+	if (sin->sin_family == AF_INET &&
+	    IN_MULTICAST(ntohl(sin->sin_addr.s_addr))) {
 		INP_INFO_WUNLOCK(&dccpbinfo);
 		return EAFNOSUPPORT;
 	}
 	INP_LOCK(inp);
-	error = in_pcbbind(inp, m, l);
+	error = in_pcbbind(inp, sin, l);
 	INP_UNLOCK(inp);
 	INP_INFO_WUNLOCK(&dccpbinfo);
 	return error;
@@ -1855,11 +1853,10 @@ dccp_bind(struct socket *so, struct mbuf *m, struct lwp *l)
  * Called by the connect system call.
  */
 static int
-dccp_connect(struct socket *so, struct mbuf *m, struct lwp *l)
+dccp_connect(struct socket *so, struct sockaddr *nam, struct lwp *l)
 {
 	struct inpcb *inp;
 	struct dccpcb *dp;
-	struct sockaddr *nam;
 	int error;
 	struct sockaddr_in *sin;
 	char test[2];
@@ -1893,7 +1890,6 @@ dccp_connect(struct socket *so, struct mbuf *m, struct lwp *l)
 
 	dccpstat.dccps_connattempt++;
 
-	nam = mtod(m, struct sockaddr *);
 	sin = (struct sockaddr_in *)nam;
 	if (sin->sin_family == AF_INET
 	    && IN_MULTICAST(ntohl(sin->sin_addr.s_addr))) {
@@ -1901,7 +1897,7 @@ dccp_connect(struct socket *so, struct mbuf *m, struct lwp *l)
 		goto bad;
 	}
 
-	error = dccp_doconnect(so, m, l, 0);
+	error = dccp_doconnect(so, nam, l, 0);
 
 	if (error != 0)
 		goto bad;
@@ -1935,7 +1931,8 @@ dccp_connect2(struct socket *so, struct socket *so2)
  *
  */
 int
-dccp_doconnect(struct socket *so, struct mbuf *m, struct lwp *l, int isipv6)
+dccp_doconnect(struct socket *so, struct sockaddr *nam,
+    struct lwp *l, int isipv6)
 { 
 	struct inpcb *inp;
 #ifdef INET6
@@ -1964,11 +1961,11 @@ dccp_doconnect(struct socket *so, struct mbuf *m, struct lwp *l, int isipv6)
 #ifdef INET6
 		if (isipv6) {
 			DCCP_DEBUG((LOG_INFO, "Running in6_pcbbind!\n"));
-			error = in6_pcbbind(in6p, (struct mbuf *)0, l);
+			error = in6_pcbbind(in6p, NULL, l);
 		} else
 #endif /* INET6 */
 		{
-			error = in_pcbbind(inp, (struct mbuf *)0, l);
+			error = in_pcbbind(inp, NULL, l);
 		}
 		if (error) {
 			DCCP_DEBUG((LOG_INFO, "in_pcbbind=%d\n",error));
@@ -1978,11 +1975,11 @@ dccp_doconnect(struct socket *so, struct mbuf *m, struct lwp *l, int isipv6)
 
 #ifdef INET6
 	if (isipv6) {
-		error = in6_pcbconnect(in6p, m, l);
+		error = in6_pcbconnect(in6p, (struct sockaddr_in6 *)nam, l);
 		DCCP_DEBUG((LOG_INFO, "in6_pcbconnect=%d\n",error));
 	} else
 #endif
-		error = in_pcbconnect(inp, m, l);
+		error = in_pcbconnect(inp, (struct sockaddr_in *)nam, l);
 	if (error) {
 		DCCP_DEBUG((LOG_INFO, "in_pcbconnect=%d\n",error));
 		return error;
@@ -2116,12 +2113,11 @@ dccp_disconnect2(struct dccpcb *dp)
 }
 
 int
-dccp_send(struct socket *so, struct mbuf *m, struct mbuf *nam,
+dccp_send(struct socket *so, struct mbuf *m, struct sockaddr *addr,
     struct mbuf *control, struct lwp *l)
 {
 	struct inpcb	*inp;
 	struct dccpcb	*dp;
-	struct sockaddr *addr;
 	int		error = 0;
 	int		isipv6 = 0;
 
@@ -2134,11 +2130,6 @@ dccp_send(struct socket *so, struct mbuf *m, struct mbuf *nam,
 		m_freem(m);
 		return EINVAL;
 	}
-
-	if (nam == 0)
-		addr = NULL;
-	else
-		addr = mtod(nam, struct sockaddr *);
 
 #ifdef INET6
 	isipv6 = addr && addr->sa_family == AF_INET6;
@@ -2201,7 +2192,7 @@ dccp_send(struct socket *so, struct mbuf *m, struct mbuf *nam,
 	dp->pktcnt ++;
 
 	if (addr && dp->state == DCCPS_CLOSED) {
-		error = dccp_doconnect(so, nam, l, isipv6);
+		error = dccp_doconnect(so, addr, l, isipv6);
 		if (error)
 			goto out;
 	}
@@ -2260,7 +2251,7 @@ dccp_listen(struct socket *so, struct lwp *td)
 	INP_INFO_RUNLOCK(&dccpbinfo);
 	dp = (struct dccpcb *)inp->inp_ppcb;
 	if (inp->inp_lport == 0)
-		error = in_pcbbind(inp, (struct mbuf *)0, td);
+		error = in_pcbbind(inp, NULL, td);
 	if (error == 0) {
 		dp->state = DCCPS_LISTEN;
 		dp->who = DCCP_LISTENER;
@@ -2273,7 +2264,7 @@ dccp_listen(struct socket *so, struct lwp *td)
  * Accepts a connection (accept system call)
  */
 static int
-dccp_accept(struct socket *so, struct mbuf *nam)
+dccp_accept(struct socket *so, struct sockaddr *nam)
 {
 	struct inpcb *inp = NULL;
 	int error = 0;
@@ -2296,7 +2287,7 @@ dccp_accept(struct socket *so, struct mbuf *nam)
 	}
 	INP_LOCK(inp);
 	INP_INFO_RUNLOCK(&dccpbinfo);
-	in_setpeeraddr(inp, nam);
+	in_setpeeraddr(inp, (struct sockaddr_in *)nam);
 
 	return error;
 }
@@ -2311,9 +2302,6 @@ dccp_newdccpcb(int family, void *aux)
 	struct inpcb *inp;
 	struct in6pcb *in6p;
 	struct dccpcb	*dp;
-#ifdef INET6
-	struct rtentry *rt;
-#endif
 
 	DCCP_DEBUG((LOG_INFO, "Creating a new dccpcb!\n"));
 
@@ -2365,8 +2353,7 @@ dccp_newdccpcb(int family, void *aux)
 	case PF_INET6:
 		in6p = (struct in6pcb *)aux;
 		dp->d_in6pcb = in6p;
-		rt = rtcache_validate(&in6p->in6p_route);
-		in6p->in6p_ip6.ip6_hlim = in6_selecthlim(in6p, (rt != NULL) ? rt->rt_ifp : NULL);
+		in6p->in6p_ip6.ip6_hlim = in6_selecthlim_rt(in6p);
 		in6p->in6p_ppcb = dp;
 		break;
 	}
@@ -2915,24 +2902,26 @@ dccp_stat(struct socket *so, struct stat *ub)
 }
 
 static int
-dccp_peeraddr(struct socket *so, struct mbuf *nam)
+dccp_peeraddr(struct socket *so, struct sockaddr *nam)
 {
+
 	KASSERT(solocked(so));
 	KASSERT(sotoinpcb(so) != NULL);
 	KASSERT(nam != NULL);
 
-	in_setpeeraddr(sotoinpcb(so), nam);
+	in_setpeeraddr(sotoinpcb(so), (struct sockaddr_in *)nam);
 	return 0;
 }
 
 static int
-dccp_sockaddr(struct socket *so, struct mbuf *nam)
+dccp_sockaddr(struct socket *so, struct sockaddr *nam)
 {
+
 	KASSERT(solocked(so));
 	KASSERT(sotoinpcb(so) != NULL);
 	KASSERT(nam != NULL);
 
-	in_setsockaddr(sotoinpcb(so), nam);
+	in_setsockaddr(sotoinpcb(so), (struct sockaddr_in *)nam);
 	return 0;
 }
 
@@ -2975,40 +2964,6 @@ dccp_purgeif(struct socket *so, struct ifnet *ifp)
 	in_pcbpurgeif(&dccpbtable, ifp);
 	mutex_exit(softnet_lock);
 	splx(s);
-
-	return 0;
-}
-
-int
-dccp_usrreq(struct socket *so, int req, struct mbuf *m, struct mbuf *nam,
-	    struct mbuf *control, struct lwp *l)
-{
-	KASSERT(req != PRU_ATTACH);
-	KASSERT(req != PRU_DETACH);
-	KASSERT(req != PRU_ACCEPT);
-	KASSERT(req != PRU_BIND);
-	KASSERT(req != PRU_LISTEN);
-	KASSERT(req != PRU_CONNECT);
-	KASSERT(req != PRU_CONNECT2);
-	KASSERT(req != PRU_DISCONNECT);
-	KASSERT(req != PRU_SHUTDOWN);
-	KASSERT(req != PRU_ABORT);
-	KASSERT(req != PRU_CONTROL);
-	KASSERT(req != PRU_SENSE);
-	KASSERT(req != PRU_PEERADDR);
-	KASSERT(req != PRU_SOCKADDR);
-	KASSERT(req != PRU_RCVD);
-	KASSERT(req != PRU_RCVOOB);
-	KASSERT(req != PRU_SEND);
-	KASSERT(req != PRU_SENDOOB);
-	KASSERT(req != PRU_PURGEIF);
-
-	KASSERT(solocked(so));
-
-	if (sotoinpcb(so) == NULL)
-		return EINVAL;
-
-	panic("dccp_usrreq");
 
 	return 0;
 }
@@ -3385,7 +3340,6 @@ PR_WRAP_USRREQS(dccp)
 #define	dccp_send	dccp_send_wrapper
 #define	dccp_sendoob	dccp_sendoob_wrapper
 #define	dccp_purgeif	dccp_purgeif_wrapper
-#define	dccp_usrreq	dccp_usrreq_wrapper
 
 const struct pr_usrreqs dccp_usrreqs = {
 	.pr_attach	= dccp_attach,
@@ -3407,5 +3361,4 @@ const struct pr_usrreqs dccp_usrreqs = {
 	.pr_send	= dccp_send,
 	.pr_sendoob	= dccp_sendoob,
 	.pr_purgeif	= dccp_purgeif,
-	.pr_generic	= dccp_usrreq,
 };

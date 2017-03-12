@@ -1,4 +1,4 @@
-/*	$NetBSD: nfs_vnops.c,v 1.306 2014/07/25 08:20:53 dholland Exp $	*/
+/*	$NetBSD: nfs_vnops.c,v 1.309 2016/01/19 10:56:59 hannken Exp $	*/
 
 /*
  * Copyright (c) 1989, 1993
@@ -39,7 +39,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: nfs_vnops.c,v 1.306 2014/07/25 08:20:53 dholland Exp $");
+__KERNEL_RCSID(0, "$NetBSD: nfs_vnops.c,v 1.309 2016/01/19 10:56:59 hannken Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_nfs.h"
@@ -954,18 +954,11 @@ dorpc:
 
 	if (NFS_CMPFH(np, fhp, fhsize)) {
 		/*
-		 * as we handle "." lookup locally, this should be
+		 * As we handle "." lookup locally, this is
 		 * a broken server.
 		 */
-		vref(dvp);
-		newvp = dvp;
-#ifndef NFS_V2_ONLY
-		if (v3) {
-			nfsm_postop_attr(newvp, attrflag, 0);
-			nfsm_postop_attr(dvp, attrflag, 0);
-		} else
-#endif
-			nfsm_loadattr(newvp, (struct vattr *)0, 0);
+		m_freem(mrep);
+		return EBADRPC;
 	} else if (flags & ISDOTDOT) {
 		/*
 		 * ".." lookup
@@ -1311,7 +1304,7 @@ retry:
 	byte_count = 0; /* count of bytes actually written */
 	while (tsiz > 0) {
 		uint32_t datalen; /* data bytes need to be allocated in mbuf */
-		uint32_t backup;
+		size_t backup;
 		bool stalewriteverf = false;
 
 		nfsstats.rpccnt[NFSPROC_WRITE]++;
@@ -2050,7 +2043,7 @@ nfs_linkrpc(struct vnode *dvp, struct vnode *vp, const char *name,
 int
 nfs_link(void *v)
 {
-	struct vop_link_args /* {
+	struct vop_link_v2_args /* {
 		struct vnode *a_dvp;
 		struct vnode *a_vp;
 		struct componentname *a_cnp;
@@ -2063,7 +2056,6 @@ nfs_link(void *v)
 	error = vn_lock(vp, LK_EXCLUSIVE);
 	if (error != 0) {
 		VOP_ABORTOP(dvp, cnp);
-		vput(dvp);
 		return error;
 	}
 
@@ -2083,7 +2075,6 @@ nfs_link(void *v)
 	VOP_UNLOCK(vp);
 	VN_KNOTE(vp, NOTE_LINK);
 	VN_KNOTE(dvp, NOTE_WRITE);
-	vput(dvp);
 	return (error);
 }
 

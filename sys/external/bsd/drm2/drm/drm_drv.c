@@ -1,4 +1,4 @@
-/*	$NetBSD: drm_drv.c,v 1.13 2015/01/01 01:15:42 mrg Exp $	*/
+/*	$NetBSD: drm_drv.c,v 1.17 2015/11/09 22:04:53 jmcneill Exp $	*/
 
 /*-
  * Copyright (c) 2013 The NetBSD Foundation, Inc.
@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: drm_drv.c,v 1.13 2015/01/01 01:15:42 mrg Exp $");
+__KERNEL_RCSID(0, "$NetBSD: drm_drv.c,v 1.17 2015/11/09 22:04:53 jmcneill Exp $");
 
 #include <sys/param.h>
 #include <sys/types.h>
@@ -87,6 +87,7 @@ static drm_ioctl_t	drm_version;
 		.cmd_drv = 0,						\
 	}
 
+#if __OS_HAS_AGP
 /* XXX Kludge for AGP.  */
 static drm_ioctl_t	drm_agp_acquire_hook_ioctl;
 static drm_ioctl_t	drm_agp_release_hook_ioctl;
@@ -105,6 +106,7 @@ static drm_ioctl_t	drm_agp_unbind_hook_ioctl;
 #define	drm_agp_free_ioctl	drm_agp_free_hook_ioctl
 #define	drm_agp_bind_ioctl	drm_agp_bind_hook_ioctl
 #define	drm_agp_unbind_ioctl	drm_agp_unbind_hook_ioctl
+#endif
 
 /* Table copied verbatim from dist/drm/drm_drv.c.  */
 static const struct drm_ioctl_desc drm_ioctls[] = {
@@ -392,7 +394,8 @@ drm_lastclose(struct drm_device *dev)
 		drm_irq_uninstall(dev);
 
 	mutex_lock(&dev->struct_mutex);
-	drm_agp_clear_hook(dev);
+	if (dev->agp)
+		drm_agp_clear_hook(dev);
 	drm_legacy_sg_cleanup(dev);
 	list_for_each_entry_safe(vma, vma_temp, &dev->vmalist, head) {
 		list_del(&vma->head);
@@ -469,6 +472,8 @@ drm_dequeue_event(struct drm_file *file, size_t max_length,
 	event = list_first_entry(&file->event_list, struct drm_pending_event,
 	    link);
 	if (event->event->length > max_length) {
+		/* Event is too large, can't return it.  */
+		event = NULL;
 		ret = 0;
 		goto out;
 	}
@@ -642,17 +647,26 @@ drm_ioctl(struct file *fp, unsigned long cmd, void *data)
 	if ((ioctl == NULL) || (ioctl->func == NULL))
 		return EINVAL;
 
+	/* XXX Synchronize with drm_ioctl_permit in upstream drm_drv.c.  */
 	if (ISSET(ioctl->flags, DRM_ROOT_ONLY) && !DRM_SUSER())
 		return EACCES;
 
-	if (ISSET(ioctl->flags, DRM_AUTH) && !file->authenticated)
+	if (ISSET(ioctl->flags, DRM_AUTH) &&
+	    (file->minor->type != DRM_MINOR_RENDER) &&
+	    !file->authenticated)
 		return EACCES;
 
-	if (ISSET(ioctl->flags, DRM_MASTER) && (file->master == NULL))
+	if (ISSET(ioctl->flags, DRM_MASTER) &&
+	    (file->master == NULL) &&
+	    (file->minor->type != DRM_MINOR_CONTROL))
 		return EACCES;
 
 	if (!ISSET(ioctl->flags, DRM_CONTROL_ALLOW) &&
 	    (file->minor->type == DRM_MINOR_CONTROL))
+		return EACCES;
+
+	if (!ISSET(ioctl->flags, DRM_RENDER_ALLOW) &&
+	    (file->minor->type == DRM_MINOR_RENDER))
 		return EACCES;
 
 	if (!ISSET(ioctl->flags, DRM_UNLOCKED))
@@ -794,6 +808,8 @@ drm_agp_clear_hook(struct drm_device *dev)
 	(*hooks->agph_clear)(dev);
 }
 
+#if __OS_HAS_AGP
+
 #define	DEFINE_AGP_HOOK_IOCTL(NAME, HOOK)				      \
 static int								      \
 NAME(struct drm_device *dev, void *data, struct drm_file *file)		      \
@@ -814,3 +830,5 @@ DEFINE_AGP_HOOK_IOCTL(drm_agp_alloc_hook_ioctl, agph_alloc_ioctl)
 DEFINE_AGP_HOOK_IOCTL(drm_agp_free_hook_ioctl, agph_free_ioctl)
 DEFINE_AGP_HOOK_IOCTL(drm_agp_bind_hook_ioctl, agph_bind_ioctl)
 DEFINE_AGP_HOOK_IOCTL(drm_agp_unbind_hook_ioctl, agph_unbind_ioctl)
+
+#endif

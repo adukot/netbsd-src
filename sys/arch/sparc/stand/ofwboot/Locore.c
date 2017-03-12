@@ -1,4 +1,4 @@
-/*	$NetBSD: Locore.c,v 1.13 2013/12/18 10:09:56 martin Exp $	*/
+/*	$NetBSD: Locore.c,v 1.15 2015/10/10 06:50:25 martin Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996 Wolfgang Solfrank.
@@ -35,6 +35,15 @@
 #include "openfirm.h"
 
 #include <machine/cpu.h>
+
+/*
+ * We are trying to boot a sparc v9 cpu, so openfirmware has to be 64bit,
+ * and the kernel we load will be dealing with 64bits too (even if it is
+ * a 32bit kernel.
+ * Make sure we picked up the right defines:
+ */
+__CTASSERT(sizeof(cell_t)==8);
+__CTASSERT(sizeof(paddr_t)==8);
 
 extern int openfirmware(void *);
 
@@ -302,8 +311,8 @@ OF_seek(int handle, u_quad_t pos)
 	args.nargs = 3;
 	args.nreturns = 1;
 	args.handle = HDL2CELL(handle);
-	args.poshi = HDL2CELL(pos >> 32);
-	args.poslo = HDL2CELL(pos);
+	args.poshi = HDQ2CELL_HI(pos);
+	args.poslo = HDQ2CELL_LO(pos);
 	if (openfirmware(&args) == -1) {
 		return -1;
 	}

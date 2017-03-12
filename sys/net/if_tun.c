@@ -1,4 +1,4 @@
-/*	$NetBSD: if_tun.c,v 1.120 2014/07/25 08:10:40 dholland Exp $	*/
+/*	$NetBSD: if_tun.c,v 1.125 2016/04/28 00:16:56 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 1988, Julian Onions <jpo@cs.nott.ac.uk>
@@ -15,9 +15,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_tun.c,v 1.120 2014/07/25 08:10:40 dholland Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_tun.c,v 1.125 2016/04/28 00:16:56 ozaki-r Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_inet.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/proc.h>
@@ -58,11 +60,12 @@ __KERNEL_RCSID(0, "$NetBSD: if_tun.c,v 1.120 2014/07/25 08:10:40 dholland Exp $"
 
 #include <net/if_tun.h>
 
+#include "ioconf.h"
+
 #define TUNDEBUG	if (tundebug) printf
 int	tundebug = 0;
 
 extern int ifqmaxlen;
-void	tunattach(int);
 
 static LIST_HEAD(, tun_softc) tun_softc_list;
 static LIST_HEAD(, tun_softc) tunz_softc_list;
@@ -70,7 +73,7 @@ static kmutex_t tun_softc_lock;
 
 static int	tun_ioctl(struct ifnet *, u_long, void *);
 static int	tun_output(struct ifnet *, struct mbuf *,
-			const struct sockaddr *, struct rtentry *rt);
+			const struct sockaddr *, const struct rtentry *rt);
 static int	tun_clone_create(struct if_clone *, int);
 static int	tun_clone_destroy(struct ifnet *);
 
@@ -435,13 +438,15 @@ tun_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 {
 	int		error = 0, s;
 	struct tun_softc *tp = (struct tun_softc *)(ifp->if_softc);
-	struct ifreq *ifr = data;
+	struct ifreq *ifr = (struct ifreq *)data;
+	struct ifaddr *ifa = (struct ifaddr *)data;
 
 	s = splnet();
 
 	switch (cmd) {
 	case SIOCINITIFADDR:
 		tuninit(tp);
+		ifa->ifa_rtrequest = p2p_rtrequest;
 		TUNDEBUG("%s: address set\n", ifp->if_xname);
 		break;
 	case SIOCSIFBRDADDR:
@@ -489,7 +494,7 @@ tun_ioctl(struct ifnet *ifp, u_long cmd, void *data)
  */
 static int
 tun_output(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
-    struct rtentry *rt)
+    const struct rtentry *rt)
 {
 	struct tun_softc *tp = ifp->if_softc;
 	int		s;
@@ -498,7 +503,6 @@ tun_output(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
 	int		mlen;
 	uint32_t	*af;
 #endif
-	ALTQ_DECL(struct altq_pktattr pktattr;)
 
 	s = splnet();
 	mutex_enter(&tp->tun_lock);
@@ -515,7 +519,7 @@ tun_output(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
 	 * if the queueing discipline needs packet classification,
 	 * do it before prepending link headers.
 	 */
-	IFQ_CLASSIFY(&ifp->if_snd, m0, dst->sa_family, &pktattr);
+	IFQ_CLASSIFY(&ifp->if_snd, m0, dst->sa_family);
 
 	bpf_mtap_af(ifp, dst->sa_family, m0);
 
@@ -559,7 +563,7 @@ tun_output(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
 		}
 		/* FALLTHROUGH */
 	case AF_UNSPEC:
-		IFQ_ENQUEUE(&ifp->if_snd, m0, &pktattr, error);
+		IFQ_ENQUEUE(&ifp->if_snd, m0, error);
 		if (error) {
 			ifp->if_collisions++;
 			error = EAFNOSUPPORT;

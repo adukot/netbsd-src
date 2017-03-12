@@ -1,4 +1,4 @@
-/*	$NetBSD: rockchip_dwctwo.c,v 1.2 2014/12/26 19:44:48 jmcneill Exp $	*/
+/*	$NetBSD: rockchip_dwctwo.c,v 1.6 2016/04/23 10:15:28 skrll Exp $	*/
 
 /*-
  * Copyright (c) 2013 The NetBSD Foundation, Inc.
@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: rockchip_dwctwo.c,v 1.2 2014/12/26 19:44:48 jmcneill Exp $");
+__KERNEL_RCSID(0, "$NetBSD: rockchip_dwctwo.c,v 1.6 2016/04/23 10:15:28 skrll Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -69,7 +69,7 @@ static struct dwc2_core_params rkdwc2_params = {
 	.host_rx_fifo_size		= 520,	/* 520 DWORDs */
 	.host_nperio_tx_fifo_size	= 128,	/* 128 DWORDs */
 	.host_perio_tx_fifo_size	= 256,	/* 256 DWORDs */
-	.max_transfer_size		= 65535,/* 2047 to 65,535 */ 
+	.max_transfer_size		= 65535,/* 2047 to 65,535 */
 	.max_packet_count		= 511,  /* 15 to 511 */
 	.host_channels			= 8,	/* 1 to 16 */
 	.phy_type			= 1, 	/* 1- UTMI+ Phy */
@@ -84,6 +84,8 @@ static struct dwc2_core_params rkdwc2_params = {
 	.reload_ctl			= 0,	/* 0 - No (default for core < 2.92a) */
 	.ahbcfg				= 0x7,	/* INCR16 */
 	.uframe_sched			= 1,	/* True to enable microframe scheduler */
+	.external_id_pin_ctl		= -1,
+	.hibernation			= -1,
 };
 
 static int rkdwc2_match(device_t, struct cfdata *, void *);
@@ -116,7 +118,7 @@ rkdwc2_attach(device_t parent, device_t self, void *aux)
 	sc->sc_dwc2.sc_dev = self;
 
 	sc->sc_dwc2.sc_iot = obio->obio_bst;
-	sc->sc_dwc2.sc_bus.dmatag = obio->obio_dmat;
+	sc->sc_dwc2.sc_bus.ub_dmatag = obio->obio_dmat;
 	sc->sc_dwc2.sc_params = &rkdwc2_params;
 
 	bus_space_subregion(obio->obio_bst, obio->obio_bsh, obio->obio_offset,
@@ -125,11 +127,11 @@ rkdwc2_attach(device_t parent, device_t self, void *aux)
 	aprint_naive(": USB controller\n");
 	aprint_normal(": USB controller\n");
 
-	sc->sc_ih = intr_establish(obio->obio_intr, IPL_SCHED,
-	   IST_LEVEL, dwc2_intr, &sc->sc_dwc2);
+	sc->sc_ih = intr_establish(obio->obio_intr, IPL_VM,
+	   IST_LEVEL | IST_MPSAFE, dwc2_intr, &sc->sc_dwc2);
 #if 0
 	   IST_EDGE, dwc2_intr, &sc->sc_dwc2);
-#endif 
+#endif
 
 	if (sc->sc_ih == NULL) {
 		aprint_error_dev(self, "failed to establish interrupt %d\n",

@@ -1,4 +1,4 @@
-/*	$NetBSD: chfs_vnops.c,v 1.24 2015/01/11 17:29:57 hannken Exp $	*/
+/*	$NetBSD: chfs_vnops.c,v 1.28 2015/04/20 23:03:09 riastradh Exp $	*/
 
 /*-
  * Copyright (c) 2010 Department of Software Engineering,
@@ -694,13 +694,13 @@ chfs_read(void *v)
 		    bytesinfile);
 
 		if (chfs_lblktosize(chmp, nextlbn) >= ip->size) {
-			error = bread(vp, lbn, size, NOCRED, 0, &bp);
+			error = bread(vp, lbn, size, 0, &bp);
 			dbg("after bread\n");
 		} else {
 			int nextsize = chfs_blksize(chmp, ip, nextlbn);
 			dbg("size: %ld\n", size);
 			error = breadn(vp, lbn,
-			    size, &nextlbn, &nextsize, 1, NOCRED, 0, &bp);
+			    size, &nextlbn, &nextsize, 1, 0, &bp);
 			dbg("after breadN\n");
 		}
 		if (error)
@@ -1075,9 +1075,9 @@ out:
 int
 chfs_link(void *v)
 {
-	struct vnode *dvp = ((struct vop_link_args *) v)->a_dvp;
-	struct vnode *vp = ((struct vop_link_args *) v)->a_vp;
-	struct componentname *cnp = ((struct vop_link_args *) v)->a_cnp;
+	struct vnode *dvp = ((struct vop_link_v2_args *) v)->a_dvp;
+	struct vnode *vp = ((struct vop_link_v2_args *) v)->a_vp;
+	struct componentname *cnp = ((struct vop_link_v2_args *) v)->a_cnp;
 
 	struct chfs_inode *ip, *parent;
 	int error = 0;
@@ -1106,7 +1106,6 @@ chfs_link(void *v)
 	if (dvp != vp)
 		VOP_UNLOCK(vp);
 out:
-	vput(dvp);
 	return error;
 }
 
@@ -1310,9 +1309,8 @@ chfs_symlink(void *v)
 
 		uvm_vnp_setsize(vp, len);
 	} else {
-		err = vn_rdwr(UIO_WRITE, vp, target, len, (off_t)0,
-		    UIO_SYSSPACE, IO_NODELOCKED, cnp->cn_cred,
-		    (size_t *)0, NULL);
+		err = ufs_bufio(UIO_WRITE, vp, target, len, (off_t)0,
+		    IO_NODELOCKED, cnp->cn_cred, (size_t *)0, NULL);
 	}
 
 out:
@@ -1454,7 +1452,7 @@ chfs_readlink(void *v)
 		return (0);
 	}
 
-	return (VOP_READ(vp, uio, 0, cred));
+	return (UFS_BUFRD(vp, uio, 0, cred));
 }
 
 /* --------------------------------------------------------------------- */

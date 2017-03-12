@@ -33,7 +33,7 @@
 
 #include <sys/cdefs.h>
 
-__KERNEL_RCSID(1, "$NetBSD: awin_wdt.c,v 1.6 2014/12/05 11:53:43 jmcneill Exp $");
+__KERNEL_RCSID(1, "$NetBSD: awin_wdt.c,v 1.9 2015/06/14 08:32:02 martin Exp $");
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -109,7 +109,7 @@ static struct awin_wdt_softc {
 	bus_size_t sc_ctrl_reg;
 	bus_size_t sc_mode_reg;
 } awin_wdt_sc = {
-	.sc_bst = &awin_bs_tag,
+	.sc_bst = &armv7_generic_bs_tag,
 	.sc_wdog_period = AWIN_WDT_PERIOD_DEFAULT,
 };
 
@@ -145,10 +145,12 @@ awin_wdt_setmode(struct sysmon_wdog *smw)
 	}
 
 	if ((smw->smw_mode & WDOG_MODE_MASK) == WDOG_MODE_DISARMED) {
-		/*
-		 * We can't disarm the watchdog.
-		 */
-		return sc->sc_wdog_armed ? EBUSY : 0;
+		if (sc->sc_wdog_armed)
+			/* can not disarm pre-armed kernel mode wdog */
+			return EBUSY;
+
+		bus_space_write_4(sc->sc_bst, sc->sc_bsh, sc->sc_mode_reg, 0);
+		return 0;
 	}
 
 	if (sc->sc_wdog_armed && smw->smw_period == sc->sc_wdog_period) {
@@ -164,12 +166,14 @@ awin_wdt_setmode(struct sysmon_wdog *smw)
 		awin_wdt_tickle(smw);
 		return 0;
 	}
-	if (smw->smw_period > mapsize) {
-		return EINVAL;
-	}
 	if (smw->smw_period == WDOG_PERIOD_DEFAULT) {
 		smw->smw_period = AWIN_WDT_PERIOD_DEFAULT;
 		sc->sc_wdog_period = AWIN_WDT_PERIOD_DEFAULT;
+	} else {
+		if (smw->smw_period > mapsize) {
+			return EINVAL;
+		}
+		sc->sc_wdog_period = smw->smw_period;
 	}
 	sc->sc_wdog_mode = AWIN_WDOG_MODE_EN | map[sc->sc_wdog_period];
 	if (awin_chip_id() == AWIN_CHIP_ID_A20 ||
@@ -266,6 +270,7 @@ void
 awin_wdog_reset(void)
 {
 	bus_size_t off;
+	bus_space_tag_t bst = &armv7_generic_bs_tag;
 
 	cpsid(I32_bit|F32_bit);
 
@@ -274,16 +279,16 @@ awin_wdog_reset(void)
 	case AWIN_CHIP_ID_A80:
 		off = awin_chip_id() == AWIN_CHIP_ID_A80 ?
 		    AWIN_A80_TIMER_OFFSET : AWIN_TMR_OFFSET;
-		bus_space_write_4(&awin_bs_tag, awin_core_bsh,
+		bus_space_write_4(bst, awin_core_bsh,
 		    off + AWIN_A31_WDOG1_CFG_REG,
 		    __SHIFTIN(AWIN_A31_WDOG_CFG_CONFIG_SYS,
 			      AWIN_A31_WDOG_CFG_CONFIG));
-		bus_space_write_4(&awin_bs_tag, awin_core_bsh,
+		bus_space_write_4(bst, awin_core_bsh,
 		    off + AWIN_A31_WDOG1_MODE_REG,
 		    AWIN_A31_WDOG_MODE_EN);
 		break;
 	default:
-		bus_space_write_4(&awin_bs_tag, awin_core_bsh,
+		bus_space_write_4(bst, awin_core_bsh,
 		    AWIN_TMR_OFFSET + AWIN_WDOG_MODE_REG,
 		    AWIN_WDOG_MODE_EN | AWIN_WDOG_MODE_RST_EN);
 		break;

@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap.c,v 1.11 2015/02/03 10:25:53 nonaka Exp $	*/
+/*	$NetBSD: pmap.c,v 1.13 2015/11/05 00:12:28 pgoyette Exp $	*/
 
 /*-
  * Copyright (c) 1998, 2001 The NetBSD Foundation, Inc.
@@ -67,7 +67,7 @@
 
 #include <sys/cdefs.h>
 
-__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.11 2015/02/03 10:25:53 nonaka Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.13 2015/11/05 00:12:28 pgoyette Exp $");
 
 /*
  *	Manages physical address maps.
@@ -109,9 +109,6 @@ __KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.11 2015/02/03 10:25:53 nonaka Exp $");
 #include <sys/atomic.h>
 #include <sys/mutex.h>
 #include <sys/atomic.h>
-#ifdef SYSVSHM
-#include <sys/shm.h>
-#endif
 #include <sys/socketvar.h>	/* XXX: for sock_loan_thresh */
 
 #include <uvm/uvm.h>
@@ -214,7 +211,9 @@ struct pmap_kernel kernel_pmap_store = {
 
 struct pmap * const kernel_pmap_ptr = &kernel_pmap_store.kernel_pmap;
 
-struct pmap_limits pmap_limits;
+struct pmap_limits pmap_limits = {
+	.virtual_start = VM_MIN_KERNEL_ADDRESS,
+};
 
 #ifdef UVMHIST
 static struct kern_history_ent pmapexechistbuf[10000];
@@ -351,8 +350,8 @@ void
 pmap_virtual_space(vaddr_t *vstartp, vaddr_t *vendp)
 {
 
-	*vstartp = VM_MIN_KERNEL_ADDRESS;
-	*vendp = VM_MAX_KERNEL_ADDRESS;
+	*vstartp = pmap_limits.virtual_start;
+	*vendp = pmap_limits.virtual_end;
 }
 
 vaddr_t

@@ -1,4 +1,4 @@
-/* $NetBSD: amlogic_io.c,v 1.1 2015/02/07 17:20:17 jmcneill Exp $ */
+/* $NetBSD: amlogic_io.c,v 1.13 2015/11/21 00:54:57 jmcneill Exp $ */
 
 /*-
  * Copyright (c) 2015 Jared D. McNeill <jmcneill@invisible.ca>
@@ -29,7 +29,7 @@
 #include "opt_amlogic.h"
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: amlogic_io.c,v 1.1 2015/02/07 17:20:17 jmcneill Exp $");
+__KERNEL_RCSID(0, "$NetBSD: amlogic_io.c,v 1.13 2015/11/21 00:54:57 jmcneill Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -55,9 +55,32 @@ static int	amlogicio_find(device_t, cfdata_t, const int *, void *);
 
 static bool amlogicio_found = false;
 
+#define NOPORT	AMLOGICIOCF_PORT_DEFAULT
+#define NOINTR	AMLOGICIO_INTR_DEFAULT
+
 static const struct amlogic_locators amlogic_locators[] = {
-  { "com", AMLOGIC_UART0AO_OFFSET, AMLOGIC_UART_SIZE, 0, AMLOGIC_INTR_UART0AO },
-  { "com", AMLOGIC_UART2AO_OFFSET, AMLOGIC_UART_SIZE, 2, AMLOGIC_INTR_UART2AO },
+  { "amlogiccom",
+    AMLOGIC_UART0AO_OFFSET, AMLOGIC_UART_SIZE, 0, AMLOGIC_INTR_UART0AO },
+  { "amlogiccom",
+    AMLOGIC_UART2AO_OFFSET, AMLOGIC_UART_SIZE, 2, AMLOGIC_INTR_UART2AO },
+  { "amlogicgpio",
+    0, 0, NOPORT, NOINTR },
+  { "genfb",
+    AMLOGIC_DMC_OFFSET, AMLOGIC_DMC_SIZE, NOPORT, NOINTR },
+  { "amlogicrng",
+    AMLOGIC_RAND_OFFSET, AMLOGIC_RAND_SIZE, NOPORT, NOINTR },
+  { "dwctwo",
+    AMLOGIC_USB0_OFFSET, AMLOGIC_USB_SIZE, 0, AMLOGIC_INTR_USB0 },
+  { "dwctwo",
+    AMLOGIC_USB1_OFFSET, AMLOGIC_USB_SIZE, 1, AMLOGIC_INTR_USB1 },
+  { "awge",
+    AMLOGIC_GMAC_OFFSET, AMLOGIC_GMAC_SIZE, NOPORT, AMLOGIC_INTR_GMAC },
+  { "amlogicsdio",
+    AMLOGIC_SDIO_OFFSET, AMLOGIC_SDIO_SIZE, NOPORT, AMLOGIC_INTR_SDIO },
+  { "amlogicsdhc",
+    AMLOGIC_SDHC_OFFSET, AMLOGIC_SDHC_SIZE, NOPORT, AMLOGIC_INTR_SDHC },
+  { "amlogicrtc",
+    AMLOGIC_RTC_OFFSET, AMLOGIC_RTC_SIZE, NOPORT, AMLOGIC_INTR_RTC },
 };
 
 int
@@ -76,6 +99,10 @@ amlogicio_attach(device_t parent, device_t self, void *aux)
 	aprint_naive("\n");
 	aprint_normal("\n");
 
+	amlogic_wdog_init();
+	amlogic_usbphy_init(0);
+	amlogic_usbphy_init(1);
+
 	const struct amlogic_locators * const eloc =
 	    amlogic_locators + __arraycount(amlogic_locators);
 	for (const struct amlogic_locators *loc = amlogic_locators;
@@ -83,8 +110,8 @@ amlogicio_attach(device_t parent, device_t self, void *aux)
 	     loc++) {
 		struct amlogicio_attach_args aio = {
 			.aio_loc = *loc,
-			.aio_core_bst = &amlogic_bs_tag,
-			.aio_core_a4x_bst = &amlogic_a4x_bs_tag,
+			.aio_core_bst = &armv7_generic_bs_tag,
+			.aio_core_a4x_bst = &armv7_generic_a4x_bs_tag,
 			.aio_bsh = amlogic_core_bsh,
 			.aio_dmat = &amlogic_dma_tag,
 		};

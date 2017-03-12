@@ -1,4 +1,4 @@
-/*	$NetBSD: if.h,v 1.185 2015/01/16 10:37:51 ozaki-r Exp $	*/
+/*	$NetBSD: if.h,v 1.203 2016/04/28 01:37:17 knakahara Exp $	*/
 
 /*-
  * Copyright (c) 1999, 2000, 2001 The NetBSD Foundation, Inc.
@@ -123,6 +123,7 @@
 
 #if defined(_KERNEL_OPT)
 #include "opt_compat_netbsd.h"
+#include "opt_gateway.h"
 #endif
 
 struct mbuf;
@@ -213,6 +214,7 @@ struct ifnet_lock;
 #include <sys/condvar.h>
 #include <sys/percpu.h>
 #include <sys/callout.h>
+#include <sys/rwlock.h>
 
 struct ifnet_lock {
 	kmutex_t il_lock;	/* Protects the critical section. */
@@ -244,6 +246,8 @@ TAILQ_HEAD(ifnet_head, ifnet);		/* the actual queue head */
 struct bridge_softc;
 struct bridge_iflist;
 struct callout;
+struct krwlock;
+struct if_percpuq;
 
 typedef struct ifnet {
 	void	*if_softc;		/* lower-level data for this if */
@@ -263,11 +267,13 @@ typedef struct ifnet {
 	 */
 	int	(*if_output)		/* output routine (enqueue) */
 		    (struct ifnet *, struct mbuf *, const struct sockaddr *,
-		     struct rtentry *);
-	void	(*if_input)		/* input routine (from h/w driver) */
+		     const struct rtentry *);
+	void	(*_if_input)		/* input routine (from h/w driver) */
 		    (struct ifnet *, struct mbuf *);
 	void	(*if_start)		/* initiate output routine */
 		    (struct ifnet *);
+	int	(*if_transmit)		/* output routine (direct) */
+		    (struct ifnet *, struct mbuf *);
 	int	(*if_ioctl)		/* ioctl routine */
 		    (struct ifnet *, u_long, void *);
 	int	(*if_init)		/* init routine */
@@ -344,6 +350,10 @@ typedef struct ifnet {
 	struct ifnet_lock *if_ioctl_lock;
 #ifdef _KERNEL /* XXX kvm(3) */
 	struct callout *if_slowtimo_ch;
+	struct krwlock	*if_afdata_lock;
+	struct if_percpuq	*if_percpuq; /* We should remove it in the future */
+	void	*if_link_si;		/* softint to handle link state changes */
+	uint16_t	if_link_queue;	/* masked link state change queue */
 #endif
 } ifnet_t;
  
@@ -396,11 +406,10 @@ typedef struct ifnet {
 
 /*
  * Some convenience macros used for setting ifi_baudrate.
- * XXX 1000 vs. 1024? --thorpej@NetBSD.org
  */
-#define	IF_Kbps(x)	((x) * 1000)		/* kilobits/sec. */
-#define	IF_Mbps(x)	(IF_Kbps((x) * 1000))	/* megabits/sec. */
-#define	IF_Gbps(x)	(IF_Mbps((x) * 1000))	/* gigabits/sec. */
+#define	IF_Kbps(x)	((x) * 1000ULL)			/* kilobits/sec. */
+#define	IF_Mbps(x)	(IF_Kbps((x) * 1000ULL))	/* megabits/sec. */
+#define	IF_Gbps(x)	(IF_Mbps((x) * 1000ULL))	/* gigabits/sec. */
 
 /* Capabilities that interfaces can advertise. */
 					/* 0x01 .. 0x40 were previously used */
@@ -434,6 +443,28 @@ typedef struct ifnet {
 	"\22UDP6CSUM_Tx"	\
 	"\23TSO6"		\
 	"\24LRO"		\
+
+#define	IF_AFDATA_LOCK_INIT(ifp)	\
+	do {(ifp)->if_afdata_lock = rw_obj_alloc();} while (0)
+
+#define	IF_AFDATA_LOCK_DESTROY(ifp)	rw_obj_free((ifp)->if_afdata_lock)
+
+#define	IF_AFDATA_WLOCK(ifp)	rw_enter((ifp)->if_afdata_lock, RW_WRITER)
+#define	IF_AFDATA_RLOCK(ifp)	rw_enter((ifp)->if_afdata_lock, RW_READER)
+#define	IF_AFDATA_WUNLOCK(ifp)	rw_exit((ifp)->if_afdata_lock)
+#define	IF_AFDATA_RUNLOCK(ifp)	rw_exit((ifp)->if_afdata_lock)
+#define	IF_AFDATA_LOCK(ifp)	IF_AFDATA_WLOCK(ifp)
+#define	IF_AFDATA_UNLOCK(ifp)	IF_AFDATA_WUNLOCK(ifp)
+#define	IF_AFDATA_TRYLOCK(ifp)	rw_tryenter((ifp)->if_afdata_lock, RW_WRITER)
+
+#define	IF_AFDATA_LOCK_ASSERT(ifp)	\
+	KASSERT(rw_lock_held((ifp)->if_afdata_lock))
+#define	IF_AFDATA_RLOCK_ASSERT(ifp)	\
+	KASSERT(rw_read_held((ifp)->if_afdata_lock))
+#define	IF_AFDATA_WLOCK_ASSERT(ifp)	\
+	KASSERT(rw_write_held((ifp)->if_afdata_lock))
+#define	IF_AFDATA_UNLOCK_ASSERT(ifp)	\
+	KASSERT(!rw_lock_held((ifp)->if_afdata_lock))
 
 #define IFQ_LOCK(_ifq)		if ((_ifq)->ifq_lock) mutex_enter((_ifq)->ifq_lock)
 #define IFQ_UNLOCK(_ifq)	if ((_ifq)->ifq_lock) mutex_exit((_ifq)->ifq_lock)
@@ -595,6 +626,7 @@ struct	ifreq {
 		struct	sockaddr ifru_broadaddr;
 		struct	sockaddr_storage ifru_space;
 		short	ifru_flags;
+		int	ifru_addrflags;
 		int	ifru_metric;
 		int	ifru_mtu;
 		int	ifru_dlt;
@@ -610,6 +642,7 @@ struct	ifreq {
 #define	ifr_broadaddr	ifr_ifru.ifru_broadaddr	/* broadcast address */
 #define	ifr_space	ifr_ifru.ifru_space	/* sockaddr_storage */
 #define	ifr_flags	ifr_ifru.ifru_flags	/* flags */
+#define	ifr_addrflags	ifr_ifru.ifru_addrflags	/* addr flags */
 #define	ifr_metric	ifr_ifru.ifru_metric	/* metric */
 #define	ifr_mtu		ifr_ifru.ifru_mtu	/* mtu */
 #define	ifr_dlt		ifr_ifru.ifru_dlt	/* data link type (DLT_*) */
@@ -723,14 +756,11 @@ struct if_addrprefreq {
 
 #ifdef _KERNEL
 #ifdef ALTQ
-#define	ALTQ_DECL(x)		x
-#define ALTQ_COMMA		,
-
-#define IFQ_ENQUEUE(ifq, m, pattr, err)					\
+#define IFQ_ENQUEUE(ifq, m, err)					\
 do {									\
 	IFQ_LOCK((ifq));						\
 	if (ALTQ_IS_ENABLED((ifq)))					\
-		ALTQ_ENQUEUE((ifq), (m), (pattr), (err));		\
+		ALTQ_ENQUEUE((ifq), (m), (err));			\
 	else {								\
 		if (IF_QFULL((ifq))) {					\
 			m_freem((m));					\
@@ -784,23 +814,20 @@ do {									\
 	(ifq)->altq_flags |= ALTQF_READY;				\
 } while (/*CONSTCOND*/ 0)
 
-#define	IFQ_CLASSIFY(ifq, m, af, pattr)					\
+#define	IFQ_CLASSIFY(ifq, m, af)					\
 do {									\
 	IFQ_LOCK((ifq));						\
 	if (ALTQ_IS_ENABLED((ifq))) {					\
 		if (ALTQ_NEEDS_CLASSIFY((ifq)))				\
-			(pattr)->pattr_class = (*(ifq)->altq_classify)	\
+			m->m_pkthdr.pattr_class = (*(ifq)->altq_classify) \
 				((ifq)->altq_clfier, (m), (af));	\
-		(pattr)->pattr_af = (af);				\
-		(pattr)->pattr_hdr = mtod((m), void *);		\
+		m->m_pkthdr.pattr_af = (af);				\
+		m->m_pkthdr.pattr_hdr = mtod((m), void *);		\
 	}								\
 	IFQ_UNLOCK((ifq));						\
 } while (/*CONSTCOND*/ 0)
 #else /* ! ALTQ */
-#define	ALTQ_DECL(x)		/* nothing */
-#define ALTQ_COMMA
-
-#define	IFQ_ENQUEUE(ifq, m, pattr, err)					\
+#define	IFQ_ENQUEUE(ifq, m, err)					\
 do {									\
 	IFQ_LOCK((ifq));						\
 	if (IF_QFULL((ifq))) {						\
@@ -838,7 +865,7 @@ do {									\
 
 #define	IFQ_SET_READY(ifq)	/* nothing */
 
-#define	IFQ_CLASSIFY(ifq, m, af, pattr) /* nothing */
+#define	IFQ_CLASSIFY(ifq, m, af) /* nothing */
 
 #endif /* ALTQ */
 
@@ -880,8 +907,18 @@ int	ifioctl_common(struct ifnet *, u_long, void *);
 int	ifpromisc(struct ifnet *, int);
 struct	ifnet *ifunit(const char *);
 int	if_addr_init(ifnet_t *, struct ifaddr *, bool);
+int	if_do_dad(struct ifnet *);
 int	if_mcast_op(ifnet_t *, const unsigned long, const struct sockaddr *);
 int	if_flags_set(struct ifnet *, const short);
+int	if_clone_list(int, char *, int *);
+
+void	if_input(struct ifnet *, struct mbuf *);
+
+struct if_percpuq *
+	if_percpuq_create(struct ifnet *);
+void	if_percpuq_destroy(struct if_percpuq *);
+void
+	if_percpuq_enqueue(struct if_percpuq *, struct mbuf *);
 
 void ifa_insert(struct ifnet *, struct ifaddr *);
 void ifa_remove(struct ifnet *, struct ifaddr *);
@@ -899,19 +936,20 @@ struct	ifaddr *ifa_ifwithroute(int, const struct sockaddr *,
 struct	ifaddr *ifaof_ifpforaddr(const struct sockaddr *, struct ifnet *);
 void	ifafree(struct ifaddr *);
 void	link_rtrequest(int, struct rtentry *, const struct rt_addrinfo *);
+void	p2p_rtrequest(int, struct rtentry *, const struct rt_addrinfo *);
 
 void	if_clone_attach(struct if_clone *);
 void	if_clone_detach(struct if_clone *);
 
-int	ifq_enqueue(struct ifnet *, struct mbuf * ALTQ_COMMA
-    ALTQ_DECL(struct altq_pktattr *));
-int	ifq_enqueue2(struct ifnet *, struct ifqueue *, struct mbuf * ALTQ_COMMA
-    ALTQ_DECL(struct altq_pktattr *));
+int	if_transmit(struct ifnet *, struct mbuf *);
+
+int	ifq_enqueue(struct ifnet *, struct mbuf *);
+int	ifq_enqueue2(struct ifnet *, struct ifqueue *, struct mbuf *);
 
 int	loioctl(struct ifnet *, u_long, void *);
 void	loopattach(int);
 int	looutput(struct ifnet *,
-	   struct mbuf *, const struct sockaddr *, struct rtentry *);
+	   struct mbuf *, const struct sockaddr *, const struct rtentry *);
 void	lortrequest(int, struct rtentry *, const struct rt_addrinfo *);
 
 /*
@@ -919,9 +957,10 @@ void	lortrequest(int, struct rtentry *, const struct rt_addrinfo *);
  * an interface is going away without having to burn a flag.
  */
 int	if_nulloutput(struct ifnet *, struct mbuf *,
-	    const struct sockaddr *, struct rtentry *);
+	    const struct sockaddr *, const struct rtentry *);
 void	if_nullinput(struct ifnet *, struct mbuf *);
 void	if_nullstart(struct ifnet *);
+int	if_nulltransmit(struct ifnet *, struct mbuf *);
 int	if_nullioctl(struct ifnet *, u_long, void *);
 int	if_nullinit(struct ifnet *);
 void	if_nullstop(struct ifnet *, int);

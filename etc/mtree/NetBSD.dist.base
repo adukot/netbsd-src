@@ -1,4 +1,4 @@
-#	$NetBSD: NetBSD.dist.base,v 1.143 2015/02/13 18:57:47 nonaka Exp $
+#	$NetBSD: NetBSD.dist.base,v 1.153 2016/03/12 23:07:05 mrg Exp $
 #	@(#)4.4BSD.dist	8.1 (Berkeley) 6/13/93
 
 # Do not customize this file as it may be overwritten on upgrades.
@@ -23,6 +23,7 @@
 ./etc/X11/rstart/commands/x11r6
 ./etc/X11/rstart/contexts
 ./etc/X11/twm
+./etc/X11/ctwm
 ./etc/X11/xdm
 ./etc/X11/xinit
 ./etc/X11/xserver
@@ -71,8 +72,10 @@
 ./libdata/firmware/if_iwm
 ./libdata/firmware/if_iwn
 ./libdata/firmware/if_otus
+./libdata/firmware/if_rtwn
 ./libdata/firmware/if_urtwn
 ./libdata/firmware/if_wpi
+./libdata/firmware/radeon
 ./libdata/firmware/ral
 ./libdata/firmware/rum
 ./libdata/firmware/run
@@ -101,7 +104,7 @@
 ./usr/include/c++
 ./usr/include/c++/experimental
 ./usr/include/c++/ext
-./usr/include/clang-3.6
+./usr/include/clang-3.8
 ./usr/include/crypto
 ./usr/include/dev
 ./usr/include/dev/apm
@@ -179,9 +182,8 @@
 ./usr/include/g++/tr1
 ./usr/include/g++/tr1_impl
 ./usr/include/g++/tr2
-./usr/include/gcc-4.1
-./usr/include/gcc-4.5
 ./usr/include/gcc-4.8
+./usr/include/gcc-5
 ./usr/include/gssapi
 ./usr/include/isofs
 ./usr/include/isofs/cd9660
@@ -198,7 +200,6 @@
 ./usr/include/miscfs/overlay
 ./usr/include/miscfs/procfs
 ./usr/include/miscfs/specfs
-./usr/include/miscfs/syncfs
 ./usr/include/miscfs/umapfs
 ./usr/include/miscfs/union
 ./usr/include/msdosfs
@@ -264,7 +265,6 @@
 ./usr/libdata/debug/usr/mdec
 ./usr/libdata/debug/usr/sbin
 ./usr/libdata/firmware
-./usr/libdata/firmware/radeon
 ./usr/libdata/ldscripts
 ./usr/libdata/lint
 ./usr/libexec
@@ -351,6 +351,8 @@
 ./usr/share/examples/atf
 ./usr/share/examples/blacklist
 ./usr/share/examples/dhcp
+./usr/share/examples/dhcpcd
+./usr/share/examples/dhcpcd/hooks
 ./usr/share/examples/disktab
 ./usr/share/examples/emul
 ./usr/share/examples/emul/linux
@@ -1269,6 +1271,7 @@
 ./var/chroot/named/var/tmp	mode=01775 gname=named
 ./var/chroot/ntpd
 ./var/chroot/ntpd/dev
+./var/chroot/ntpd/etc
 ./var/chroot/ntpd/var
 ./var/chroot/ntpd/var/db	mode=0775 gname=ntpd
 ./var/chroot/ntpd/var/run	mode=0775 gname=ntpd

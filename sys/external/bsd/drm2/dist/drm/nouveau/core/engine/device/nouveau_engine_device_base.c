@@ -1,4 +1,4 @@
-/*	$NetBSD: nouveau_engine_device_base.c,v 1.3 2014/08/23 08:03:33 riastradh Exp $	*/
+/*	$NetBSD: nouveau_engine_device_base.c,v 1.10 2016/04/13 08:50:51 riastradh Exp $	*/
 
 /*
  * Copyright 2012 Red Hat Inc.
@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: nouveau_engine_device_base.c,v 1.3 2014/08/23 08:03:33 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: nouveau_engine_device_base.c,v 1.10 2016/04/13 08:50:51 riastradh Exp $");
 
 #include <core/object.h>
 #include <core/device.h>
@@ -177,8 +177,12 @@ nouveau_devobj_ctor(struct nouveau_object *parent,
 	if (!(args->disable & NV_DEVICE_DISABLE_IDENTIFY) &&
 	    !device->card_type) {
 #ifdef __NetBSD__
-		if (bus_space_map(mmiot, mmio_base, mmio_size, 0, &mmioh) != 0)
+		if (mmio_size < 0x102000)
 			return -ENOMEM;
+		/* XXX errno NetBSD->Linux */
+		ret = -bus_space_map(mmiot, mmio_base, 0x102000, 0, &mmioh);
+		if (ret)
+			return ret;
 
 #ifndef __BIG_ENDIAN
 		if (bus_space_read_4(mmiot, mmioh, 4) != 0)
@@ -189,7 +193,7 @@ nouveau_devobj_ctor(struct nouveau_object *parent,
 
 		boot0 = bus_space_read_4(mmiot, mmioh, 0x000000);
 		strap = bus_space_read_4(mmiot, mmioh, 0x101000);
-		bus_space_unmap(mmiot, mmioh, mmio_size);
+		bus_space_unmap(mmiot, mmioh, 0x102000);
 #else
 		map = ioremap(mmio_base, 0x102000);
 		if (map == NULL)
@@ -293,10 +297,17 @@ nouveau_devobj_ctor(struct nouveau_object *parent,
 #ifdef __NetBSD__
 	if (!(args->disable & NV_DEVICE_DISABLE_MMIO) &&
 	    !nv_subdev(device)->mmiosz) {
-		if (bus_space_map(mmiot, mmio_base, mmio_size, 0,
-			&nv_subdev(device)->mmioh) != 0) {
+		/*
+		 * Map only through PRAMIN -- don't map the command
+		 * FIFO MMIO regions, which start at NV_FIFO_OFFSET =
+		 * 0x800000 and are mapped separately.
+		 */
+		mmio_size = MIN(mmio_size, 0x800000);
+		/* XXX errno NetBSD->Linux */
+		ret = -bus_space_map(mmiot, mmio_base, mmio_size, 0, &mmioh);
+		if (ret) {
 			nv_error(device, "unable to map device registers\n");
-			return -ENOMEM;
+			return ret;
 		}
 		nv_subdev(device)->mmiot = mmiot;
 		nv_subdev(device)->mmioh = mmioh;
@@ -528,8 +539,8 @@ nv_device_resource_tag(struct nouveau_device *device, unsigned int bar)
 		else
 			return pa->pa_iot;
 	} else {
-		/* XXX nouveau platform device */
-		panic("can't handle non-PCI nouveau devices");
+		KASSERT(bar < device->platformdev->nresource);
+		return device->platformdev->resource[bar].tag;
 	}
 }
 #endif
@@ -541,8 +552,9 @@ nv_device_resource_start(struct nouveau_device *device, unsigned int bar)
 		return pci_resource_start(device->pdev, bar);
 	} else {
 #ifdef __NetBSD__
-		/* XXX nouveau platform device */
-		panic("can't handle non-PCI nouveau devices");
+		if (bar >= device->platformdev->nresource)
+			return 0;
+		return device->platformdev->resource[bar].start;
 #else
 		struct resource *res;
 		res = platform_get_resource(device->platformdev,
@@ -561,8 +573,9 @@ nv_device_resource_len(struct nouveau_device *device, unsigned int bar)
 		return pci_resource_len(device->pdev, bar);
 	} else {
 #ifdef __NetBSD__
-		/* XXX nouveau platform device */
-		panic("can't handle non-PCI nouveau devices");
+		if (bar >= device->platformdev->nresource)
+			return 0;
+		return device->platformdev->resource[bar].len;
 #else
 		struct resource *res;
 		res = platform_get_resource(device->platformdev,
@@ -599,33 +612,18 @@ nv_device_unmap_page(struct nouveau_device *device, dma_addr_t addr)
 		pci_unmap_page(device->pdev, addr, PAGE_SIZE,
 			       PCI_DMA_BIDIRECTIONAL);
 }
-#endif
 
 int
 nv_device_get_irq(struct nouveau_device *device, bool stall)
 {
 	if (nv_device_is_pci(device)) {
-#ifdef __NetBSD__
-		pci_intr_handle_t ih;
-
-		CTASSERT(sizeof ih <= sizeof(int)); /* XXX */
-		if (pci_intr_map(&device->pdev->pd_pa, &ih))
-			panic("unable to map nouveau interrupt"); /* XXX */
-
-		return ih;
-#else
 		return device->pdev->irq;
-#endif
 	} else {
-#ifdef __NetBSD__
-		/* XXX nouveau platform device */
-		panic("can't handle non-PCI nouveau devices");
-#else
 		return platform_get_irq_byname(device->platformdev,
 					       stall ? "stall" : "nonstall");
-#endif
 	}
 }
+#endif
 
 static struct nouveau_oclass
 nouveau_device_oclass = {

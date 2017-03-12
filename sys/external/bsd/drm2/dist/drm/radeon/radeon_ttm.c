@@ -450,6 +450,10 @@ static int radeon_ttm_io_mem_reserve(struct ttm_bo_device *bdev, struct ttm_mem_
 			mem->bus.offset = mem->start << PAGE_SHIFT;
 			mem->bus.base = rdev->mc.agp_base;
 			mem->bus.is_iomem = !rdev->ddev->agp->cant_use_aperture;
+			KASSERTMSG((mem->bus.base & (PAGE_SIZE - 1)) == 0,
+			    "agp aperture is not page-aligned: %lx",
+			    mem->bus.base);
+			KASSERT((mem->bus.offset & (PAGE_SIZE - 1)) == 0);
 		}
 #endif
 		break;
@@ -483,6 +487,10 @@ static int radeon_ttm_io_mem_reserve(struct ttm_bo_device *bdev, struct ttm_mem_
 		mem->bus.base = (mem->bus.base & 0x0ffffffffUL) +
 			rdev->ddev->hose->dense_mem_base;
 #endif
+		KASSERTMSG((mem->bus.base & (PAGE_SIZE - 1)) == 0,
+		    "mc aperture is not page-aligned: %lx",
+		    mem->bus.base);
+		KASSERT((mem->bus.offset & (PAGE_SIZE - 1)) == 0);
 		break;
 	default:
 		return -EINVAL;
@@ -708,6 +716,15 @@ static void radeon_ttm_tt_unpopulate(struct ttm_tt *ttm)
 }
 
 #ifdef __NetBSD__
+static void radeon_ttm_tt_swapout(struct ttm_tt *ttm)
+{
+	struct radeon_ttm_tt *gtt = container_of(ttm, struct radeon_ttm_tt,
+	    ttm.ttm);
+	struct ttm_dma_tt *ttm_dma = &gtt->ttm;
+
+	ttm_bus_dma_swapout(ttm_dma);
+}
+
 static int	radeon_ttm_fault(struct uvm_faultinfo *, vaddr_t,
 		    struct vm_page **, int, int, vm_prot_t, int);
 
@@ -723,6 +740,7 @@ static struct ttm_bo_driver radeon_bo_driver = {
 	.ttm_tt_populate = &radeon_ttm_tt_populate,
 	.ttm_tt_unpopulate = &radeon_ttm_tt_unpopulate,
 #ifdef __NetBSD__
+	.ttm_tt_swapout = &radeon_ttm_tt_swapout,
 	.ttm_uvm_ops = &radeon_uvm_ops,
 #endif
 	.invalidate_caches = &radeon_invalidate_caches,

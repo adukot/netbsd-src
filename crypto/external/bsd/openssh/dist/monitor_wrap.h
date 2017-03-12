@@ -1,5 +1,5 @@
-/*	$NetBSD: monitor_wrap.h,v 1.7 2014/10/20 03:05:13 christos Exp $	*/
-/* $OpenBSD: monitor_wrap.h,v 1.24 2014/01/29 06:18:35 djm Exp $ */
+/*	$NetBSD: monitor_wrap.h,v 1.10 2016/03/11 01:55:00 christos Exp $	*/
+/* $OpenBSD: monitor_wrap.h,v 1.29 2015/12/04 16:41:28 markus Exp $ */
 
 /*
  * Copyright 2002 Niels Provos <provos@citi.umich.edu>
@@ -41,13 +41,13 @@ struct Authctxt;
 void mm_log_handler(LogLevel, const char *, void *);
 int mm_is_monitor(void);
 DH *mm_choose_dh(int, int, int);
-int mm_key_sign(Key *, u_char **, u_int *, u_char *, u_int);
+int mm_key_sign(Key *, u_char **, u_int *, const u_char *, u_int, const char *);
 void mm_inform_authserv(char *, char *);
 struct passwd *mm_getpwnamallow(const char *);
 char *mm_auth2_read_banner(void);
 int mm_auth_password(struct Authctxt *, const char *);
-int mm_key_allowed(enum mm_keytype, char *, char *, Key *);
-int mm_user_key_allowed(struct passwd *, Key *);
+int mm_key_allowed(enum mm_keytype, char *, char *, Key *, int);
+int mm_user_key_allowed(struct passwd *, Key *, int);
 int mm_hostbased_key_allowed(struct passwd *, char *, char *, Key *);
 int mm_auth_rhosts_rsa_key_allowed(struct passwd *, char *, char *, Key *);
 int mm_key_verify(Key *, u_char *, u_int, u_char *, u_int);
@@ -82,7 +82,7 @@ void mm_ssh1_session_id(u_char *);
 int mm_ssh1_session_key(BIGNUM *);
 
 /* Key export functions */
-struct Newkeys *mm_newkeys_from_blob(u_char *, int);
+struct newkeys *mm_newkeys_from_blob(u_char *, int);
 int mm_newkeys_to_blob(int, u_char **, u_int *);
 
 void monitor_apply_keystate(struct monitor *);
@@ -108,9 +108,6 @@ int mm_auth_krb5(void *authctxt, void *auth, char **client, void *reply);
 #endif
 
 /* zlib allocation hooks */
-
-void *mm_zalloc(struct mm_master *, u_int, u_int);
-void mm_zfree(struct mm_master *, void *);
 void mm_init_compression(struct mm_master *);
 
 #endif /* _MM_WRAP_H_ */

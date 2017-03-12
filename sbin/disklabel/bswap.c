@@ -1,4 +1,4 @@
-/*	$NetBSD: bswap.c,v 1.2 2013/05/03 16:05:12 matt Exp $	*/
+/*	$NetBSD: bswap.c,v 1.5 2016/01/31 18:57:29 christos Exp $	*/
 
 /*-
  * Copyright (c) 2009 Izumi Tsutsui.  All rights reserved.
@@ -55,6 +55,8 @@
  *	@(#)ufs_disksubr.c	7.16 (Berkeley) 5/4/91
  */
 
+#if !defined(NATIVELABEL_ONLY)
+
 #if HAVE_NBTOOL_CONFIG_H
 #include "nbtool_config.h"
 #endif
@@ -74,7 +76,7 @@
 static void
 bswaplabel(struct disklabel *nlp, const struct disklabel *olp)
 {
-	int i;
+	u_int i;
 
 	nlp->d_magic          = bswap32(olp->d_magic);
 	nlp->d_type           = bswap16(olp->d_type);
@@ -120,7 +122,7 @@ bswaplabel(struct disklabel *nlp, const struct disklabel *olp)
 	nlp->d_bbsize         = bswap32(olp->d_bbsize);
 	nlp->d_sbsize         = bswap32(olp->d_sbsize);
 
-	for (i = 0; i < MAXPARTITIONS; i++) {
+	for (i = 0; i < maxpartitions; i++) {
 		nlp->d_partitions[i].p_size =
 		    bswap32(olp->d_partitions[i].p_size);
 		nlp->d_partitions[i].p_offset =
@@ -179,3 +181,5 @@ dkcksum_target(struct disklabel *lp)
 
 	return dkcksum_sized(lp, npartitions);
 }
+
+#endif /* !NATIVELABEL_ONLY */

@@ -1,4 +1,4 @@
-/*	$NetBSD: if.c,v 1.308 2015/01/16 10:36:14 ozaki-r Exp $	*/
+/*	$NetBSD: if.c,v 1.333 2016/05/02 08:03:23 skrll Exp $	*/
 
 /*-
  * Copyright (c) 1999, 2000, 2001, 2008 The NetBSD Foundation, Inc.
@@ -90,7 +90,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if.c,v 1.308 2015/01/16 10:36:14 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if.c,v 1.333 2016/05/02 08:03:23 skrll Exp $");
 
 #if defined(_KERNEL_OPT)
 #include "opt_inet.h"
@@ -117,6 +117,8 @@ __KERNEL_RCSID(0, "$NetBSD: if.c,v 1.308 2015/01/16 10:36:14 ozaki-r Exp $");
 #include <sys/kauth.h>
 #include <sys/kmem.h>
 #include <sys/xcall.h>
+#include <sys/cpu.h>
+#include <sys/intr.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -125,7 +127,6 @@ __KERNEL_RCSID(0, "$NetBSD: if.c,v 1.308 2015/01/16 10:36:14 ozaki-r Exp $");
 #include <net80211/ieee80211.h>
 #include <net80211/ieee80211_ioctl.h>
 #include <net/if_types.h>
-#include <net/radix.h>
 #include <net/route.h>
 #include <net/netisr.h>
 #include <sys/module.h>
@@ -169,15 +170,12 @@ static uint64_t			index_gen;
 static kmutex_t			index_gen_mtx;
 static kmutex_t			if_clone_mtx;
 
-static struct ifaddr **		ifnet_addrs = NULL;
-
 struct ifnet *lo0ifp;
 int	ifqmaxlen = IFQ_MAXLEN;
 
 static int	if_rt_walktree(struct rtentry *, void *);
 
 static struct if_clone *if_clone_lookup(const char *, int *);
-static int	if_clone_list(struct if_clonereq *);
 
 static LIST_HEAD(, if_clone) if_cloners = LIST_HEAD_INITIALIZER(if_cloners);
 static int if_cloners_count;
@@ -201,6 +199,20 @@ static void if_attachdomain1(struct ifnet *);
 static int ifconf(u_long, void *);
 static int if_clone_create(const char *);
 static int if_clone_destroy(const char *);
+static void if_link_state_change_si(void *);
+
+struct if_percpuq {
+	struct ifnet	*ipq_ifp;
+	void		*ipq_si;
+	struct percpu	*ipq_ifqs;	/* struct ifqueue */
+};
+
+static struct mbuf *if_percpuq_dequeue(struct if_percpuq *);
+
+static void if_percpuq_drops(void *, void *, struct cpu_info *);
+static int sysctl_percpuq_drops_handler(SYSCTLFN_PROTO);
+static void sysctl_percpuq_setup(struct sysctllog **, const char *,
+    struct if_percpuq *);
 
 #if defined(INET) || defined(INET6)
 static void sysctl_net_pktq_setup(struct sysctllog **, int);
@@ -239,7 +251,8 @@ ifinit(void)
 	sysctl_net_pktq_setup(NULL, PF_INET);
 #endif
 #ifdef INET6
-	sysctl_net_pktq_setup(NULL, PF_INET6);
+	if (in6_present)
+		sysctl_net_pktq_setup(NULL, PF_INET6);
 #endif
 
 	if_listener = kauth_listen_scope(KAUTH_SCOPE_NETWORK,
@@ -295,7 +308,7 @@ if_initname(struct ifnet *ifp, const char *name, int unit)
 
 int
 if_nulloutput(struct ifnet *ifp, struct mbuf *m,
-    const struct sockaddr *so, struct rtentry *rt)
+    const struct sockaddr *so, const struct rtentry *rt)
 {
 
 	return ENXIO;
@@ -313,6 +326,13 @@ if_nullstart(struct ifnet *ifp)
 {
 
 	/* Nothing. */
+}
+
+int
+if_nulltransmit(struct ifnet *ifp, struct mbuf *m)
+{
+
+	return ENXIO;
 }
 
 int
@@ -407,8 +427,7 @@ static void
 if_sadl_setrefs(struct ifnet *ifp, struct ifaddr *ifa)
 {
 	const struct sockaddr_dl *sdl;
-	ifnet_addrs[ifp->if_index] = ifa;
-	ifaref(ifa);
+
 	ifp->if_dl = ifa;
 	ifaref(ifa);
 	sdl = satosdl(ifa->ifa_addr);
@@ -452,8 +471,6 @@ if_deactivate_sadl(struct ifnet *ifp)
 
 	ifp->if_sadl = NULL;
 
-	ifnet_addrs[ifp->if_index] = NULL;
-	ifafree(ifa);
 	ifp->if_dl = NULL;
 	ifafree(ifa);
 }
@@ -484,15 +501,13 @@ if_free_sadl(struct ifnet *ifp)
 	struct ifaddr *ifa;
 	int s;
 
-	ifa = ifnet_addrs[ifp->if_index];
+	ifa = ifp->if_dl;
 	if (ifa == NULL) {
 		KASSERT(ifp->if_sadl == NULL);
-		KASSERT(ifp->if_dl == NULL);
 		return;
 	}
 
 	KASSERT(ifp->if_sadl != NULL);
-	KASSERT(ifp->if_dl != NULL);
 
 	s = splnet();
 	rtinit(ifa, RTM_DELETE, 0);
@@ -547,29 +562,16 @@ if_getindex(ifnet_t *ifp)
 	}
 skip:
 	/*
-	 * We have some arrays that should be indexed by if_index.
-	 * since if_index will grow dynamically, they should grow too.
-	 *	struct ifadd **ifnet_addrs
-	 *	struct ifnet **ifindex2ifnet
+	 * ifindex2ifnet is indexed by if_index. Since if_index will
+	 * grow dynamically, it should grow too.
 	 */
-	if (ifnet_addrs == NULL || ifindex2ifnet == NULL ||
-	    ifp->if_index >= if_indexlim) {
+	if (ifindex2ifnet == NULL || ifp->if_index >= if_indexlim) {
 		size_t m, n, oldlim;
 		void *q;
 
 		oldlim = if_indexlim;
 		while (ifp->if_index >= if_indexlim)
 			if_indexlim <<= 1;
-
-		/* grow ifnet_addrs */
-		m = oldlim * sizeof(struct ifaddr *);
-		n = if_indexlim * sizeof(struct ifaddr *);
-		q = malloc(n, M_IFADDR, M_WAITOK|M_ZERO);
-		if (ifnet_addrs != NULL) {
-			memcpy(q, ifnet_addrs, m);
-			free(ifnet_addrs, M_IFADDR);
-		}
-		ifnet_addrs = (struct ifaddr **)q;
 
 		/* grow ifindex2ifnet */
 		m = oldlim * sizeof(struct ifnet *);
@@ -612,6 +614,7 @@ if_initialize(ifnet_t *ifp)
 	ifp->if_broadcastaddr = 0; /* reliably crash if used uninitialized */
 
 	ifp->if_link_state = LINK_STATE_UNKNOWN;
+	ifp->if_link_queue = -1; /* all bits set, see link_state_change() */
 
 	ifp->if_capenable = 0;
 	ifp->if_csum_flags_tx = 0;
@@ -634,6 +637,12 @@ if_initialize(ifnet_t *ifp)
 	ifp->if_pfil = pfil_head_create(PFIL_TYPE_IFNET, ifp);
 	(void)pfil_run_hooks(if_pfil,
 	    (struct mbuf **)PFIL_IFNET_ATTACH, ifp, PFIL_IFNET);
+
+	IF_AFDATA_LOCK_INIT(ifp);
+
+	ifp->if_link_si = softint_establish(SOFTINT_NET, if_link_state_change_si, ifp);
+	if (ifp->if_link_si == NULL)
+		panic("%s: softint_establish() failed", __func__);
 
 	if_getindex(ifp);
 }
@@ -663,17 +672,255 @@ if_register(ifnet_t *ifp)
 		if_slowtimo(ifp);
 	}
 
+	if (ifp->if_transmit == NULL || ifp->if_transmit == if_nulltransmit)
+		ifp->if_transmit = if_transmit;
+
 	TAILQ_INSERT_TAIL(&ifnet_list, ifp, if_list);
 }
 
 /*
- * Deprecated. Use if_initialize and if_register instead.
+ * The if_percpuq framework
+ *
+ * It allows network device drivers to execute the network stack
+ * in softint (so called softint-based if_input). It utilizes
+ * softint and percpu ifqueue. It doesn't distribute any packets
+ * between CPUs, unlike pktqueue(9).
+ *
+ * Currently we support two options for device drivers to apply the framework:
+ * - Use it implicitly with less changes
+ *   - If you use if_attach in driver's _attach function and if_input in
+ *     driver's Rx interrupt handler, a packet is queued and a softint handles
+ *     the packet implicitly
+ * - Use it explicitly in each driver (recommended)
+ *   - You can use if_percpuq_* directly in your driver
+ *   - In this case, you need to allocate struct if_percpuq in driver's softc
+ *   - See wm(4) as a reference implementation
+ */
+
+static void
+if_percpuq_softint(void *arg)
+{
+	struct if_percpuq *ipq = arg;
+	struct ifnet *ifp = ipq->ipq_ifp;
+	struct mbuf *m;
+
+	while ((m = if_percpuq_dequeue(ipq)) != NULL)
+		ifp->_if_input(ifp, m);
+}
+
+static void
+if_percpuq_init_ifq(void *p, void *arg __unused, struct cpu_info *ci __unused)
+{
+	struct ifqueue *const ifq = p;
+
+	memset(ifq, 0, sizeof(*ifq));
+	ifq->ifq_maxlen = IFQ_MAXLEN;
+}
+
+struct if_percpuq *
+if_percpuq_create(struct ifnet *ifp)
+{
+	struct if_percpuq *ipq;
+
+	ipq = kmem_zalloc(sizeof(*ipq), KM_SLEEP);
+	if (ipq == NULL)
+		panic("kmem_zalloc failed");
+
+	ipq->ipq_ifp = ifp;
+	ipq->ipq_si = softint_establish(SOFTINT_NET|SOFTINT_MPSAFE,
+	    if_percpuq_softint, ipq);
+	ipq->ipq_ifqs = percpu_alloc(sizeof(struct ifqueue));
+	percpu_foreach(ipq->ipq_ifqs, &if_percpuq_init_ifq, NULL);
+
+	sysctl_percpuq_setup(&ifp->if_sysctl_log, ifp->if_xname, ipq);
+
+	return ipq;
+}
+
+static struct mbuf *
+if_percpuq_dequeue(struct if_percpuq *ipq)
+{
+	struct mbuf *m;
+	struct ifqueue *ifq;
+	int s;
+
+	s = splnet();
+	ifq = percpu_getref(ipq->ipq_ifqs);
+	IF_DEQUEUE(ifq, m);
+	percpu_putref(ipq->ipq_ifqs);
+	splx(s);
+
+	return m;
+}
+
+static void
+if_percpuq_purge_ifq(void *p, void *arg __unused, struct cpu_info *ci __unused)
+{
+	struct ifqueue *const ifq = p;
+
+	IF_PURGE(ifq);
+}
+
+void
+if_percpuq_destroy(struct if_percpuq *ipq)
+{
+
+	/* if_detach may already destroy it */
+	if (ipq == NULL)
+		return;
+
+	softint_disestablish(ipq->ipq_si);
+	percpu_foreach(ipq->ipq_ifqs, &if_percpuq_purge_ifq, NULL);
+	percpu_free(ipq->ipq_ifqs, sizeof(struct ifqueue));
+}
+
+void
+if_percpuq_enqueue(struct if_percpuq *ipq, struct mbuf *m)
+{
+	struct ifqueue *ifq;
+	int s;
+
+	KASSERT(ipq != NULL);
+
+	s = splnet();
+	ifq = percpu_getref(ipq->ipq_ifqs);
+	if (IF_QFULL(ifq)) {
+		IF_DROP(ifq);
+		percpu_putref(ipq->ipq_ifqs);
+		m_freem(m);
+		goto out;
+	}
+	IF_ENQUEUE(ifq, m);
+	percpu_putref(ipq->ipq_ifqs);
+
+	softint_schedule(ipq->ipq_si);
+out:
+	splx(s);
+}
+
+static void
+if_percpuq_drops(void *p, void *arg, struct cpu_info *ci __unused)
+{
+	struct ifqueue *const ifq = p;
+	int *sum = arg;
+
+	*sum += ifq->ifq_drops;
+}
+
+static int
+sysctl_percpuq_drops_handler(SYSCTLFN_ARGS)
+{
+	struct sysctlnode node;
+	struct if_percpuq *ipq;
+	int sum = 0;
+	int error;
+
+	node = *rnode;
+	ipq = node.sysctl_data;
+
+	percpu_foreach(ipq->ipq_ifqs, if_percpuq_drops, &sum);
+
+	node.sysctl_data = &sum;
+	error = sysctl_lookup(SYSCTLFN_CALL(&node));
+	if (error != 0 || newp == NULL)
+		return error;
+
+	return 0;
+}
+
+static void
+sysctl_percpuq_setup(struct sysctllog **clog, const char* ifname,
+    struct if_percpuq *ipq)
+{
+	const struct sysctlnode *cnode, *rnode;
+
+	if (sysctl_createv(clog, 0, NULL, &rnode,
+		       CTLFLAG_PERMANENT,
+		       CTLTYPE_NODE, "interfaces",
+		       SYSCTL_DESCR("Per-interface controls"),
+		       NULL, 0, NULL, 0,
+		       CTL_NET, CTL_CREATE, CTL_EOL) != 0)
+		goto bad;
+
+	if (sysctl_createv(clog, 0, &rnode, &rnode,
+		       CTLFLAG_PERMANENT,
+		       CTLTYPE_NODE, ifname,
+		       SYSCTL_DESCR("Interface controls"),
+		       NULL, 0, NULL, 0,
+		       CTL_CREATE, CTL_EOL) != 0)
+		goto bad;
+
+	if (sysctl_createv(clog, 0, &rnode, &rnode,
+		       CTLFLAG_PERMANENT,
+		       CTLTYPE_NODE, "rcvq",
+		       SYSCTL_DESCR("Interface input queue controls"),
+		       NULL, 0, NULL, 0,
+		       CTL_CREATE, CTL_EOL) != 0)
+		goto bad;
+
+#ifdef NOTYET
+	/* XXX Should show each per-CPU queue length? */
+	if (sysctl_createv(clog, 0, &rnode, &rnode,
+		       CTLFLAG_PERMANENT,
+		       CTLTYPE_INT, "len",
+		       SYSCTL_DESCR("Current input queue length"),
+		       sysctl_percpuq_len, 0, NULL, 0,
+		       CTL_CREATE, CTL_EOL) != 0)
+		goto bad;
+
+	if (sysctl_createv(clog, 0, &rnode, &cnode,
+		       CTLFLAG_PERMANENT|CTLFLAG_READWRITE,
+		       CTLTYPE_INT, "maxlen",
+		       SYSCTL_DESCR("Maximum allowed input queue length"),
+		       sysctl_percpuq_maxlen_handler, 0, (void *)ipq, 0,
+		       CTL_CREATE, CTL_EOL) != 0)
+		goto bad;
+#endif
+
+	if (sysctl_createv(clog, 0, &rnode, &cnode,
+		       CTLFLAG_PERMANENT,
+		       CTLTYPE_INT, "drops",
+		       SYSCTL_DESCR("Total packets dropped due to full input queue"),
+		       sysctl_percpuq_drops_handler, 0, (void *)ipq, 0,
+		       CTL_CREATE, CTL_EOL) != 0)
+		goto bad;
+
+	return;
+bad:
+	printf("%s: could not attach sysctl nodes\n", ifname);
+	return;
+}
+
+
+/*
+ * The common interface input routine that is called by device drivers,
+ * which should be used only when the driver's rx handler already runs
+ * in softint.
+ */
+void
+if_input(struct ifnet *ifp, struct mbuf *m)
+{
+
+	KASSERT(ifp->if_percpuq == NULL);
+	KASSERT(!cpu_intr_p());
+
+	ifp->_if_input(ifp, m);
+}
+
+/*
+ * DEPRECATED. Use if_initialize and if_register instead.
  * See the above comment of if_initialize.
+ *
+ * Note that it implicitly enables if_percpuq to make drivers easy to
+ * migrate softint-based if_input without much changes. If you don't
+ * want to enable it, use if_initialize instead.
  */
 void
 if_attach(ifnet_t *ifp)
 {
+
 	if_initialize(ifp);
+	ifp->if_percpuq = if_percpuq_create(ifp);
 	if_register(ifp);
 }
 
@@ -720,8 +967,9 @@ if_deactivate(struct ifnet *ifp)
 	s = splnet();
 
 	ifp->if_output	 = if_nulloutput;
-	ifp->if_input	 = if_nullinput;
+	ifp->_if_input	 = if_nullinput;
 	ifp->if_start	 = if_nullstart;
+	ifp->if_transmit = if_nulltransmit;
 	ifp->if_ioctl	 = if_nullioctl;
 	ifp->if_init	 = if_nullinit;
 	ifp->if_stop	 = if_nullstop;
@@ -773,6 +1021,9 @@ if_detach(struct ifnet *ifp)
 	memset(&so, 0, sizeof(so));
 
 	s = splnet();
+
+	ifindex2ifnet[ifp->if_index] = NULL;
+	TAILQ_REMOVE(&ifnet_list, ifp, if_list);
 
 	if (ifp->if_slowtimo != NULL) {
 		ifp->if_slowtimo = NULL;
@@ -908,11 +1159,12 @@ again:
 	/* Announce that the interface is gone. */
 	rt_ifannouncemsg(ifp, IFAN_DEPARTURE);
 
-	ifindex2ifnet[ifp->if_index] = NULL;
-
-	TAILQ_REMOVE(&ifnet_list, ifp, if_list);
-
 	ifioctl_detach(ifp);
+
+	IF_AFDATA_LOCK_DESTROY(ifp);
+
+	softint_disestablish(ifp->if_link_si);
+	ifp->if_link_si = NULL;
 
 	/*
 	 * remove packets that came from ifp, from software interrupt queues.
@@ -941,6 +1193,11 @@ again:
 #endif
 	xc = xc_broadcast(0, (xcfunc_t)nullop, NULL, NULL);
 	xc_wait(xc);
+
+	if (ifp->if_percpuq != NULL) {
+		if_percpuq_destroy(ifp->if_percpuq);
+		ifp->if_percpuq = NULL;
+	}
 
 	splx(s);
 }
@@ -983,20 +1240,23 @@ if_rt_walktree(struct rtentry *rt, void *v)
 {
 	struct ifnet *ifp = (struct ifnet *)v;
 	int error;
+	struct rtentry *retrt;
 
 	if (rt->rt_ifp != ifp)
 		return 0;
 
 	/* Delete the entry. */
-	++rt->rt_refcnt;
 	error = rtrequest(RTM_DELETE, rt_getkey(rt), rt->rt_gateway,
-	    rt_mask(rt), rt->rt_flags, NULL);
-	KASSERT((rt->rt_flags & RTF_UP) == 0);
-	rt->rt_ifp = NULL;
-	rtfree(rt);
-	if (error != 0)
+	    rt_mask(rt), rt->rt_flags, &retrt);
+	if (error == 0) {
+		KASSERT(retrt == rt);
+		KASSERT((retrt->rt_flags & RTF_UP) == 0);
+		retrt->rt_ifp = NULL;
+		rtfree(retrt);
+	} else {
 		printf("%s: warning: unable to delete rtentry @ %p, "
 		    "error = %d\n", ifp->if_xname, rt, error);
+	}
 	return ERESTART;
 }
 
@@ -1116,24 +1376,24 @@ if_clone_detach(struct if_clone *ifc)
 /*
  * Provide list of interface cloners to userspace.
  */
-static int
-if_clone_list(struct if_clonereq *ifcr)
+int
+if_clone_list(int buf_count, char *buffer, int *total)
 {
 	char outbuf[IFNAMSIZ], *dst;
 	struct if_clone *ifc;
 	int count, error = 0;
 
-	ifcr->ifcr_total = if_cloners_count;
-	if ((dst = ifcr->ifcr_buffer) == NULL) {
+	*total = if_cloners_count;
+	if ((dst = buffer) == NULL) {
 		/* Just asking how many there are. */
 		return 0;
 	}
 
-	if (ifcr->ifcr_count < 0)
+	if (buf_count < 0)
 		return EINVAL;
 
-	count = (if_cloners_count < ifcr->ifcr_count) ?
-	    if_cloners_count : ifcr->ifcr_count;
+	count = (if_cloners_count < buf_count) ?
+	    if_cloners_count : buf_count;
 
 	for (ifc = LIST_FIRST(&if_cloners); ifc != NULL && count != 0;
 	     ifc = LIST_NEXT(ifc, ifc_list), count--, dst += IFNAMSIZ) {
@@ -1260,8 +1520,9 @@ ifa_ifwithnet(const struct sockaddr *addr)
 		sdl = satocsdl(addr);
 		if (sdl->sdl_index && sdl->sdl_index < if_indexlim &&
 		    ifindex2ifnet[sdl->sdl_index] &&
-		    ifindex2ifnet[sdl->sdl_index]->if_output != if_nulloutput)
-			return ifnet_addrs[sdl->sdl_index];
+		    ifindex2ifnet[sdl->sdl_index]->if_output != if_nulloutput) {
+			return ifindex2ifnet[sdl->sdl_index]->if_dl;
+		}
 	}
 #ifdef NETATALK
 	if (af == AF_APPLETALK) {
@@ -1305,8 +1566,8 @@ ifa_ifwithnet(const struct sockaddr *addr)
 				}
 			}
 			if (ifa_maybe == NULL ||
-			    rn_refines((void *)ifa->ifa_netmask,
-			    (void *)ifa_maybe->ifa_netmask))
+			    rt_refines(ifa->ifa_netmask,
+			               ifa_maybe->ifa_netmask))
 				ifa_maybe = ifa;
 		}
 	}
@@ -1414,52 +1675,151 @@ link_rtrequest(int cmd, struct rtentry *rt, const struct rt_addrinfo *info)
 }
 
 /*
- * Handle a change in the interface link state.
- * XXX: We should listen to the routing socket in-kernel rather
- * than calling in6_if_link_* functions directly from here.
+ * bitmask macros to manage a densely packed link_state change queue.
+ * Because we need to store LINK_STATE_UNKNOWN(0), LINK_STATE_DOWN(1) and
+ * LINK_STATE_UP(2) we need 2 bits for each state change.
+ * As a state change to store is 0, treat all bits set as an unset item.
+ */
+#define LQ_ITEM_BITS		2
+#define LQ_ITEM_MASK		((1 << LQ_ITEM_BITS) - 1)
+#define LQ_MASK(i)		(LQ_ITEM_MASK << (i) * LQ_ITEM_BITS)
+#define LINK_STATE_UNSET	LQ_ITEM_MASK
+#define LQ_ITEM(q, i)		(((q) & LQ_MASK((i))) >> (i) * LQ_ITEM_BITS)
+#define LQ_STORE(q, i, v)						      \
+	do {								      \
+		(q) &= ~LQ_MASK((i));					      \
+		(q) |= (v) << (i) * LQ_ITEM_BITS;			      \
+	} while (0 /* CONSTCOND */)
+#define LQ_MAX(q)		((sizeof((q)) * NBBY) / LQ_ITEM_BITS)
+#define LQ_POP(q, v)							      \
+	do {								      \
+		(v) = LQ_ITEM((q), 0);					      \
+		(q) >>= LQ_ITEM_BITS;					      \
+		(q) |= LINK_STATE_UNSET << (LQ_MAX((q)) - 1) * LQ_ITEM_BITS;  \
+	} while (0 /* CONSTCOND */)
+#define LQ_PUSH(q, v)							      \
+	do {								      \
+		(q) >>= LQ_ITEM_BITS;					      \
+		(q) |= (v) << (LQ_MAX((q)) - 1) * LQ_ITEM_BITS;		      \
+	} while (0 /* CONSTCOND */)
+#define LQ_FIND_UNSET(q, i)						      \
+	for ((i) = 0; i < LQ_MAX((q)); (i)++) {				      \
+		if (LQ_ITEM((q), (i)) == LINK_STATE_UNSET)		      \
+			break;						      \
+	}
+/*
+ * Handle a change in the interface link state and
+ * queue notifications.
  */
 void
 if_link_state_change(struct ifnet *ifp, int link_state)
 {
-	int s;
-#if defined(DEBUG) || defined(INET6)
-	int old_link_state;
-#endif
+	int s, idx;
 
-	s = splnet();
-	if (ifp->if_link_state == link_state) {
-		splx(s);
+	/* Ensure change is to a valid state */
+	switch (link_state) {
+	case LINK_STATE_UNKNOWN:	/* FALLTHROUGH */
+	case LINK_STATE_DOWN:		/* FALLTHROUGH */
+	case LINK_STATE_UP:
+		break;
+	default:
+#ifdef DEBUG
+		printf("%s: invalid link state %d\n",
+		    ifp->if_xname, link_state);
+#endif
 		return;
 	}
 
-#if defined(DEBUG) || defined(INET6)
-	old_link_state = ifp->if_link_state;
-#endif
-	ifp->if_link_state = link_state;
+	s = splnet();
+
+	/* Find the last unset event in the queue. */
+	LQ_FIND_UNSET(ifp->if_link_queue, idx);
+
+	/*
+	 * Ensure link_state doesn't match the last event in the queue.
+	 * ifp->if_link_state is not checked and set here because
+	 * that would present an inconsistent picture to the system.
+	 */
+	if (idx != 0 &&
+	    LQ_ITEM(ifp->if_link_queue, idx - 1) == (uint8_t)link_state)
+		goto out;
+
+	/* Handle queue overflow. */
+	if (idx == LQ_MAX(ifp->if_link_queue)) {
+		uint8_t lost;
+
+		/*
+		 * The DOWN state must be protected from being pushed off
+		 * the queue to ensure that userland will always be
+		 * in a sane state.
+		 * Because DOWN is protected, there is no need to protect
+		 * UNKNOWN.
+		 * It should be invalid to change from any other state to
+		 * UNKNOWN anyway ...
+		 */
+		lost = LQ_ITEM(ifp->if_link_queue, 0);
+		LQ_PUSH(ifp->if_link_queue, (uint8_t)link_state);
+		if (lost == LINK_STATE_DOWN) {
+			lost = LQ_ITEM(ifp->if_link_queue, 0);
+			LQ_STORE(ifp->if_link_queue, 0, LINK_STATE_DOWN);
+		}
+		printf("%s: lost link state change %s\n",
+		    ifp->if_xname,
+		    lost == LINK_STATE_UP ? "UP" :
+		    lost == LINK_STATE_DOWN ? "DOWN" :
+		    "UNKNOWN");
+	} else
+		LQ_STORE(ifp->if_link_queue, idx, (uint8_t)link_state);
+
+	softint_schedule(ifp->if_link_si);
+
+out:
+	splx(s);
+}
+
+/*
+ * Handle interface link state change notifications.
+ * Must be called at splnet().
+ */
+static void
+if_link_state_change0(struct ifnet *ifp, int link_state)
+{
+	struct domain *dp;
+
+	/* Ensure the change is still valid. */
+	if (ifp->if_link_state == link_state)
+		return;
+
 #ifdef DEBUG
 	log(LOG_DEBUG, "%s: link state %s (was %s)\n", ifp->if_xname,
 		link_state == LINK_STATE_UP ? "UP" :
 		link_state == LINK_STATE_DOWN ? "DOWN" :
 		"UNKNOWN",
-		 old_link_state == LINK_STATE_UP ? "UP" :
-		old_link_state == LINK_STATE_DOWN ? "DOWN" :
+		ifp->if_link_state == LINK_STATE_UP ? "UP" :
+		ifp->if_link_state == LINK_STATE_DOWN ? "DOWN" :
 		"UNKNOWN");
 #endif
 
-#ifdef INET6
 	/*
 	 * When going from UNKNOWN to UP, we need to mark existing
-	 * IPv6 addresses as tentative and restart DAD as we may have
+	 * addresses as tentative and restart DAD as we may have
 	 * erroneously not found a duplicate.
 	 *
 	 * This needs to happen before rt_ifmsg to avoid a race where
 	 * listeners would have an address and expect it to work right
 	 * away.
 	 */
-	if (in6_present && link_state == LINK_STATE_UP &&
-	    old_link_state == LINK_STATE_UNKNOWN)
-		in6_if_link_down(ifp);
-#endif
+	if (link_state == LINK_STATE_UP &&
+	    ifp->if_link_state == LINK_STATE_UNKNOWN)
+	{
+		DOMAIN_FOREACH(dp) {
+			if (dp->dom_if_link_state_change != NULL)
+				dp->dom_if_link_state_change(ifp,
+				    LINK_STATE_DOWN);
+		}
+	}
+
+	ifp->if_link_state = link_state;
 
 	/* Notify that the link state has changed. */
 	rt_ifmsg(ifp);
@@ -1469,16 +1829,83 @@ if_link_state_change(struct ifnet *ifp, int link_state)
 		carp_carpdev_state(ifp);
 #endif
 
-#ifdef INET6
-	if (in6_present) {
-		if (link_state == LINK_STATE_DOWN)
-			in6_if_link_down(ifp);
-		else if (link_state == LINK_STATE_UP)
-			in6_if_link_up(ifp);
+	DOMAIN_FOREACH(dp) {
+		if (dp->dom_if_link_state_change != NULL)
+			dp->dom_if_link_state_change(ifp, link_state);
 	}
-#endif
+}
+
+/*
+ * Process the interface link state change queue.
+ */
+static void
+if_link_state_change_si(void *arg)
+{
+	struct ifnet *ifp = arg;
+	int s;
+	uint8_t state;
+
+	s = splnet();
+
+	/* Pop a link state change from the queue and process it. */
+	LQ_POP(ifp->if_link_queue, state);
+	if_link_state_change0(ifp, state);
+
+	/* If there is a link state change to come, schedule it. */
+	if (LQ_ITEM(ifp->if_link_queue, 0) != LINK_STATE_UNSET)
+		softint_schedule(ifp->if_link_si);
 
 	splx(s);
+}
+
+/*
+ * Default action when installing a local route on a point-to-point
+ * interface.
+ */
+void
+p2p_rtrequest(int req, struct rtentry *rt,
+    __unused const struct rt_addrinfo *info)
+{
+	struct ifnet *ifp = rt->rt_ifp;
+	struct ifaddr *ifa, *lo0ifa;
+
+	switch (req) {
+	case RTM_ADD:
+		if ((rt->rt_flags & RTF_LOCAL) == 0)
+			break;
+
+		IFADDR_FOREACH(ifa, ifp) {
+			if (equal(rt_getkey(rt), ifa->ifa_addr))
+				break;
+		}
+		if (ifa == NULL)
+			break;
+
+		/*
+		 * Ensure lo0 has an address of the same family.
+		 */
+		IFADDR_FOREACH(lo0ifa, lo0ifp) {
+			if (lo0ifa->ifa_addr->sa_family ==
+			    ifa->ifa_addr->sa_family)
+				break;
+		}
+		if (lo0ifa == NULL)
+			break;
+
+		rt->rt_ifp = lo0ifp;
+
+		/*
+		 * Make sure to set rt->rt_ifa to the interface
+		 * address we are using, otherwise we will have trouble
+		 * with source address selection.
+		 */
+		if (ifa != rt->rt_ifa)
+			rt_replace_ifa(rt, ifa);
+		break;
+	case RTM_DELETE:
+	default:
+		break;
+	}
 }
 
 /*
@@ -1490,6 +1917,7 @@ void
 if_down(struct ifnet *ifp)
 {
 	struct ifaddr *ifa;
+	struct domain *dp;
 
 	ifp->if_flags &= ~IFF_UP;
 	nanotime(&ifp->if_lastchange);
@@ -1501,10 +1929,10 @@ if_down(struct ifnet *ifp)
 		carp_carpdev_state(ifp);
 #endif
 	rt_ifmsg(ifp);
-#ifdef INET6
-	if (in6_present)
-		in6_if_down(ifp);
-#endif
+	DOMAIN_FOREACH(dp) {
+		if (dp->dom_if_down)
+			dp->dom_if_down(ifp);
+	}
 }
 
 /*
@@ -1518,6 +1946,7 @@ if_up(struct ifnet *ifp)
 #ifdef notyet
 	struct ifaddr *ifa;
 #endif
+	struct domain *dp;
 
 	ifp->if_flags |= IFF_UP;
 	nanotime(&ifp->if_lastchange);
@@ -1531,10 +1960,10 @@ if_up(struct ifnet *ifp)
 		carp_carpdev_state(ifp);
 #endif
 	rt_ifmsg(ifp);
-#ifdef INET6
-	if (in6_present)
-		in6_if_up(ifp);
-#endif
+	DOMAIN_FOREACH(dp) {
+		if (dp->dom_if_up)
+			dp->dom_if_up(ifp);
+	}
 }
 
 /*
@@ -1953,7 +2382,11 @@ doifioctl(struct socket *so, u_long cmd, void *data, struct lwp *l)
 		return r;
 
 	case SIOCIFGCLONERS:
-		return if_clone_list((struct if_clonereq *)data);
+		{
+			struct if_clonereq *req = (struct if_clonereq *)data;
+			return if_clone_list(req->ifcr_count, req->ifcr_buffer,
+			    &req->ifcr_total);
+		}
 	}
 
 	if (ifp == NULL)
@@ -2014,13 +2447,11 @@ doifioctl(struct socket *so, u_long cmd, void *data, struct lwp *l)
 	}
 
 	if (((oif_flags ^ ifp->if_flags) & IFF_UP) != 0) {
-#ifdef INET6
-		if (in6_present && (ifp->if_flags & IFF_UP) != 0) {
+		if ((ifp->if_flags & IFF_UP) != 0) {
 			int s = splnet();
-			in6_if_up(ifp);
+			if_up(ifp);
 			splx(s);
 		}
-#endif
 	}
 #ifdef COMPAT_OIFREQ
 	if (cmd != ocmd)
@@ -2247,37 +2678,49 @@ ifreq_setaddr(u_long cmd, struct ifreq *ifr, const struct sockaddr *sa)
 }
 
 /*
- * Queue message on interface, and start output if interface
- * not yet active.
+ * wrapper function for the drivers which doesn't have if_transmit().
  */
 int
-ifq_enqueue(struct ifnet *ifp, struct mbuf *m
-    ALTQ_COMMA ALTQ_DECL(struct altq_pktattr *pktattr))
+if_transmit(struct ifnet *ifp, struct mbuf *m)
 {
-	int len = m->m_pkthdr.len;
-	int mflags = m->m_flags;
-	int s = splnet();
-	int error;
+	int s, error;
 
-	IFQ_ENQUEUE(&ifp->if_snd, m, pktattr, error);
-	if (error != 0)
+	s = splnet();
+
+	IFQ_ENQUEUE(&ifp->if_snd, m, error);
+	if (error != 0) {
+		/* mbuf is already freed */
 		goto out;
-	ifp->if_obytes += len;
-	if (mflags & M_MCAST)
+	}
+
+	ifp->if_obytes += m->m_pkthdr.len;;
+	if (m->m_flags & M_MCAST)
 		ifp->if_omcasts++;
+
 	if ((ifp->if_flags & IFF_OACTIVE) == 0)
 		(*ifp->if_start)(ifp);
 out:
 	splx(s);
+
 	return error;
+}
+
+/*
+ * Queue message on interface, and start output if interface
+ * not yet active.
+ */
+int
+ifq_enqueue(struct ifnet *ifp, struct mbuf *m)
+{
+
+	return (*ifp->if_transmit)(ifp, m);
 }
 
 /*
  * Queue message on interface, possibly using a second fast queue
  */
 int
-ifq_enqueue2(struct ifnet *ifp, struct ifqueue *ifq, struct mbuf *m
-    ALTQ_COMMA ALTQ_DECL(struct altq_pktattr *pktattr))
+ifq_enqueue2(struct ifnet *ifp, struct ifqueue *ifq, struct mbuf *m)
 {
 	int error = 0;
 
@@ -2294,7 +2737,7 @@ ifq_enqueue2(struct ifnet *ifp, struct ifqueue *ifq, struct mbuf *m
 		} else
 			IF_ENQUEUE(ifq, m);
 	} else
-		IFQ_ENQUEUE(&ifp->if_snd, m, pktattr, error);
+		IFQ_ENQUEUE(&ifp->if_snd, m, error);
 	if (error != 0) {
 		++ifp->if_oerrors;
 		return error;
@@ -2314,6 +2757,39 @@ if_addr_init(ifnet_t *ifp, struct ifaddr *ifa, const bool src)
 		rc = (*ifp->if_ioctl)(ifp, SIOCINITIFADDR, ifa);
 
 	return rc;
+}
+
+int
+if_do_dad(struct ifnet *ifp)
+{
+	if ((ifp->if_flags & IFF_LOOPBACK) != 0)
+		return 0;
+
+	switch (ifp->if_type) {
+	case IFT_FAITH:
+		/*
+		 * These interfaces do not have the IFF_LOOPBACK flag,
+		 * but loop packets back.  We do not have to do DAD on such
+		 * interfaces.  We should even omit it, because loop-backed
+		 * responses would confuse the DAD procedure.
+		 */
+		return 0;
+	default:
+		/*
+		 * Our DAD routine requires the interface up and running.
+		 * However, some interfaces can be up before the RUNNING
+		 * status.  Additionaly, users may try to assign addresses
+		 * before the interface becomes up (or running).
+		 * We simply skip DAD in such a case as a work around.
+		 * XXX: we should rather mark "tentative" on such addresses,
+		 * and do DAD after the interface becomes ready.
+		 */
+		if ((ifp->if_flags & (IFF_UP|IFF_RUNNING)) !=
+		    (IFF_UP|IFF_RUNNING))
+			return 0;
+
+		return 1;
+	}
 }
 
 int

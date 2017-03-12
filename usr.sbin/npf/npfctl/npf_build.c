@@ -1,4 +1,4 @@
-/*	$NetBSD: npf_build.c,v 1.38 2014/05/31 22:41:37 rmind Exp $	*/
+/*	$NetBSD: npf_build.c,v 1.40 2015/06/08 01:00:43 rmind Exp $	*/
 
 /*-
  * Copyright (c) 2011-2014 The NetBSD Foundation, Inc.
@@ -34,7 +34,7 @@
  */
 
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: npf_build.c,v 1.38 2014/05/31 22:41:37 rmind Exp $");
+__RCSID("$NetBSD: npf_build.c,v 1.40 2015/06/08 01:00:43 rmind Exp $");
 
 #include <sys/types.h>
 #include <sys/mman.h>
@@ -91,6 +91,10 @@ npfctl_config_send(int fd, const char *out)
 	}
 	npf_rule_insert(npf_conf, NULL, defgroup);
 	error = npf_config_submit(npf_conf, fd);
+	if (error == EEXIST) { /* XXX */
+		errx(EXIT_FAILURE, "(re)load failed: "
+		    "some table has a duplicate entry?");
+	}
 	if (error) {
 		nl_error_t ne;
 		_npf_config_error(npf_conf, &ne);
@@ -364,6 +368,10 @@ npfctl_build_code(nl_rule_t *rl, sa_family_t family, const opt_proto_t *op,
 
 	/* Complete BPF byte-code and pass to the rule. */
 	struct bpf_program *bf = npfctl_bpf_complete(bc);
+	if (bf == NULL) {
+		npfctl_bpf_destroy(bc);
+		return true;
+	}
 	len = bf->bf_len * sizeof(struct bpf_insn);
 
 	if (npf_rule_setcode(rl, NPF_CODE_BPF, bf->bf_insns, len) == -1) {

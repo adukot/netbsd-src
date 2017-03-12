@@ -1,4 +1,4 @@
-/*	$NetBSD: ipmi.c,v 1.60 2014/12/29 14:00:26 mlelstv Exp $ */
+/*	$NetBSD: ipmi.c,v 1.63 2016/04/03 10:32:00 mlelstv Exp $ */
 
 /*
  * Copyright (c) 2006 Manuel Bouyer.
@@ -52,7 +52,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ipmi.c,v 1.60 2014/12/29 14:00:26 mlelstv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ipmi.c,v 1.63 2016/04/03 10:32:00 mlelstv Exp $");
 
 #include <sys/types.h>
 #include <sys/param.h>
@@ -66,7 +66,6 @@ __KERNEL_RCSID(0, "$NetBSD: ipmi.c,v 1.60 2014/12/29 14:00:26 mlelstv Exp $");
 #include <sys/kthread.h>
 #include <sys/bus.h>
 #include <sys/intr.h>
-#include <sys/rnd.h>
 
 #include <x86/smbiosvar.h>
 
@@ -89,7 +88,6 @@ struct ipmi_sensor {
 	uint32_t	i_props, i_defprops;
 	SLIST_ENTRY(ipmi_sensor) i_list;
 	int32_t		i_prevval;	/* feed rnd source on change */
-	krndsource_t	i_rnd;
 };
 
 int	ipmi_nintr;
@@ -941,9 +939,10 @@ ipmi_smbios_probe(struct smbios_ipmi *pipmi, struct ipmi_attach_args *ia)
 
 	platform = pmf_get_platform("system-product");
 	if (platform != NULL &&
-	    strcmp(platform, "ProLiant MicroServer") == 0) {
+	    strcmp(platform, "ProLiant MicroServer") == 0 &&
+	    pipmi->smipmi_base_address != 0) {
                 ia->iaa_if_iospacing = 1;
-                ia->iaa_if_iobase = pipmi->smipmi_base_address - 7;
+                ia->iaa_if_iobase = pipmi->smipmi_base_address & ~0x7;
                 ia->iaa_if_iotype = 'i';
                 return;
         }
@@ -1305,7 +1304,7 @@ signextend(unsigned long val, int bits)
 
 /* fixpoint arithmetic */
 #define FIX2INT(x)   ((int64_t)((x) >> 32))
-#define INT2FIX(x)   ((int64_t)((int64_t)(x) << 32))
+#define INT2FIX(x)   ((int64_t)((uint64_t)(x) << 32))
 
 #define FIX2            0x0000000200000000ll /* 2.0 */
 #define FIX3            0x0000000300000000ll /* 3.0 */

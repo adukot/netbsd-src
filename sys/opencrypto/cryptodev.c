@@ -1,4 +1,4 @@
-/*	$NetBSD: cryptodev.c,v 1.82 2014/11/27 20:30:05 christos Exp $ */
+/*	$NetBSD: cryptodev.c,v 1.84 2015/08/20 14:40:19 christos Exp $ */
 /*	$FreeBSD: src/sys/opencrypto/cryptodev.c,v 1.4.2.4 2003/06/03 00:09:02 sam Exp $	*/
 /*	$OpenBSD: cryptodev.c,v 1.53 2002/07/10 22:21:30 mickey Exp $	*/
 
@@ -64,7 +64,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: cryptodev.c,v 1.82 2014/11/27 20:30:05 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: cryptodev.c,v 1.84 2015/08/20 14:40:19 christos Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -95,6 +95,8 @@ __KERNEL_RCSID(0, "$NetBSD: cryptodev.c,v 1.82 2014/11/27 20:30:05 christos Exp 
 #include <opencrypto/cryptodev.h>
 #include <opencrypto/cryptodev_internal.h>
 #include <opencrypto/xform.h>
+
+#include "ioconf.h"
 
 struct csession {
 	TAILQ_ENTRY(csession) next;
@@ -1709,7 +1711,7 @@ cryptodev_session(struct fcrypt *fcr, struct session_op *sop)
 
 	error = crypto_newsession(&sid, crihead, crypto_devallowsoft);
 	if (!error) {
-		DPRINTF(("cyrptodev_session: got session %d\n", (uint32_t)sid));
+		DPRINTF(("cryptodev_session: got session %d\n", (uint32_t)sid));
 		cse = csecreate(fcr, sid, crie.cri_key, crie.cri_klen,
 		    cria.cri_key, cria.cri_klen, (txform ? sop->cipher : 0), sop->mac,
 		    (tcomp ? sop->comp_alg : 0), txform, thash, tcomp);
@@ -2080,8 +2082,6 @@ cryptof_poll(struct file *fp, int events)
 /*
  * Pseudo-device initialization routine for /dev/crypto
  */
-void	cryptoattach(int);
-
 void
 cryptoattach(int num)
 {

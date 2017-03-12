@@ -1,4 +1,4 @@
-/*	$NetBSD: stdio.h,v 1.93 2015/01/20 17:29:00 christos Exp $	*/
+/*	$NetBSD: stdio.h,v 1.97 2016/03/17 00:42:49 christos Exp $	*/
 
 /*-
  * Copyright (c) 1990, 1993
@@ -331,7 +331,9 @@ FILE	*popen(const char *, const char *);
 __END_DECLS
 #endif
 #ifdef _NETBSD_SOURCE
+__BEGIN_DECLS
 FILE	*popenve(const char *, char *const *, char *const *, const char *);
+__END_DECLS
 #endif
 
 /*
@@ -368,7 +370,7 @@ __END_DECLS
 /*
  * X/Open CAE Specification Issue 5 Version 2
  */
-#if (_XOPEN_SOURCE - 0) >= 500 || defined(_LARGEFILE_SOURCE) || \
+#if (_POSIX_C_SOURCE - 0) >= 200112L || (_XOPEN_SOURCE - 0) >= 500 || \
     defined(_NETBSD_SOURCE)
 #ifndef	off_t
 typedef	__off_t		off_t;
@@ -379,7 +381,7 @@ __BEGIN_DECLS
 int	 fseeko(FILE *, off_t, int);
 off_t	 ftello(FILE *);
 __END_DECLS
-#endif /* _XOPEN_SOURCE >= 500 || _LARGEFILE_SOURCE || _NETBSD_SOURCE */
+#endif /* (_POSIX_C_SOURCE - 0) >= 200112L || _XOPEN_SOURCE >= 500 || ... */
 
 /*
  * Functions defined in ISO C99.  Still put under _NETBSD_SOURCE due to
@@ -481,7 +483,7 @@ static __inline int __sputc(int _c, FILE *_p) {
 
 #define	__sfeof(p)	(((p)->_flags & __SEOF) != 0)
 #define	__sferror(p)	(((p)->_flags & __SERR) != 0)
-#define	__sclearerr(p)	((void)((p)->_flags &= ~(__SERR|__SEOF)))
+#define	__sclearerr(p)	((void)((p)->_flags &= (unsigned short)~(__SERR|__SEOF)))
 #define	__sfileno(p)	\
     ((p)->_file == -1 ? -1 : (int)(unsigned short)(p)->_file)
 
@@ -576,8 +578,6 @@ int	 scanf_l(locale_t, const char * __restrict, ...)
     __scanflike(2, 3);
 int	 sscanf_l(const char * __restrict, locale_t,
     const char * __restrict, ...) __scanflike(3, 4);
-int	 vscanf_l(locale_t, const char * __restrict, __va_list)
-    __scanflike(2, 0);
 int	 vscanf_l(locale_t, const char * __restrict, __va_list)
     __scanflike(2, 0);
 int	 vfscanf_l(FILE * __restrict, locale_t, const char * __restrict,

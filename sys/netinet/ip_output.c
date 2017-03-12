@@ -1,4 +1,4 @@
-/*	$NetBSD: ip_output.c,v 1.233 2014/11/26 10:18:37 ozaki-r Exp $	*/
+/*	$NetBSD: ip_output.c,v 1.255 2016/05/09 07:02:10 ozaki-r Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -91,11 +91,15 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ip_output.c,v 1.233 2014/11/26 10:18:37 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ip_output.c,v 1.255 2016/05/09 07:02:10 ozaki-r Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_inet.h"
 #include "opt_ipsec.h"
 #include "opt_mrouting.h"
+#include "opt_net_mpsafe.h"
+#include "opt_mpls.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/kmem.h>
@@ -110,6 +114,7 @@ __KERNEL_RCSID(0, "$NetBSD: ip_output.c,v 1.233 2014/11/26 10:18:37 ozaki-r Exp 
 #include <sys/systm.h>
 
 #include <net/if.h>
+#include <net/if_types.h>
 #include <net/route.h>
 #include <net/pfil.h>
 
@@ -132,8 +137,15 @@ __KERNEL_RCSID(0, "$NetBSD: ip_output.c,v 1.233 2014/11/26 10:18:37 ozaki-r Exp 
 #include <netinet/ip_mroute.h>
 #endif
 
+#ifdef IPSEC
 #include <netipsec/ipsec.h>
 #include <netipsec/key.h>
+#endif
+
+#ifdef MPLS
+#include <netmpls/mpls.h>
+#include <netmpls/mpls_var.h>
+#endif
 
 static int ip_pcbopts(struct inpcb *, const struct sockopt *);
 static struct mbuf *ip_insertoptions(struct mbuf *, struct mbuf *, int *);
@@ -145,6 +157,73 @@ extern pfil_head_t *inet_pfil_hook;			/* XXX */
 
 int	ip_do_loopback_cksum = 0;
 
+static int
+ip_mark_mpls(struct ifnet * const ifp, struct mbuf * const m,
+    const struct rtentry *rt)
+{
+	int error = 0;
+#ifdef MPLS
+	union mpls_shim msh;
+
+	if (rt == NULL || rt_gettag(rt) == NULL ||
+	    rt_gettag(rt)->sa_family != AF_MPLS ||
+	    (m->m_flags & (M_MCAST | M_BCAST)) != 0 ||
+	    ifp->if_type != IFT_ETHER)
+		return 0;
+
+	msh.s_addr = MPLS_GETSADDR(rt);
+	if (msh.shim.label != MPLS_LABEL_IMPLNULL) {
+		struct m_tag *mtag;
+		/*
+		 * XXX tentative solution to tell ether_output
+		 * it's MPLS. Need some more efficient solution.
+		 */
+		mtag = m_tag_get(PACKET_TAG_MPLS,
+		    sizeof(int) /* dummy */,
+		    M_NOWAIT);
+		if (mtag == NULL)
+			return ENOMEM;
+		m_tag_prepend(m, mtag);
+	}
+#endif
+	return error;
+}
+
+/*
+ * Send an IP packet to a host.
+ */
+int
+ip_if_output(struct ifnet * const ifp, struct mbuf * const m,
+    const struct sockaddr * const dst, const struct rtentry *rt)
+{
+	int error = 0;
+
+	if (rt != NULL) {
+		error = rt_check_reject_route(rt, ifp);
+		if (error != 0) {
+			m_freem(m);
+			return error;
+		}
+	}
+
+	error = ip_mark_mpls(ifp, m, rt);
+	if (error != 0) {
+		m_freem(m);
+		return error;
+	}
+
+#ifndef NET_MPSAFE
+	KERNEL_LOCK(1, NULL);
+#endif
+
+	error = (*ifp->if_output)(ifp, m, dst, rt);
+
+#ifndef NET_MPSAFE
+	KERNEL_UNLOCK_ONE(NULL);
+#endif
+	return error;
+}
+
 /*
  * IP output.  The packet in mbuf chain m contains a skeletal IP
  * header (with len, off, ttl, proto, tos, src, dst).
@@ -152,7 +231,8 @@ int	ip_do_loopback_cksum = 0;
  * The mbuf opt, if present, will not be freed.
  */
 int
-ip_output(struct mbuf *m0, ...)
+ip_output(struct mbuf *m0, struct mbuf *opt, struct route *ro, int flags,
+    struct ip_moptions *imo, struct socket *so)
 {
 	struct rtentry *rt;
 	struct ip *ip;
@@ -163,13 +243,9 @@ ip_output(struct mbuf *m0, ...)
 	struct route iproute;
 	const struct sockaddr_in *dst;
 	struct in_ifaddr *ia;
-	struct mbuf *opt;
-	struct route *ro;
-	int flags, sw_csum;
+	int isbroadcast;
+	int sw_csum;
 	u_long mtu;
-	struct ip_moptions *imo;
-	struct socket *so;
-	va_list ap;
 #ifdef IPSEC
 	struct secpolicy *sp = NULL;
 #endif
@@ -184,13 +260,6 @@ ip_output(struct mbuf *m0, ...)
 					 */
 
 	len = 0;
-	va_start(ap, m0);
-	opt = va_arg(ap, struct mbuf *);
-	ro = va_arg(ap, struct route *);
-	flags = va_arg(ap, int);
-	imo = va_arg(ap, struct ip_moptions *);
-	so = va_arg(ap, struct socket *);
-	va_end(ap);
 
 	MCLAIM(m, &ip_tx_mowner);
 
@@ -242,7 +311,9 @@ ip_output(struct mbuf *m0, ...)
 	if ((rt = rtcache_validate(ro)) == NULL &&
 	    (rt = rtcache_update(ro, 1)) == NULL) {
 		dst = &u.dst4;
-		rtcache_setdst(ro, &u.dst);
+		error = rtcache_setdst(ro, &u.dst);
+		if (error != 0)
+			goto bad;
 	}
 
 	/*
@@ -257,12 +328,14 @@ ip_output(struct mbuf *m0, ...)
 		ifp = ia->ia_ifp;
 		mtu = ifp->if_mtu;
 		ip->ip_ttl = 1;
+		isbroadcast = in_broadcast(dst->sin_addr, ifp);
 	} else if ((IN_MULTICAST(ip->ip_dst.s_addr) ||
 	    ip->ip_dst.s_addr == INADDR_BROADCAST) &&
 	    imo != NULL && imo->imo_multicast_ifp != NULL) {
 		ifp = imo->imo_multicast_ifp;
 		mtu = ifp->if_mtu;
 		IFP_TO_IA(ifp, ia);
+		isbroadcast = 0;
 	} else {
 		if (rt == NULL)
 			rt = rtcache_init(ro);
@@ -278,6 +351,10 @@ ip_output(struct mbuf *m0, ...)
 		rt->rt_use++;
 		if (rt->rt_flags & RTF_GATEWAY)
 			dst = satosin(rt->rt_gateway);
+		if (rt->rt_flags & RTF_HOST)
+			isbroadcast = rt->rt_flags & RTF_BROADCAST;
+		else
+			isbroadcast = in_broadcast(dst->sin_addr, ifp);
 	}
 	rtmtu_nolock = rt && (rt->rt_rmx.rmx_locks & RTV_MTU) == 0;
 
@@ -286,7 +363,7 @@ ip_output(struct mbuf *m0, ...)
 		bool inmgroup;
 
 		m->m_flags |= (ip->ip_dst.s_addr == INADDR_BROADCAST) ?
-			M_BCAST : M_MCAST;
+		    M_BCAST : M_MCAST;
 		/*
 		 * See if the caller provided any multicast options
 		 */
@@ -333,6 +410,10 @@ ip_output(struct mbuf *m0, ...)
 			xifa = &xia->ia_ifa;
 			if (xifa->ifa_getifa != NULL) {
 				xia = ifatoia((*xifa->ifa_getifa)(xifa, rdst));
+				if (xia == NULL) {
+					error = EADDRNOTAVAIL;
+					goto bad;
+				}
 			}
 			ip->ip_src = xia->ia_addr.sin_addr;
 		}
@@ -393,8 +474,13 @@ ip_output(struct mbuf *m0, ...)
 		struct ifaddr *xifa;
 
 		xifa = &ia->ia_ifa;
-		if (xifa->ifa_getifa != NULL)
+		if (xifa->ifa_getifa != NULL) {
 			ia = ifatoia((*xifa->ifa_getifa)(xifa, rdst));
+			if (ia == NULL) {
+				error = EADDRNOTAVAIL;
+				goto bad;
+			}
+		}
 		ip->ip_src = ia->ia_addr.sin_addr;
 	}
 
@@ -412,7 +498,7 @@ ip_output(struct mbuf *m0, ...)
 	 * Look for broadcast address and and verify user is allowed to
 	 * send such a packet.
 	 */
-	if (in_broadcast(dst->sin_addr, ifp)) {
+	if (isbroadcast) {
 		if ((ifp->if_flags & IFF_BROADCAST) == 0) {
 			error = EADDRNOTAVAIL;
 			goto bad;
@@ -548,9 +634,7 @@ sendit:
 		if (__predict_true(
 		    (m->m_pkthdr.csum_flags & M_CSUM_TSOv4) == 0 ||
 		    (ifp->if_capenable & IFCAP_TSOv4) != 0)) {
-			KERNEL_LOCK(1, NULL);
-			error = (*ifp->if_output)(ifp, m, sa, rt);
-			KERNEL_UNLOCK_ONE(NULL);
+			error = ip_if_output(ifp, m, sa, rt);
 		} else {
 			error = ip_tso_output(ifp, m, sa, rt);
 		}
@@ -618,11 +702,9 @@ sendit:
 		} else {
 			KASSERT((m->m_pkthdr.csum_flags &
 			    (M_CSUM_UDPv4 | M_CSUM_TCPv4)) == 0);
-			KERNEL_LOCK(1, NULL);
-			error = (*ifp->if_output)(ifp, m,
+			error = ip_if_output(ifp, m,
 			    (m->m_flags & M_MCAST) ?
 			    sintocsa(rdst) : sintocsa(dst), rt);
-			KERNEL_UNLOCK_ONE(NULL);
 		}
 	}
 	if (error == 0) {
@@ -726,8 +808,8 @@ ip_fragment(struct mbuf *m, struct ifnet *ifp, u_long mtu)
 			    m0->m_pkthdr.csum_flags & M_CSUM_IPv4;
 			m->m_pkthdr.csum_data |= mhlen << 16;
 			KASSERT(!(ifp != NULL &&
-			    IN_NEED_CHECKSUM(ifp, M_CSUM_IPv4))
-			    || (m->m_pkthdr.csum_flags & M_CSUM_IPv4) != 0);
+			    IN_NEED_CHECKSUM(ifp, M_CSUM_IPv4)) ||
+			    (m->m_pkthdr.csum_flags & M_CSUM_IPv4) != 0);
 		}
 		IP_STATINC(IP_STAT_OFRAGMENTS);
 		fragments++;
@@ -749,10 +831,10 @@ ip_fragment(struct mbuf *m, struct ifnet *ifp, u_long mtu)
 		/*
 		 * checksum is hw-offloaded or not necessary.
 		 */
-		KASSERT(!(ifp != NULL && IN_NEED_CHECKSUM(ifp, M_CSUM_IPv4))
-		   || (m->m_pkthdr.csum_flags & M_CSUM_IPv4) != 0);
+		KASSERT(!(ifp != NULL && IN_NEED_CHECKSUM(ifp, M_CSUM_IPv4)) ||
+		    (m->m_pkthdr.csum_flags & M_CSUM_IPv4) != 0);
 		KASSERT(M_CSUM_DATA_IPv4_IPHL(m->m_pkthdr.csum_data) >=
-			sizeof(struct ip));
+		    sizeof(struct ip));
 	}
 sendorfree:
 	/*
@@ -1398,7 +1480,9 @@ ip_get_membership(const struct sockopt *sopt, struct ifnet **ifp,
 		memset(&ro, 0, sizeof(ro));
 
 		sockaddr_in_init(&u.dst4, ia, 0);
-		rtcache_setdst(&ro, &u.dst);
+		error = rtcache_setdst(&ro, &u.dst);
+		if (error != 0)
+			return error;
 		*ifp = (rt = rtcache_init(&ro)) != NULL ? rt->rt_ifp : NULL;
 		rtcache_free(&ro);
 	} else {
@@ -1416,7 +1500,7 @@ ip_get_membership(const struct sockopt *sopt, struct ifnet **ifp,
 static int
 ip_add_membership(struct ip_moptions *imo, const struct sockopt *sopt)
 {
-	struct ifnet *ifp;
+	struct ifnet *ifp = NULL;	// XXX: gcc [ppc]
 	struct in_addr ia;
 	int i, error;
 
@@ -1472,8 +1556,8 @@ ip_add_membership(struct ip_moptions *imo, const struct sockopt *sopt)
 static int
 ip_drop_membership(struct ip_moptions *imo, const struct sockopt *sopt)
 {
-	struct in_addr ia;
-	struct ifnet *ifp;
+	struct in_addr ia = { .s_addr = 0 };	// XXX: gcc [ppc]
+	struct ifnet *ifp = NULL;		// XXX: gcc [ppc]
 	int i, error;
 
 	if (sopt->sopt_size == sizeof(struct ip_mreq))
@@ -1494,7 +1578,7 @@ ip_drop_membership(struct ip_moptions *imo, const struct sockopt *sopt)
 	for (i = 0; i < imo->imo_num_memberships; ++i) {
 		if ((ifp == NULL ||
 		     imo->imo_membership[i]->inm_ifp == ifp) &&
-		     in_hosteq(imo->imo_membership[i]->inm_addr, ia))
+		    in_hosteq(imo->imo_membership[i]->inm_addr, ia))
 			break;
 	}
 	if (i == imo->imo_num_memberships)
@@ -1647,14 +1731,14 @@ ip_getmoptions(struct ip_moptions *imo, struct sockopt *sopt)
 
 	case IP_MULTICAST_TTL:
 		optval = imo ? imo->imo_multicast_ttl
-			     : IP_DEFAULT_MULTICAST_TTL;
+		    : IP_DEFAULT_MULTICAST_TTL;
 
 		error = sockopt_set(sopt, &optval, sizeof(optval));
 		break;
 
 	case IP_MULTICAST_LOOP:
 		optval = imo ? imo->imo_multicast_loop
-			     : IP_DEFAULT_MULTICAST_LOOP;
+		    : IP_DEFAULT_MULTICAST_LOOP;
 
 		error = sockopt_set(sopt, &optval, sizeof(optval));
 		break;
@@ -1694,8 +1778,8 @@ ip_mloopback(struct ifnet *ifp, struct mbuf *m, const struct sockaddr_in *dst)
 	struct mbuf *copym;
 
 	copym = m_copypacket(m, M_DONTWAIT);
-	if (copym != NULL
-	 && (copym->m_flags & M_EXT || copym->m_len < sizeof(struct ip)))
+	if (copym != NULL &&
+	    (copym->m_flags & M_EXT || copym->m_len < sizeof(struct ip)))
 		copym = m_pullup(copym, sizeof(struct ip));
 	if (copym == NULL)
 		return;
@@ -1713,7 +1797,11 @@ ip_mloopback(struct ifnet *ifp, struct mbuf *m, const struct sockaddr_in *dst)
 
 	ip->ip_sum = 0;
 	ip->ip_sum = in_cksum(copym, ip->ip_hl << 2);
+#ifndef NET_MPSAFE
 	KERNEL_LOCK(1, NULL);
+#endif
 	(void)looutput(ifp, copym, sintocsa(dst), NULL);
+#ifndef NET_MPSAFE
 	KERNEL_UNLOCK_ONE(NULL);
+#endif
 }

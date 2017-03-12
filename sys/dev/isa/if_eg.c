@@ -1,4 +1,4 @@
-/*	$NetBSD: if_eg.c,v 1.87 2014/08/10 16:44:35 tls Exp $	*/
+/*	$NetBSD: if_eg.c,v 1.89 2016/02/09 08:32:11 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 1993 Dean Huxley <dean@fsa.ca>
@@ -40,7 +40,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_eg.c,v 1.87 2014/08/10 16:44:35 tls Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_eg.c,v 1.89 2016/02/09 08:32:11 ozaki-r Exp $");
 
 #include "opt_inet.h"
 
@@ -53,7 +53,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_eg.c,v 1.87 2014/08/10 16:44:35 tls Exp $");
 #include <sys/syslog.h>
 #include <sys/select.h>
 #include <sys/device.h>
-#include <sys/rnd.h>
+#include <sys/rndsource.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -730,7 +730,7 @@ egread(struct eg_softc *sc, void *buf, int len)
 	 */
 	bpf_mtap(ifp, m);
 
-	(*ifp->if_input)(ifp, m);
+	if_percpuq_enqueue(ifp->if_percpuq, m);
 }
 
 /*

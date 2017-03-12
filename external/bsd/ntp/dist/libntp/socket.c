@@ -1,4 +1,4 @@
-/*	$NetBSD: socket.c,v 1.2 2014/12/19 20:43:17 christos Exp $	*/
+/*	$NetBSD: socket.c,v 1.5 2016/01/08 21:35:38 christos Exp $	*/
 
 /*
  * socket.c - low-level socket operations
@@ -80,7 +80,7 @@ move_fd(
 	static SOCKET socket_boundary = -1;
 	SOCKET newfd;
 
-	NTP_REQUIRE((int)fd >= 0);
+	REQUIRE((int)fd >= 0);
 
 	/*
 	 * check whether boundary has be set up
@@ -117,7 +117,7 @@ move_fd(
 			  socket_boundary));
 	} while (socket_boundary > 0);
 #else
-	NTP_REQUIRE((int)fd >= 0);
+	ENSURE((int)fd >= 0);
 #endif /* !defined(SYS_WINNT) && defined(F_DUPFD) */
 	return fd;
 }

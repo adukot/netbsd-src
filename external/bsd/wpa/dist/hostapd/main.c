@@ -1,6 +1,6 @@
 /*
  * hostapd / main()
- * Copyright (c) 2002-2011, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2002-2015, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -170,7 +170,8 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 
 		if (global.drv_priv[i] == NULL &&
 		    wpa_drivers[i]->global_init) {
-			global.drv_priv[i] = wpa_drivers[i]->global_init();
+			global.drv_priv[i] =
+				wpa_drivers[i]->global_init(iface->interfaces);
 			if (global.drv_priv[i] == NULL) {
 				wpa_printf(MSG_ERROR, "Failed to initialize "
 					   "driver '%s'",
@@ -184,9 +185,7 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 	}
 	params.bssid = b;
 	params.ifname = hapd->conf->iface;
-	params.ssid = hapd->conf->ssid.ssid;
-	params.ssid_len = hapd->conf->ssid.ssid_len;
-	params.test_socket = hapd->conf->test_socket;
+	params.driver_params = hapd->iconf->driver_params;
 	params.use_pae_group_addr = hapd->conf->use_pae_group_addr;
 
 	params.num_bridge = hapd->iface->num_bss;
@@ -212,12 +211,22 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 
 	if (hapd->driver->get_capa &&
 	    hapd->driver->get_capa(hapd->drv_priv, &capa) == 0) {
+		struct wowlan_triggers *triggs;
+
 		iface->drv_flags = capa.flags;
+		iface->smps_modes = capa.smps_modes;
 		iface->probe_resp_offloads = capa.probe_resp_offloads;
 		iface->extended_capa = capa.extended_capa;
 		iface->extended_capa_mask = capa.extended_capa_mask;
 		iface->extended_capa_len = capa.extended_capa_len;
 		iface->drv_max_acl_mac_addrs = capa.max_acl_mac_addrs;
+
+		triggs = wpa_get_wowlan_triggers(conf->wowlan_triggers, &capa);
+		if (triggs && hapd->driver->set_wowlan) {
+			if (hapd->driver->set_wowlan(hapd->drv_priv, triggs))
+				wpa_printf(MSG_ERROR, "set_wowlan failed");
+		}
+		os_free(triggs);
 	}
 
 	return 0;
@@ -399,9 +408,16 @@ static int hostapd_global_run(struct hapd_interfaces *ifaces, int daemonize,
 	}
 #endif /* EAP_SERVER_TNC */
 
-	if (daemonize && os_daemonize(pid_file)) {
-		perror("daemon");
-		return -1;
+	if (daemonize) {
+		if (os_daemonize(pid_file)) {
+			wpa_printf(MSG_ERROR, "daemon: %s", strerror(errno));
+			return -1;
+		}
+		if (eloop_sock_requeue()) {
+			wpa_printf(MSG_ERROR, "eloop_sock_requeue: %s",
+				   strerror(errno));
+			return -1;
+		}
 	}
 
 	eloop_run();
@@ -416,7 +432,7 @@ static void show_version(void)
 		"hostapd v" VERSION_STR "\n"
 		"User space daemon for IEEE 802.11 AP management,\n"
 		"IEEE 802.1X/WPA/WPA2/EAP/RADIUS Authenticator\n"
-		"Copyright (c) 2002-2014, Jouni Malinen <j@w1.fi> "
+		"Copyright (c) 2002-2015, Jouni Malinen <j@w1.fi> "
 		"and contributors\n");
 }
 
@@ -630,6 +646,8 @@ int main(int argc, char *argv[])
 
 	if (log_file)
 		wpa_debug_open_file(log_file);
+	else
+		wpa_debug_setup_stdout();
 #ifdef CONFIG_DEBUG_LINUX_TRACING
 	if (enable_trace_dbg) {
 		int tret = wpa_debug_open_linux_tracing();

@@ -1,4 +1,4 @@
-/*	$NetBSD: bcm2835_space.c,v 1.6 2013/04/14 15:11:52 skrll Exp $	*/
+/*	$NetBSD: bcm2835_space.c,v 1.10 2016/02/02 13:55:50 skrll Exp $	*/
 
 /*-
  * Copyright (c) 2012 The NetBSD Foundation, Inc.
@@ -31,7 +31,7 @@
 
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: bcm2835_space.c,v 1.6 2013/04/14 15:11:52 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: bcm2835_space.c,v 1.10 2016/02/02 13:55:50 skrll Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -40,6 +40,7 @@ __KERNEL_RCSID(0, "$NetBSD: bcm2835_space.c,v 1.6 2013/04/14 15:11:52 skrll Exp 
 
 #include <sys/bus.h>
 
+#include <arm/locore.h>
 #include <arm/broadcom/bcm2835reg.h>
 
 /* Prototypes for all the bus_space structure functions */
@@ -289,15 +290,31 @@ bcm2835_bs_map(void *t, bus_addr_t ba, bus_size_t size, int flag,
 	vaddr_t va;
 	const struct pmap_devmap *pd;
 	int pmap_flags;
+	bool match = false;
 
-	pa = ba & ~BCM2835_BUSADDR_CACHE_MASK;
+	/* Attempt to find the PA device mapping */
+	if (ba >= BCM2835_PERIPHERALS_BASE_BUS &&
+	    ba < BCM2835_PERIPHERALS_BASE_BUS + BCM2835_PERIPHERALS_SIZE) {
+		match = true;
+		pa = BCM2835_PERIPHERALS_BUS_TO_PHYS(ba);
+		
+	}
+#ifdef BCM2836
+	if (ba >= BCM2836_ARM_LOCAL_BASE &&
+	    ba < BCM2836_ARM_LOCAL_BASE + BCM2836_ARM_LOCAL_SIZE) {
+		match = true;
+		pa = ba;
+	}
+#endif
 
-	/* this does device addresses */
-	if ((pd = pmap_devmap_find_pa(pa, size)) != NULL) {
+	if (match && (pd = pmap_devmap_find_pa(pa, size)) != NULL) {
 		/* Device was statically mapped. */
 		*bshp = pd->pd_va + (pa - pd->pd_pa);
 		return 0;
 	}
+
+	/* Now assume bus address so convert to PA */
+	pa = ba & ~BCM2835_BUSADDR_CACHE_MASK;
 
 	startpa = trunc_page(pa);
 	endpa = round_page(pa + size);
@@ -356,13 +373,8 @@ bcm2835_bs_barrier(void *t, bus_space_handle_t bsh, bus_size_t offset,
 {
 	flags &= BUS_SPACE_BARRIER_READ|BUS_SPACE_BARRIER_WRITE;
 
-	if (flags) {
-		/* Issue an ARM11 Data Syncronisation Barrier (DSB) */
-		__asm__ __volatile__ ("mcr p15, 0, %0, c7, c10, 4" : : "r" (0)
-		    : "memory");
-		return;
-	}
-
+	if (flags)
+		arm_dsb();
 }
 
 void *

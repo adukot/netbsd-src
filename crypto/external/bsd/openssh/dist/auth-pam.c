@@ -50,7 +50,7 @@
 /*
  * NetBSD local changes
  */
-__RCSID("$NetBSD: auth-pam.c,v 1.5 2014/10/19 16:30:58 christos Exp $");
+__RCSID("$NetBSD: auth-pam.c,v 1.8 2016/01/23 00:03:30 christos Exp $");
 #undef USE_POSIX_THREADS /* Not yet */
 #define HAVE_SECURITY_PAM_APPL_H
 #define HAVE_PAM_GETENVLIST
@@ -114,6 +114,7 @@ void sshpam_password_change_required(int);
 #include "ssh-gss.h"
 #endif
 #include "monitor_wrap.h"
+#include "pfilter.h"
 
 extern ServerOptions options;
 extern Buffer loginmsg;
@@ -754,7 +755,7 @@ sshpam_query(void *ctx, char **name, char **info,
 		case PAM_PROMPT_ECHO_OFF:
 			*num = 1;
 			len = plen + mlen + 1;
-			**prompts = xrealloc(**prompts, 1, len);
+			**prompts = xreallocarray(**prompts, 1, len);
 			strlcpy(**prompts + plen, msg, len - plen);
 			plen += mlen;
 			**echo_on = (type == PAM_PROMPT_ECHO_ON);
@@ -764,7 +765,7 @@ sshpam_query(void *ctx, char **name, char **info,
 		case PAM_TEXT_INFO:
 			/* accumulate messages */
 			len = plen + mlen + 2;
-			**prompts = xrealloc(**prompts, 1, len);
+			**prompts = xreallocarray(**prompts, 1, len);
 			strlcpy(**prompts + plen, msg, len - plen);
 			plen += mlen;
 			strlcat(**prompts + plen, "\n", len - plen);
@@ -809,6 +810,7 @@ sshpam_query(void *ctx, char **name, char **info,
 				free(msg);
 				return (0);
 			}
+			pfilter_notify(1);
 			error("PAM: %s for %s%.100s from %.100s", msg,
 			    sshpam_authctxt->valid ? "" : "illegal user ",
 			    sshpam_authctxt->user,

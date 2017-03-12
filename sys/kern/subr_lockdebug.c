@@ -1,4 +1,4 @@
-/*	$NetBSD: subr_lockdebug.c,v 1.52 2014/11/24 02:36:31 christos Exp $	*/
+/*	$NetBSD: subr_lockdebug.c,v 1.54 2015/09/29 01:44:57 ozaki-r Exp $	*/
 
 /*-
  * Copyright (c) 2006, 2007, 2008 The NetBSD Foundation, Inc.
@@ -34,9 +34,11 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: subr_lockdebug.c,v 1.52 2014/11/24 02:36:31 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: subr_lockdebug.c,v 1.54 2015/09/29 01:44:57 ozaki-r Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_ddb.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/proc.h>
@@ -862,5 +864,6 @@ lockdebug_abort(volatile void *lock, lockops_t *ops, const char *func,
 		printf_nolog("\n");
 	}
 
-	panic("lock error");
+	panic("lock error: %s: %s: %s: lock %p cpu %d lwp %p",
+	    ops->lo_name, func, msg, lock, cpu_index(curcpu()), curlwp);
 }

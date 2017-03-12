@@ -1,5 +1,5 @@
 #!/bin/sh
-# $NetBSD: mkimage,v 1.52 2015/01/29 14:54:06 skrll Exp $
+# $NetBSD: mkimage,v 1.61 2015/08/01 10:05:51 jmcneill Exp $
 #
 # Copyright (c) 2013, 2014 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -32,6 +32,20 @@
 # POSSIBILITY OF SUCH DAMAGE.
 #
 
+#
+# Makes a bootable image for the host architecture given.
+# The host specific functions are pulled in from a /bin/sh script in the
+# "conf" directory, and is expected to provide the following shell
+# functions, which are called in the following order:
+#
+#  - make_fstab: Creates the host's /etc/fstab with / on ${rootdev}.
+#    If -m is given, a number of directories are put on a tmpfs RAM disk
+#  - customize: After unpacking the sets, this gets the system to
+#    a working state, e. g. by setting up /etc/rc.conf and /dev
+#  - populate: Add common goods like kernel and bootloader
+#  - make_label: Prints disklabel to stdout
+#
+
 set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -42,6 +56,7 @@ FDISK=${TOOL_FDISK:-fdisk}
 MAKEFS=${TOOL_MAKEFS:-makefs}
 MTREE=${TOOL_MTREE:-mtree}
 INSTALLBOOT=${TOOL_INSTALLBOOT:-installboot}
+MKUBOOTIMAGE=${TOOL_MKUBOOTIMAGE:-mkubootimage}
 GZIP_CMD=${TOOL_GZIP:-gzip} # ${GZIP} is special to gzip(1)
 
 src="/usr/src"
@@ -69,19 +84,19 @@ getsize() {
 
 usage() {
 	cat << EOF 1>&2
-Usage: $PROG -h <host-arch> [-bdmx] [-K <kerneldir>] [-S <srcdir>] [-D <destdir>] [-c <custom-files-dir>] [-s <Mb size>] [<image>]
+Usage: $PROG -h <host-arch> [-bdmx] [-B <byte-order>] [-K <kerneldir>] [-S <srcdir>] [-D <destdir>] [-c <custom-files-dir>] [-s <Mb size>] [<image>]
 
 -b	Boot only, no sets loaded
 -r	root device kind (sd, wd, ld)
 -d	Add the debug sets
 -m	Optimize the OS installation to mimimize disk writes for SSDs
--x	Load the x sets too, not just the base ones
+-x	Load the X sets too, not just the base ones
 EOF
 	exit 1
 }
 
 # First pass for options to get the host and src directories
-OPTS="K:D:S:bc:dh:mr:s:x"
+OPTS="B:D:K:S:bc:dh:mr:s:x"
 while getopts "$OPTS" f
 do
 	case $f in
@@ -102,6 +117,8 @@ then
 	exit 1
 fi
 
+resize=false
+
 . "${DIR}/conf/${h}.conf"
 release="/usr/obj/${MACHINE}/release"
 
@@ -110,11 +127,13 @@ dsets_p=false
 xsets_p=false
 minwrites=false
 rootdev=ld
+endian=
 
 OPTIND=1
 while getopts "$OPTS" f
 do
 	case $f in
+	B)	endian="-B $OPTARG";;
 	D)	release="$OPTARG";;
 	K)	kernel="$OPTARG";;
 	S)	;;
@@ -176,9 +195,9 @@ fi
 
 if [ -z "${bootonly}" ]; then
 	echo ${bar} Populating ffs filesystem ${bar}
-	${MAKEFS} -r -N ${release}/etc -t ffs -rx \
+	${MAKEFS} -rx ${endian} -N ${release}/etc -t ffs \
 	    -O ${ffsoffset} \
-	    -o d=4096 -b $((${extra}))m \
+	    -o d=4096,f=8192,b=65536 -b $((${extra}))m \
 	    -F "$tmp/selected_sets" ${image} "${release}" "${mnt}"
 fi
 

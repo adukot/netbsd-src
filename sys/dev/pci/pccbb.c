@@ -1,4 +1,4 @@
-/*	$NetBSD: pccbb.c,v 1.207 2014/11/16 16:20:00 ozaki-r Exp $	*/
+/*	$NetBSD: pccbb.c,v 1.209 2016/02/17 20:00:15 christos Exp $	*/
 
 /*
  * Copyright (c) 1998, 1999 and 2000
@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pccbb.c,v 1.207 2014/11/16 16:20:00 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pccbb.c,v 1.209 2016/02/17 20:00:15 christos Exp $");
 
 /*
 #define CBB_DEBUG
@@ -556,9 +556,9 @@ pccbbdetach(device_t self, int flags)
 	sc->sc_flags &= ~(CBB_MEMHMAPPED|CBB_SPECMAPPED);
 
 	if (!TAILQ_EMPTY(&sc->sc_iowindow))
-		aprint_error_dev(self, "i/o windows not empty");
+		aprint_error_dev(self, "i/o windows not empty\n");
 	if (!TAILQ_EMPTY(&sc->sc_memwindow))
-		aprint_error_dev(self, "memory windows not empty");
+		aprint_error_dev(self, "memory windows not empty\n");
 
 	callout_halt(&sc->sc_insert_ch, NULL);
 	callout_destroy(&sc->sc_insert_ch);
@@ -2766,17 +2766,14 @@ pccbb_pcmcia_intr_establish(pcmcia_chipset_handle_t pch,
 {
 	struct pccbb_softc *sc = (struct pccbb_softc *)pch;
 
-	if (!(pf->cfe->flags & PCMCIA_CFE_IRQLEVEL)) {
-		/* what should I do? */
-		if ((pf->cfe->flags & PCMCIA_CFE_IRQLEVEL)) {
-			DPRINTF(("%s does not provide edge nor pulse "
-			    "interrupt\n", device_xname(sc->sc_dev)));
-			return NULL;
-		}
+	if (!(pf->cfe->flags & (PCMCIA_CFE_IRQLEVEL|PCMCIA_CFE_IRQPULSE))) {
 		/*
 		 * XXX Noooooo!  The interrupt flag must set properly!!
 		 * dumb pcmcia driver!!
 		 */
+		DPRINTF(("%s does not provide edge nor pulse interrupt\n",
+		    device_xname(sc->sc_dev)));
+		return NULL;
 	}
 
 	return pccbb_intr_establish(sc, ipl, func, arg);

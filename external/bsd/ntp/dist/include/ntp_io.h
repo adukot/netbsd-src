@@ -1,4 +1,4 @@
-/*	$NetBSD: ntp_io.h,v 1.2 2014/12/19 20:43:14 christos Exp $	*/
+/*	$NetBSD: ntp_io.h,v 1.5 2016/05/01 23:32:00 christos Exp $	*/
 
 #ifndef NTP_IO_H
 #define NTP_IO_H
@@ -42,6 +42,8 @@
 
 #include "libntp.h"	/* This needs Something above for GETDTABLESIZE */
 
+#include "ntp_keyacc.h"
+
 /*
  * Define FNDELAY and FASYNC using O_NONBLOCK and O_ASYNC if we need
  * to (and can).  This is here initially for QNX, but may help for
@@ -82,9 +84,9 @@ typedef enum {
 } nic_rule_action;
 
 
+extern int	qos;
 SOCKET		move_fd(SOCKET fd);
 isc_boolean_t	get_broadcastclient_flag(void);
-extern int	is_ip_address(const char *, u_short, sockaddr_u *);
 extern void	sau_from_netaddr(sockaddr_u *, const isc_netaddr_t *);
 extern void	add_nic_rule(nic_rule_match match_type,
 			     const char *if_name, int prefixlen,

@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.1.1.2 2014/02/26 10:57:34 mrg Exp $
+#	$NetBSD: Makefile,v 1.3 2015/09/23 04:24:16 mrg Exp $
 
 .include <bsd.init.mk>
 
@@ -9,7 +9,9 @@
 INCS=		${G_backward_headers}
 INCSDIR=	/usr/include/g++/backward
 
+.include "${.CURDIR}/../Makefile.includes"
+
 # Get default targets including <bsd.inc.mk>.
 .include <bsd.prog.mk>
 
-.PATH: ${DIST}/libstdc++-v3/include/backward
+.PATH: ${DIST}/libstdc++-v3/include

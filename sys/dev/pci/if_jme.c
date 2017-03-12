@@ -1,4 +1,4 @@
-/*	$NetBSD: if_jme.c,v 1.26 2014/08/10 16:44:36 tls Exp $	*/
+/*	$NetBSD: if_jme.c,v 1.29 2016/02/09 08:32:11 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 2008 Manuel Bouyer.  All rights reserved.
@@ -58,7 +58,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_jme.c,v 1.26 2014/08/10 16:44:36 tls Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_jme.c,v 1.29 2016/02/09 08:32:11 ozaki-r Exp $");
 
 
 #include <sys/param.h>
@@ -87,7 +87,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_jme.c,v 1.26 2014/08/10 16:44:36 tls Exp $");
 #include <net/bpf.h>
 #include <net/bpfdesc.h>
 
-#include <sys/rnd.h>
+#include <sys/rndsource.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
@@ -949,6 +949,7 @@ jme_init(struct ifnet *ifp, int do_ifinit)
 			error = 0;
 		else if (error != 0) {
 			aprint_error_dev(sc->jme_dev, "could not set media\n");
+			splx(s);
 			return error;
 		}
 	}
@@ -1212,7 +1213,7 @@ jme_intr_rx(jme_softc_t *sc) {
 			VLAN_INPUT_TAG(ifp, mhead,
 			    (flags & JME_RD_VLAN_MASK), continue);
 		}
-		(*ifp->if_input)(ifp, mhead);
+		if_percpuq_enqueue(ifp->if_percpuq, mhead);
 	}
 	if (ipackets)
 		rnd_add_uint32(&sc->rnd_source, ipackets);

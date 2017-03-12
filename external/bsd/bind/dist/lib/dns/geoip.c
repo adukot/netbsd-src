@@ -1,7 +1,7 @@
-/*	$NetBSD: geoip.c,v 1.1.1.5 2014/12/10 03:34:39 christos Exp $	*/
+/*	$NetBSD: geoip.c,v 1.1.1.7 2015/12/17 03:22:06 christos Exp $	*/
 
 /*
- * Copyright (C) 2013, 2014  Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2013-2015  Internet Systems Consortium, Inc. ("ISC")
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -138,7 +138,7 @@ state_key_init(void) {
 	return (result);
 }
 #else
-geoip_state_t prev_state;
+static geoip_state_t saved_state;
 #endif
 
 static void
@@ -168,10 +168,10 @@ set_state(unsigned int family, isc_uint32_t ipnum, const geoipv6_t *ipnum6,
 	  dns_geoip_subtype_t subtype, GeoIPRecord *record,
 	  GeoIPRegion *region, char *name, const char *text, int id)
 {
-	isc_result_t result;
 	geoip_state_t *state = NULL;
-
 #ifdef ISC_PLATFORM_USETHREADS
+	isc_result_t result;
+
 	result = state_key_init();
 	if (result != ISC_R_SUCCESS)
 		return (result);
@@ -194,7 +194,7 @@ set_state(unsigned int family, isc_uint32_t ipnum, const geoipv6_t *ipnum6,
 	} else
 		clean_state(state);
 #else
-	state = &prev_state;
+	state = &saved_state;
 	clean_state(state);
 #endif
 
@@ -231,7 +231,7 @@ get_state_for(unsigned int family, isc_uint32_t ipnum,
 	if (state == NULL)
 		return (NULL);
 #else
-	state = &prev_state;
+	state = &saved_state;
 #endif
 
 	if (state->family == family &&

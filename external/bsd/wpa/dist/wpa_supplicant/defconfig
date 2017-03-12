@@ -67,9 +67,6 @@ CONFIG_DRIVER_NL80211=y
 # wpa_supplicant.
 # CONFIG_USE_NDISUIO=y
 
-# Driver interface for development testing
-#CONFIG_DRIVER_TEST=y
-
 # Driver interface for wired Ethernet drivers
 CONFIG_DRIVER_WIRED=y
 
@@ -457,6 +454,9 @@ CONFIG_PEERKEY=y
 
 # Hotspot 2.0
 #CONFIG_HS20=y
+
+# Enable interface matching in wpa_supplicant
+#CONFIG_MATCH_IFACE=y
 
 # Disable roaming in wpa_supplicant
 #CONFIG_NO_ROAMING=y

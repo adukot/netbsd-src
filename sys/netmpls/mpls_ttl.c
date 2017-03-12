@@ -1,4 +1,4 @@
-/*	$NetBSD: mpls_ttl.c,v 1.4 2013/08/07 06:55:00 kefren Exp $ */
+/*	$NetBSD: mpls_ttl.c,v 1.6 2016/04/26 08:44:45 ozaki-r Exp $ */
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -97,10 +97,12 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: mpls_ttl.c,v 1.4 2013/08/07 06:55:00 kefren Exp $");
+__KERNEL_RCSID(0, "$NetBSD: mpls_ttl.c,v 1.6 2016/04/26 08:44:45 ozaki-r Exp $");
 
+#ifdef _KERNEL_OPT
 #include "opt_inet.h"
 #include "opt_mpls.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/malloc.h>
@@ -111,7 +113,6 @@ __KERNEL_RCSID(0, "$NetBSD: mpls_ttl.c,v 1.4 2013/08/07 06:55:00 kefren Exp $");
 
 #include <net/if.h>
 #include <net/if_dl.h>
-#include <net/route.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>

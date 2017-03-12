@@ -1,4 +1,4 @@
-/*	$NetBSD: mb86950.c,v 1.21 2014/08/10 16:44:35 tls Exp $	*/
+/*	$NetBSD: mb86950.c,v 1.23 2016/02/09 08:32:10 ozaki-r Exp $	*/
 
 /*
  * All Rights Reserved, Copyright (C) Fujitsu Limited 1995
@@ -67,7 +67,7 @@
   */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: mb86950.c,v 1.21 2014/08/10 16:44:35 tls Exp $");
+__KERNEL_RCSID(0, "$NetBSD: mb86950.c,v 1.23 2016/02/09 08:32:10 ozaki-r Exp $");
 
 /*
  * Device driver for Fujitsu mb86950 based Ethernet cards.
@@ -129,7 +129,7 @@ __KERNEL_RCSID(0, "$NetBSD: mb86950.c,v 1.21 2014/08/10 16:44:35 tls Exp $");
 #include <sys/socket.h>
 #include <sys/syslog.h>
 #include <sys/device.h>
-#include <sys/rnd.h>
+#include <sys/rndsource.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -908,7 +908,7 @@ mb86950_get_fifo(struct mb86950_softc *sc, u_int len)
 	 */
 	bpf_mtap(ifp, m);
 
-	(*ifp->if_input)(ifp, m);
+	if_percpuq_enqueue(ifp->if_percpuq, m);
 	return (0);
 }
 
